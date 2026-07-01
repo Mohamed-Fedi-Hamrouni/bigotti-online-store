@@ -10,7 +10,7 @@ export type OrderStatus =
     | "DELIVERED"
     | "CANCELLED";
 
-export type CreateOrderItem = {
+export type CreateOrderItemPayload = {
     variantId: string;
     quantity: number;
 };
@@ -23,7 +23,7 @@ export type CreateOrderPayload = {
     deliveryCity: string;
     deliveryNotes?: string;
     paymentMethod: PaymentMethod;
-    items: CreateOrderItem[];
+    items: CreateOrderItemPayload[];
 };
 
 export type CreatedOrder = {
@@ -35,55 +35,57 @@ export type CreatedOrder = {
     deliveryAddress: string;
     deliveryCity: string;
     deliveryNotes: string | null;
-    subtotal: number;
-    deliveryFee: number;
-    total: number;
+    subtotal: number | string;
+    deliveryFee: number | string;
+    total: number | string;
     paymentMethod: PaymentMethod;
     paymentStatus: PaymentStatus;
     orderStatus: OrderStatus;
+    createdAt: string;
+    updatedAt: string;
 };
 
 export type AdminOrderItem = {
     id: string;
-    orderId: string;
-    productId: string | null;
-    variantId: string | null;
-    productReference: string;
+    productId: string;
+    productVariantId: string;
     productName: string;
+    productReference: string;
     color: string;
     size: string;
     quantity: number;
-    unitPrice: number;
-    totalPrice: number;
+    unitPrice: number | string;
+    totalPrice: number | string;
 };
 
 export type AdminOrderPayment = {
     id: string;
-    orderId: string;
+    amount: number | string;
     method: PaymentMethod;
     status: PaymentStatus;
-    amount: number;
     transactionReference: string | null;
-    paidAt: string | null;
     createdAt: string;
 };
 
-export type AdminOrderCustomer = {
+export type AdminOrder = {
     id: string;
-    fullName: string;
-    phone: string;
-    email: string | null;
+    orderNumber: string;
+    customerName: string;
+    customerPhone: string;
+    customerEmail: string | null;
+    deliveryAddress: string;
+    deliveryCity: string;
+    deliveryNotes: string | null;
+    subtotal: number | string;
+    deliveryFee: number | string;
+    total: number | string;
+    paymentMethod: PaymentMethod;
+    paymentStatus: PaymentStatus;
+    orderStatus: OrderStatus;
     createdAt: string;
     updatedAt: string;
-};
-
-export type AdminOrder = CreatedOrder & {
-    customerId: string | null;
-    createdAt: string;
-    updatedAt: string;
-    customer: AdminOrderCustomer | null;
     items: AdminOrderItem[];
-    payment: AdminOrderPayment | null;
+    payments: AdminOrderPayment[];
 };
 
 export type TrackedOrder = AdminOrder;

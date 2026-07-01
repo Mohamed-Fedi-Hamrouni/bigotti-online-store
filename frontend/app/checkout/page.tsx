@@ -1,21 +1,43 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { createOrder } from "@/lib/api";
 import { useCart } from "@/components/cart/CartProvider";
+import { useCustomerAuth } from "@/components/customer-auth/CustomerAuthProvider";
+import { PublicFooter } from "@/components/layout/PublicFooter";
+import { PublicHeader } from "@/components/layout/PublicHeader";
 import type { CreatedOrder } from "@/types/order";
 
-function formatPrice(value: number) {
-    return `${value.toFixed(3)} TND`;
+function formatPrice(value: number | string | null | undefined) {
+    const numericValue = Number(value);
+
+    if (Number.isNaN(numericValue)) {
+        return "0.000 TND";
+    }
+
+    return `${numericValue.toFixed(3)} TND`;
 }
 
 export default function CheckoutPage() {
     const { items, subtotal, deliveryFee, total, clearCart } = useCart();
+    const { customer, isAuthenticated } = useCustomerAuth();
+
+    const [customerName, setCustomerName] = useState("");
+    const [customerPhone, setCustomerPhone] = useState("");
+    const [customerEmail, setCustomerEmail] = useState("");
 
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState("");
     const [createdOrder, setCreatedOrder] = useState<CreatedOrder | null>(null);
+
+    useEffect(() => {
+        if (customer) {
+            setCustomerName(customer.fullName);
+            setCustomerPhone(customer.phone);
+            setCustomerEmail(customer.email ?? "");
+        }
+    }, [customer]);
 
     async function handleSubmit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
@@ -29,12 +51,13 @@ export default function CheckoutPage() {
         const formData = new FormData(event.currentTarget);
 
         const payload = {
-            customerName: String(formData.get("customerName") ?? ""),
-            customerPhone: String(formData.get("customerPhone") ?? ""),
-            customerEmail:
-                String(formData.get("customerEmail") ?? "").trim() || undefined,
-            deliveryAddress: String(formData.get("deliveryAddress") ?? ""),
-            deliveryCity: String(formData.get("deliveryCity") ?? ""),
+            customerName: customerName.trim(),
+            customerPhone: customerPhone.trim(),
+            customerEmail: customerEmail.trim() || undefined,
+            deliveryAddress: String(
+                formData.get("deliveryAddress") ?? "",
+            ).trim(),
+            deliveryCity: String(formData.get("deliveryCity") ?? "").trim(),
             deliveryNotes:
                 String(formData.get("deliveryNotes") ?? "").trim() || undefined,
             paymentMethod: String(formData.get("paymentMethod")) as
@@ -65,7 +88,9 @@ export default function CheckoutPage() {
     if (createdOrder) {
         return (
             <main className="min-h-screen bg-neutral-50 text-neutral-950">
-                <section className="mx-auto flex min-h-screen max-w-3xl items-center px-6">
+                <PublicHeader />
+
+                <section className="mx-auto flex min-h-[70vh] max-w-3xl items-center px-6 py-12">
                     <div className="w-full rounded-[2rem] bg-white p-10 text-center shadow-sm">
                         <img
                             src="/images/bigotti-logo.jpg"
@@ -73,7 +98,7 @@ export default function CheckoutPage() {
                             className="mx-auto h-20 w-auto object-contain"
                         />
 
-                        <h1 className="mt-8 text-4xl font-bold">
+                        <h1 className="mt-8 text-4xl font-black">
                             Commande confirmée
                         </h1>
 
@@ -85,7 +110,8 @@ export default function CheckoutPage() {
                             <p className="text-sm text-neutral-500">
                                 Numéro de commande
                             </p>
-                            <p className="mt-1 text-2xl font-bold">
+
+                            <p className="mt-1 text-2xl font-black">
                                 {createdOrder.orderNumber}
                             </p>
 
@@ -123,38 +149,53 @@ export default function CheckoutPage() {
                             </div>
                         </div>
 
-                        <Link
-                            href="/"
-                            className="mt-8 inline-flex rounded-full bg-black px-6 py-3 text-sm font-bold text-white"
-                        >
-                            Retour boutique
-                        </Link>
+                        <div className="mt-8 flex flex-wrap justify-center gap-3">
+                            <Link
+                                href={`/suivi-commande?orderNumber=${encodeURIComponent(
+                                    createdOrder.orderNumber,
+                                )}&phone=${encodeURIComponent(
+                                    createdOrder.customerPhone,
+                                )}`}
+                                className="rounded-full bg-black px-6 py-3 text-sm font-bold text-white"
+                            >
+                                Suivre ma commande
+                            </Link>
+
+                            <Link
+                                href="/"
+                                className="rounded-full border border-neutral-300 px-6 py-3 text-sm font-bold hover:border-black"
+                            >
+                                Retour boutique
+                            </Link>
+                        </div>
                     </div>
                 </section>
+
+                <PublicFooter />
             </main>
         );
     }
 
     return (
         <main className="min-h-screen bg-neutral-50 text-neutral-950">
-            <header className="border-b border-neutral-200 bg-white">
-                <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-                    <Link href="/" className="flex items-center">
-                        <img
-                            src="/images/bigotti-logo.jpg"
-                            alt="Bigotti Collection"
-                            className="h-20 w-auto object-contain"
-                        />
-                    </Link>
+            <PublicHeader />
 
-                    <Link
-                        href="/panier"
-                        className="text-sm font-medium text-neutral-600 hover:text-black"
-                    >
-                        Retour panier
-                    </Link>
+            <section className="bg-neutral-950 text-white">
+                <div className="mx-auto max-w-7xl px-6 py-16">
+                    <p className="text-sm uppercase tracking-[0.35em] text-neutral-400">
+                        Bigotti Collection
+                    </p>
+
+                    <h1 className="mt-5 max-w-4xl text-5xl font-black uppercase leading-none md:text-7xl">
+                        Finaliser la commande
+                    </h1>
+
+                    <p className="mt-6 max-w-2xl text-lg leading-8 text-neutral-300">
+                        Vérifiez vos informations, renseignez votre adresse et
+                        confirmez votre commande.
+                    </p>
                 </div>
-            </header>
+            </section>
 
             <section className="mx-auto grid max-w-7xl gap-8 px-6 py-12 lg:grid-cols-[1fr_380px]">
                 <form
@@ -162,12 +203,32 @@ export default function CheckoutPage() {
                     className="rounded-[2rem] bg-white p-8 shadow-sm"
                 >
                     <p className="text-sm uppercase tracking-[0.25em] text-neutral-500">
-                        Finaliser la commande
+                        Livraison
                     </p>
 
-                    <h1 className="mt-2 text-4xl font-bold">
-                        Informations de livraison
-                    </h1>
+                    <h2 className="mt-2 text-4xl font-black">
+                        Informations client
+                    </h2>
+
+                    {isAuthenticated && customer && (
+                        <div className="mt-6 rounded-2xl bg-green-50 p-4 text-sm font-semibold text-green-700">
+                            Connecté en tant que {customer.fullName}. Vos
+                            informations sont remplies automatiquement.
+                        </div>
+                    )}
+
+                    {!isAuthenticated && (
+                        <div className="mt-6 rounded-2xl bg-neutral-50 p-4 text-sm text-neutral-600">
+                            Vous pouvez commander sans compte.{" "}
+                            <Link
+                                href="/compte/login"
+                                className="font-bold text-black underline"
+                            >
+                                Connectez-vous
+                            </Link>{" "}
+                            pour pré-remplir vos informations.
+                        </div>
+                    )}
 
                     {error && (
                         <div className="mt-6 rounded-2xl bg-red-50 p-4 text-sm text-red-700">
@@ -181,7 +242,10 @@ export default function CheckoutPage() {
                                 Nom complet
                             </label>
                             <input
-                                name="customerName"
+                                value={customerName}
+                                onChange={(event) =>
+                                    setCustomerName(event.target.value)
+                                }
                                 required
                                 className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
                                 placeholder="Ahmed Ben Ali"
@@ -193,7 +257,10 @@ export default function CheckoutPage() {
                                 Téléphone
                             </label>
                             <input
-                                name="customerPhone"
+                                value={customerPhone}
+                                onChange={(event) =>
+                                    setCustomerPhone(event.target.value)
+                                }
                                 required
                                 className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
                                 placeholder="22000000"
@@ -205,7 +272,10 @@ export default function CheckoutPage() {
                                 Email
                             </label>
                             <input
-                                name="customerEmail"
+                                value={customerEmail}
+                                onChange={(event) =>
+                                    setCustomerEmail(event.target.value)
+                                }
                                 type="email"
                                 className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
                                 placeholder="client@email.com"
@@ -283,7 +353,7 @@ export default function CheckoutPage() {
                     <button
                         type="submit"
                         disabled={isSubmitting || items.length === 0}
-                        className="mt-8 w-full rounded-full bg-black px-6 py-4 text-sm font-bold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
+                        className="mt-8 w-full rounded-full bg-black px-6 py-4 text-sm font-black uppercase tracking-[0.12em] text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
                     >
                         {isSubmitting
                             ? "Commande en cours..."
@@ -292,32 +362,38 @@ export default function CheckoutPage() {
                 </form>
 
                 <aside className="h-fit rounded-[2rem] bg-white p-6 shadow-sm">
-                    <h2 className="text-2xl font-bold">Résumé</h2>
+                    <h2 className="text-2xl font-black">Résumé</h2>
 
-                    <div className="mt-6 space-y-4">
-                        {items.map((item) => (
-                            <div
-                                key={item.variantId}
-                                className="flex justify-between gap-4 text-sm"
-                            >
-                                <div>
+                    {items.length === 0 ? (
+                        <div className="mt-6 rounded-2xl bg-neutral-50 p-5 text-sm text-neutral-500">
+                            Votre panier est vide.
+                        </div>
+                    ) : (
+                        <div className="mt-6 space-y-4">
+                            {items.map((item) => (
+                                <div
+                                    key={item.variantId}
+                                    className="flex justify-between gap-4 text-sm"
+                                >
+                                    <div>
+                                        <p className="font-semibold">
+                                            {item.productName}
+                                        </p>
+                                        <p className="text-neutral-500">
+                                            {item.color} / {item.size} ×{" "}
+                                            {item.quantity}
+                                        </p>
+                                    </div>
+
                                     <p className="font-semibold">
-                                        {item.productName}
-                                    </p>
-                                    <p className="text-neutral-500">
-                                        {item.color} / {item.size} ×{" "}
-                                        {item.quantity}
+                                        {formatPrice(
+                                            item.unitPrice * item.quantity,
+                                        )}
                                     </p>
                                 </div>
-
-                                <p className="font-semibold">
-                                    {formatPrice(
-                                        item.unitPrice * item.quantity,
-                                    )}
-                                </p>
-                            </div>
-                        ))}
-                    </div>
+                            ))}
+                        </div>
+                    )}
 
                     <div className="mt-6 space-y-3 border-t border-neutral-200 pt-5 text-sm">
                         <div className="flex justify-between">
@@ -330,13 +406,15 @@ export default function CheckoutPage() {
                             <span>{formatPrice(deliveryFee)}</span>
                         </div>
 
-                        <div className="flex justify-between pt-3 text-lg font-bold">
+                        <div className="flex justify-between pt-3 text-lg font-black">
                             <span>Total</span>
                             <span>{formatPrice(total)}</span>
                         </div>
                     </div>
                 </aside>
             </section>
+
+            <PublicFooter />
         </main>
     );
 }

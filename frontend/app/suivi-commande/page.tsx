@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { PackageCheck, Search } from "lucide-react";
 import { PublicFooter } from "@/components/layout/PublicFooter";
 import { PublicHeader } from "@/components/layout/PublicHeader";
@@ -53,19 +53,17 @@ export default function TrackOrderPage() {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState("");
 
-    async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-        event.preventDefault();
+    const [orderNumberInput, setOrderNumberInput] = useState("");
+    const [phoneInput, setPhoneInput] = useState("");
+
+    const hasAutoTracked = useRef(false);
+
+    async function searchOrder(orderNumberValue: string, phoneValue: string) {
+        const orderNumber = orderNumberValue.trim().toUpperCase();
+        const phone = phoneValue.trim();
 
         setError("");
         setOrder(null);
-
-        const formData = new FormData(event.currentTarget);
-
-        const orderNumber = String(formData.get("orderNumber") ?? "")
-            .trim()
-            .toUpperCase();
-
-        const phone = String(formData.get("phone") ?? "").trim();
 
         if (!orderNumber || !phone) {
             setError("Veuillez saisir le numéro de commande et le téléphone.");
@@ -83,6 +81,34 @@ export default function TrackOrderPage() {
         } finally {
             setIsLoading(false);
         }
+    }
+
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+
+        const orderNumberFromUrl = String(params.get("orderNumber") ?? "")
+            .trim()
+            .toUpperCase();
+
+        const phoneFromUrl = String(params.get("phone") ?? "").trim();
+
+        if (orderNumberFromUrl) {
+            setOrderNumberInput(orderNumberFromUrl);
+        }
+
+        if (phoneFromUrl) {
+            setPhoneInput(phoneFromUrl);
+        }
+
+        if (orderNumberFromUrl && phoneFromUrl && !hasAutoTracked.current) {
+            hasAutoTracked.current = true;
+            void searchOrder(orderNumberFromUrl, phoneFromUrl);
+        }
+    }, []);
+
+    async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        await searchOrder(orderNumberInput, phoneInput);
     }
 
     const activeStep = order ? getStatusStep(order.orderStatus) : 0;
@@ -149,6 +175,12 @@ export default function TrackOrderPage() {
                             <input
                                 name="orderNumber"
                                 required
+                                value={orderNumberInput}
+                                onChange={(event) =>
+                                    setOrderNumberInput(
+                                        event.target.value.toUpperCase(),
+                                    )
+                                }
                                 placeholder="BG-0002"
                                 className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 uppercase outline-none focus:border-black"
                             />
@@ -162,6 +194,10 @@ export default function TrackOrderPage() {
                             <input
                                 name="phone"
                                 required
+                                value={phoneInput}
+                                onChange={(event) =>
+                                    setPhoneInput(event.target.value)
+                                }
                                 placeholder="20222020"
                                 className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
                             />
@@ -196,6 +232,18 @@ export default function TrackOrderPage() {
                             >
                                 Retour boutique
                             </Link>
+                        </div>
+                    )}
+
+                    {isLoading && (
+                        <div className="rounded-[2rem] bg-white p-10 text-center shadow-sm">
+                            <h2 className="text-2xl font-black">
+                                Recherche en cours...
+                            </h2>
+
+                            <p className="mt-3 text-neutral-500">
+                                Vérification de votre commande.
+                            </p>
                         </div>
                     )}
 
