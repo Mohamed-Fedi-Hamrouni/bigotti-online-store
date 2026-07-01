@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { ArrowRight, Heart, ShoppingBag } from "lucide-react";
+import { ArrowRight } from "lucide-react";
+import { FavoriteButton } from "@/components/favorites/FavoriteButton";
 import type { Product } from "@/types/product";
 
 type ProductCarouselProps = {
@@ -72,8 +73,8 @@ export function ProductCarousel({
                                     }}
                                     className="group min-w-[280px] overflow-hidden rounded-[2rem] bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl md:min-w-[340px]"
                                 >
-                                    <Link href={`/produit/${product.slug}`}>
-                                        <div className="relative aspect-[4/5] overflow-hidden bg-neutral-100">
+                                    <div className="relative aspect-[4/5] overflow-hidden bg-neutral-100">
+                                        <Link href={`/produit/${product.slug}`}>
                                             {mainImage ? (
                                                 <img
                                                     src={mainImage.url}
@@ -88,36 +89,23 @@ export function ProductCarousel({
                                                     Image produit
                                                 </div>
                                             )}
+                                        </Link>
 
-                                            <div className="absolute right-4 top-4 flex flex-col gap-2 opacity-0 transition group-hover:opacity-100">
-                                                <button
-                                                    type="button"
-                                                    className="rounded-full bg-white p-3 text-black shadow"
-                                                >
-                                                    <Heart size={18} />
-                                                </button>
-
-                                                <button
-                                                    type="button"
-                                                    className="rounded-full bg-white p-3 text-black shadow"
-                                                >
-                                                    <ShoppingBag size={18} />
-                                                </button>
-                                            </div>
-
-                                            {product.isOnSale &&
-                                                product.discountPercentage >
-                                                    0 && (
-                                                    <span className="absolute left-4 top-4 rounded-full bg-black px-3 py-1 text-sm font-bold text-white">
-                                                        -
-                                                        {
-                                                            product.discountPercentage
-                                                        }
-                                                        %
-                                                    </span>
-                                                )}
+                                        <div className="absolute right-4 top-4">
+                                            <FavoriteButton product={product} />
                                         </div>
 
+                                        {product.isOnSale &&
+                                            product.discountPercentage > 0 && (
+                                                <span className="absolute left-4 top-4 rounded-full bg-black px-3 py-1 text-sm font-bold text-white">
+                                                    -
+                                                    {product.discountPercentage}
+                                                    %
+                                                </span>
+                                            )}
+                                    </div>
+
+                                    <Link href={`/produit/${product.slug}`}>
                                         <div className="p-5">
                                             <p className="text-xs uppercase tracking-[0.22em] text-neutral-500">
                                                 {product.category.name}

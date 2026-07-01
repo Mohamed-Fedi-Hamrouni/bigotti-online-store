@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Heart, Menu, Search, ShoppingBag, UserRound, X } from "lucide-react";
 import { useState } from "react";
 import { useCart } from "@/components/cart/CartProvider";
+import { useFavorites } from "@/components/favorites/FavoritesProvider";
 
 const menuItems = [
     { label: "Nouveautés", href: "/#nouveautes" },
@@ -18,6 +19,7 @@ const menuItems = [
 
 export function PublicHeader() {
     const { itemsCount } = useCart();
+    const { favoritesCount } = useFavorites();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
 
     return (
@@ -57,20 +59,26 @@ export function PublicHeader() {
                 </nav>
 
                 <div className="flex items-center gap-2">
-                    <button
-                        type="button"
+                    <Link
+                        href="/boutique"
                         className="hidden rounded-full border border-neutral-200 p-3 transition hover:border-black md:inline-flex"
                         aria-label="Recherche"
                     >
                         <Search size={19} />
-                    </button>
+                    </Link>
 
                     <Link
                         href="/favoris"
-                        className="hidden rounded-full border border-neutral-200 p-3 transition hover:border-black md:inline-flex"
+                        className="relative hidden rounded-full border border-neutral-200 p-3 transition hover:border-black md:inline-flex"
                         aria-label="Favoris"
                     >
                         <Heart size={19} />
+
+                        {favoritesCount > 0 && (
+                            <span className="absolute -right-2 -top-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-red-600 px-2 text-xs font-bold text-white">
+                                {favoritesCount}
+                            </span>
+                        )}
                     </Link>
 
                     <Link
@@ -128,6 +136,14 @@ export function PublicHeader() {
                                     {item.label}
                                 </Link>
                             ))}
+
+                            <Link
+                                href="/favoris"
+                                onClick={() => setIsMenuOpen(false)}
+                                className="block border-b border-neutral-100 pb-4 text-sm font-bold uppercase tracking-[0.14em]"
+                            >
+                                Favoris ({favoritesCount})
+                            </Link>
 
                             <Link
                                 href="/admin/login"

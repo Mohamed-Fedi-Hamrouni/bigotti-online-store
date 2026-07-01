@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { FavoriteButton } from "@/components/favorites/FavoriteButton";
 import type { Product } from "@/types/product";
 
 type ProductCardProps = {
@@ -14,22 +15,25 @@ export function ProductCard({ product }: ProductCardProps) {
         product.images.find((image) => image.isMain) ?? product.images[0];
 
     return (
-        <Link
-            href={`/produit/${product.slug}`}
-            className="group overflow-hidden rounded-3xl border border-neutral-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
-        >
+        <article className="group overflow-hidden rounded-3xl border border-neutral-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl">
             <div className="relative aspect-[4/5] overflow-hidden bg-neutral-100">
-                {mainImage ? (
-                    <img
-                        src={mainImage.url}
-                        alt={mainImage.altText ?? product.name}
-                        className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-                    />
-                ) : (
-                    <div className="flex h-full w-full items-center justify-center text-neutral-400">
-                        Image produit
-                    </div>
-                )}
+                <Link href={`/produit/${product.slug}`}>
+                    {mainImage ? (
+                        <img
+                            src={mainImage.url}
+                            alt={mainImage.altText ?? product.name}
+                            className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                        />
+                    ) : (
+                        <div className="flex h-full w-full items-center justify-center text-neutral-400">
+                            Image produit
+                        </div>
+                    )}
+                </Link>
+
+                <div className="absolute right-4 top-4">
+                    <FavoriteButton product={product} />
+                </div>
 
                 {product.isOnSale && product.discountPercentage > 0 && (
                     <span className="absolute left-4 top-4 rounded-full bg-black px-3 py-1 text-sm font-semibold text-white">
@@ -38,24 +42,26 @@ export function ProductCard({ product }: ProductCardProps) {
                 )}
 
                 {product.isNewArrival && (
-                    <span className="absolute right-4 top-4 rounded-full bg-white px-3 py-1 text-sm font-semibold text-black">
+                    <span className="absolute bottom-4 left-4 rounded-full bg-white px-3 py-1 text-sm font-semibold text-black">
                         Nouveau
                     </span>
                 )}
             </div>
 
             <div className="space-y-3 p-5">
-                <div>
+                <Link href={`/produit/${product.slug}`}>
                     <p className="text-sm uppercase tracking-[0.2em] text-neutral-500">
                         {product.category.name}
                     </p>
+
                     <h3 className="mt-1 text-lg font-semibold text-neutral-950">
                         {product.name}
                     </h3>
+
                     <p className="mt-1 text-sm text-neutral-500">
                         Réf. {product.reference}
                     </p>
-                </div>
+                </Link>
 
                 <div className="flex items-end justify-between gap-3">
                     <div>
@@ -80,6 +86,6 @@ export function ProductCard({ product }: ProductCardProps) {
                     </p>
                 </div>
             </div>
-        </Link>
+        </article>
     );
 }

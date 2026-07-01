@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { CartProvider } from "@/components/cart/CartProvider";
+import { FavoritesProvider } from "@/components/favorites/FavoritesProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -15,7 +16,9 @@ export default function RootLayout({
     return (
         <html lang="fr" suppressHydrationWarning>
             <body suppressHydrationWarning>
-                <CartProvider>{children}</CartProvider>
+                <CartProvider>
+                    <FavoritesProvider>{children}</FavoritesProvider>
+                </CartProvider>
             </body>
         </html>
     );
