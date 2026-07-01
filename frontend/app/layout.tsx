@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { CartProvider } from "@/components/cart/CartProvider";
+import { CustomerAuthProvider } from "@/components/customer-auth/CustomerAuthProvider";
 import { FavoritesProvider } from "@/components/favorites/FavoritesProvider";
 import "./globals.css";
 
@@ -17,7 +18,9 @@ export default function RootLayout({
         <html lang="fr" suppressHydrationWarning>
             <body suppressHydrationWarning>
                 <CartProvider>
-                    <FavoritesProvider>{children}</FavoritesProvider>
+                    <FavoritesProvider>
+                        <CustomerAuthProvider>{children}</CustomerAuthProvider>
+                    </FavoritesProvider>
                 </CartProvider>
             </body>
         </html>

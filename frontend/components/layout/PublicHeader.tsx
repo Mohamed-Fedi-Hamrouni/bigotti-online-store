@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Heart, Menu, Search, ShoppingBag, UserRound, X } from "lucide-react";
 import { useState } from "react";
 import { useCart } from "@/components/cart/CartProvider";
+import { useCustomerAuth } from "@/components/customer-auth/CustomerAuthProvider";
 import { useFavorites } from "@/components/favorites/FavoritesProvider";
 import { SearchOverlay } from "@/components/search/SearchOverlay";
 
@@ -22,6 +23,7 @@ const menuItems = [
 export function PublicHeader() {
     const { itemsCount } = useCart();
     const { favoritesCount } = useFavorites();
+    const { isAuthenticated } = useCustomerAuth();
 
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -88,9 +90,9 @@ export function PublicHeader() {
                         </Link>
 
                         <Link
-                            href="/admin/login"
+                            href={isAuthenticated ? "/compte" : "/compte/login"}
                             className="hidden rounded-full border border-neutral-200 p-3 transition hover:border-black md:inline-flex"
-                            aria-label="Compte"
+                            aria-label="Mon compte"
                         >
                             <UserRound size={19} />
                         </Link>
@@ -160,6 +162,18 @@ export function PublicHeader() {
                                     className="block border-b border-neutral-100 pb-4 text-sm font-bold uppercase tracking-[0.14em]"
                                 >
                                     Favoris ({favoritesCount})
+                                </Link>
+
+                                <Link
+                                    href={
+                                        isAuthenticated
+                                            ? "/compte"
+                                            : "/compte/login"
+                                    }
+                                    onClick={() => setIsMenuOpen(false)}
+                                    className="block border-b border-neutral-100 pb-4 text-sm font-bold uppercase tracking-[0.14em]"
+                                >
+                                    Mon compte
                                 </Link>
 
                                 <Link

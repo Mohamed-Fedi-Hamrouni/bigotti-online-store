@@ -16,6 +16,13 @@ import type {
     SaleCampaign,
 } from "@/types/product";
 
+import type {
+    Customer,
+    CustomerAuthResponse,
+    LoginCustomerPayload,
+    RegisterCustomerPayload,
+} from "@/types/customer";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
 async function fetchJson<T>(
@@ -191,4 +198,26 @@ export async function trackOrder(orderNumber: string, phone: string) {
     });
 
     return fetchJson<TrackedOrder>(`/orders/track?${params.toString()}`);
+}
+
+export async function registerCustomer(payload: RegisterCustomerPayload) {
+    return fetchJson<CustomerAuthResponse>("/customer-auth/register", {
+        method: "POST",
+        body: JSON.stringify(payload),
+    });
+}
+
+export async function loginCustomer(payload: LoginCustomerPayload) {
+    return fetchJson<CustomerAuthResponse>("/customer-auth/login", {
+        method: "POST",
+        body: JSON.stringify(payload),
+    });
+}
+
+export async function getCustomerMe(token: string) {
+    return fetchJson<Customer>("/customer-auth/me", {
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+    });
 }
