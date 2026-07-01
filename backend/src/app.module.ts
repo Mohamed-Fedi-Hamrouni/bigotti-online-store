@@ -10,6 +10,7 @@ import { OrdersModule } from './orders/orders.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProductsModule } from './products/products.module';
 import { SaleCampaignsModule } from './sale-campaigns/sale-campaigns.module';
+import { UploadsModule } from './uploads/uploads.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -24,6 +25,7 @@ import { UsersModule } from './users/users.module';
     ProductsModule,
     OrdersModule,
     DashboardModule,
+    UploadsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

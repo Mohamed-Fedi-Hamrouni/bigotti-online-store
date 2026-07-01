@@ -70,12 +70,15 @@ export default function AdminHomePage() {
                         </p>
                     </Link>
 
-                    <div className="rounded-3xl bg-white p-6 opacity-60 shadow-sm">
+                    <Link
+                        href="/admin/produits"
+                        className="rounded-3xl bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
+                    >
                         <h2 className="text-2xl font-bold">Produits</h2>
                         <p className="mt-3 text-neutral-500">
-                            Gestion produits dans la prochaine étape.
+                            Voir les produits et ajouter de nouveaux articles.
                         </p>
-                    </div>
+                    </Link>
 
                     <div className="rounded-3xl bg-white p-6 opacity-60 shadow-sm">
                         <h2 className="text-2xl font-bold">Dashboard</h2>

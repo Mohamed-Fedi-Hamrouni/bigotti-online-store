@@ -5,7 +5,13 @@ import type {
     CreatedOrder,
     OrderStatus,
 } from "@/types/order";
-import type { Product } from "@/types/product";
+import type {
+    Category,
+    Collection,
+    CreateProductPayload,
+    Product,
+    SaleCampaign,
+} from "@/types/product";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
@@ -76,4 +82,79 @@ export async function updateOrderStatus(
         },
         body: JSON.stringify({ orderStatus }),
     });
+}
+
+export async function getAdminProducts(token: string) {
+    return fetchJson<Product[]>("/products/admin/all", {
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+    });
+}
+
+export async function createProduct(
+    token: string,
+    payload: CreateProductPayload,
+) {
+    return fetchJson<Product>("/products", {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+    });
+}
+
+export async function getAdminCategories(token: string) {
+    return fetchJson<Category[]>("/categories/admin", {
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+    });
+}
+
+export async function getAdminCollections(token: string) {
+    return fetchJson<Collection[]>("/collections/admin", {
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+    });
+}
+
+export async function getAdminSaleCampaigns(token: string) {
+    return fetchJson<SaleCampaign[]>("/sale-campaigns/admin", {
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+    });
+}
+
+export type UploadProductImageResponse = {
+    url: string;
+    storagePath: string;
+    filename: string;
+};
+
+export async function uploadProductImage(token: string, file: File) {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch(`${API_URL}/uploads/products`, {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+    });
+
+    if (!response.ok) {
+        const error = await response.json().catch(() => null);
+        const message = Array.isArray(error?.message)
+            ? error.message.join(", ")
+            : error?.message;
+
+        throw new Error(message ?? "Erreur lors de l’upload de l’image.");
+    }
+
+    return response.json() as Promise<UploadProductImageResponse>;
 }

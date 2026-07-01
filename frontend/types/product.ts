@@ -84,3 +84,37 @@ export type Product = {
     discountPercentage: number;
     totalStock: number;
 };
+export type CreateProductImagePayload = {
+    url: string;
+    altText?: string;
+    isMain?: boolean;
+    position?: number;
+};
+
+export type CreateProductVariantPayload = {
+    color: string;
+    size: string;
+    stockQuantity: number;
+    sku?: string;
+    isActive?: boolean;
+};
+
+export type CreateProductPayload = {
+    reference: string;
+    name: string;
+    slug: string;
+    shortDescription?: string;
+    description?: string;
+    categoryId: string;
+    collectionId?: string;
+    saleCampaignId?: string;
+    price: number;
+    discountType?: DiscountType;
+    discountValue?: number;
+    status: ProductStatus;
+    isFeatured: boolean;
+    isNewArrival: boolean;
+    isOnSale: boolean;
+    images: CreateProductImagePayload[];
+    variants: CreateProductVariantPayload[];
+};
