@@ -189,6 +189,8 @@ model Customer {
   fullName String  @map("full_name")
   phone    String
   email    String?
+  passwordHash String?
+isActive     Boolean @default(true)
 
   orders Order[]
 

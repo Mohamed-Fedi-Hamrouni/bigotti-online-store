@@ -5,6 +5,7 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { CategoriesModule } from './categories/categories.module';
 import { CollectionsModule } from './collections/collections.module';
+import { CustomerAuthModule } from './customer-auth/customer-auth.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { OrdersModule } from './orders/orders.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -26,6 +27,7 @@ import { UsersModule } from './users/users.module';
     OrdersModule,
     DashboardModule,
     UploadsModule,
+    CustomerAuthModule,
   ],
   controllers: [AppController],
   providers: [AppService],
