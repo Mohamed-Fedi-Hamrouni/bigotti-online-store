@@ -27,6 +27,15 @@ export default function AdminHomePage() {
         router.push("/admin/login");
     }
 
+    const canManageProducts =
+        user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
+
+    const canManageOrders =
+        user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
+
+    const canViewDashboard =
+        user?.role === "MANAGER" || user?.role === "SUPER_ADMIN";
+
     return (
         <main className="min-h-screen bg-neutral-50 text-neutral-950">
             <header className="border-b border-neutral-200 bg-white">
@@ -60,32 +69,44 @@ export default function AdminHomePage() {
                 <p className="mt-3 text-neutral-600">Rôle : {user?.role}</p>
 
                 <div className="mt-10 grid gap-6 md:grid-cols-3">
-                    <Link
-                        href="/admin/commandes"
-                        className="rounded-3xl bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
-                    >
-                        <h2 className="text-2xl font-bold">Commandes</h2>
-                        <p className="mt-3 text-neutral-500">
-                            Voir les commandes clients et changer les statuts.
-                        </p>
-                    </Link>
+                    {canManageOrders && (
+                        <Link
+                            href="/admin/commandes"
+                            className="rounded-3xl bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
+                        >
+                            <h2 className="text-2xl font-bold">Commandes</h2>
+                            <p className="mt-3 text-neutral-500">
+                                Voir les commandes clients et changer les
+                                statuts.
+                            </p>
+                        </Link>
+                    )}
 
-                    <Link
-                        href="/admin/produits"
-                        className="rounded-3xl bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
-                    >
-                        <h2 className="text-2xl font-bold">Produits</h2>
-                        <p className="mt-3 text-neutral-500">
-                            Voir les produits et ajouter de nouveaux articles.
-                        </p>
-                    </Link>
+                    {canManageProducts && (
+                        <Link
+                            href="/admin/produits"
+                            className="rounded-3xl bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
+                        >
+                            <h2 className="text-2xl font-bold">Produits</h2>
+                            <p className="mt-3 text-neutral-500">
+                                Voir les produits et ajouter de nouveaux
+                                articles.
+                            </p>
+                        </Link>
+                    )}
 
-                    <div className="rounded-3xl bg-white p-6 opacity-60 shadow-sm">
-                        <h2 className="text-2xl font-bold">Dashboard</h2>
-                        <p className="mt-3 text-neutral-500">
-                            Statistiques manager dans la prochaine étape.
-                        </p>
-                    </div>
+                    {canViewDashboard && (
+                        <Link
+                            href="/admin/dashboard"
+                            className="rounded-3xl bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
+                        >
+                            <h2 className="text-2xl font-bold">Dashboard</h2>
+                            <p className="mt-3 text-neutral-500">
+                                Suivre les ventes, les commandes et les produits
+                                à faible stock.
+                            </p>
+                        </Link>
+                    )}
                 </div>
             </section>
         </main>

@@ -13,6 +13,8 @@ import type {
     SaleCampaign,
 } from "@/types/product";
 
+import type { ManagerDashboard } from "@/types/dashboard";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
 async function fetchJson<T>(
@@ -157,4 +159,12 @@ export async function uploadProductImage(token: string, file: File) {
     }
 
     return response.json() as Promise<UploadProductImageResponse>;
+}
+
+export async function getManagerDashboard(token: string) {
+    return fetchJson<ManagerDashboard>("/dashboard/manager", {
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+    });
 }

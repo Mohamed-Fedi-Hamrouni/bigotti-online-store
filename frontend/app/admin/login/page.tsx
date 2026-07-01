@@ -36,7 +36,7 @@ export default function AdminLoginPage() {
             );
 
             if (response.user.role === "MANAGER") {
-                router.push("/admin");
+                router.push("/admin/dashboard");
                 return;
             }
 
