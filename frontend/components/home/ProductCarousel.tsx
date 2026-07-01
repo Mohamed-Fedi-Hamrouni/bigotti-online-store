@@ -36,7 +36,7 @@ export function ProductCarousel({
                     </div>
 
                     <Link
-                        href="/#boutique"
+                        href="/boutique"
                         className="group inline-flex items-center gap-2 text-sm font-bold uppercase tracking-[0.16em] text-neutral-600 hover:text-black"
                     >
                         Voir plus

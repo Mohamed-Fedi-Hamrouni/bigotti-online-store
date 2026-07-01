@@ -7,19 +7,19 @@ const categories = [
     {
         title: "Chemises",
         subtitle: "Élégance quotidienne",
-        href: "/#boutique",
+        href: "/boutique",
         image: "https://images.unsplash.com/photo-1596755094514-f87e34085b2c",
     },
     {
         title: "Costumes",
         subtitle: "Business & cérémonie",
-        href: "/#boutique",
+        href: "/boutique",
         image: "https://images.unsplash.com/photo-1594938298603-c8148c4dae35",
     },
     {
         title: "Chaussures",
         subtitle: "Finition du look",
-        href: "/#boutique",
+        href: "/boutique",
         image: "https://images.unsplash.com/photo-1549298916-b41d501d3772",
     },
 ];
@@ -39,7 +39,7 @@ export function CategoryShowcase() {
                     </div>
 
                     <Link
-                        href="/#boutique"
+                        href="/boutique"
                         className="text-sm font-bold uppercase tracking-[0.16em] text-neutral-600 hover:text-black"
                     >
                         Voir tous les produits

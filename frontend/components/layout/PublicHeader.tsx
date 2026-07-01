@@ -7,11 +7,12 @@ import { useCart } from "@/components/cart/CartProvider";
 
 const menuItems = [
     { label: "Nouveautés", href: "/#nouveautes" },
-    { label: "Haut", href: "/#boutique" },
-    { label: "Bas", href: "/#boutique" },
-    { label: "Costumes", href: "/#collections" },
-    { label: "Chaussures", href: "/#boutique" },
-    { label: "Accessoires", href: "/#boutique" },
+    { label: "Boutique", href: "/boutique" },
+    { label: "Haut", href: "/boutique" },
+    { label: "Bas", href: "/boutique" },
+    { label: "Costumes", href: "/boutique" },
+    { label: "Chaussures", href: "/boutique" },
+    { label: "Accessoires", href: "/boutique" },
     { label: "Promotions", href: "/#promotions" },
 ];
 
