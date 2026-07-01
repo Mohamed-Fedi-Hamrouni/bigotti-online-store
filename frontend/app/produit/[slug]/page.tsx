@@ -1,5 +1,6 @@
-import Link from "next/link";
 import { AddToCartPanel } from "@/components/cart/AddToCartPanel";
+import { PublicFooter } from "@/components/layout/PublicFooter";
+import { PublicHeader } from "@/components/layout/PublicHeader";
 import { getProductBySlug } from "@/lib/api";
 
 type ProductDetailPageProps = {
@@ -23,33 +24,7 @@ export default async function ProductDetailPage({
 
     return (
         <main className="min-h-screen bg-neutral-50 text-neutral-950">
-            <header className="border-b border-neutral-200 bg-white">
-                <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-                    <Link href="/" className="flex items-center">
-                        <img
-                            src="/images/bigotti-logo.jpg"
-                            alt="Bigotti Collection"
-                            className="h-20 w-auto object-contain"
-                        />
-                    </Link>
-
-                    <div className="flex items-center gap-6">
-                        <Link
-                            href="/panier"
-                            className="text-sm font-medium text-neutral-600 hover:text-black"
-                        >
-                            Panier
-                        </Link>
-
-                        <Link
-                            href="/"
-                            className="text-sm font-medium text-neutral-600 hover:text-black"
-                        >
-                            Retour boutique
-                        </Link>
-                    </div>
-                </div>
-            </header>
+            <PublicHeader />
 
             <section className="mx-auto grid max-w-7xl gap-10 px-6 py-12 lg:grid-cols-2">
                 <div className="overflow-hidden rounded-[2rem] bg-neutral-100">
@@ -116,6 +91,8 @@ export default async function ProductDetailPage({
                     <AddToCartPanel product={product} />
                 </div>
             </section>
+
+            <PublicFooter />
         </main>
     );
 }

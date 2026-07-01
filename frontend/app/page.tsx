@@ -1,8 +1,11 @@
 import { ProductCard } from "@/components/ProductCard";
+import { PublicFooter } from "@/components/layout/PublicFooter";
+import { PublicHeader } from "@/components/layout/PublicHeader";
 import { getProducts } from "@/lib/api";
 
 export default async function HomePage() {
     const products = await getProducts();
+
     const featuredProduct = products[0];
     const featuredImage =
         featuredProduct?.images.find((image) => image.isMain) ??
@@ -10,32 +13,7 @@ export default async function HomePage() {
 
     return (
         <main className="min-h-screen bg-neutral-50 text-neutral-950">
-            <header className="border-b border-neutral-200 bg-white">
-                <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-                    <div className="flex items-center">
-                        <img
-                            src="/images/bigotti-logo.jpg"
-                            alt="Bigotti Collection"
-                            className="h-20 w-auto object-contain"
-                        />
-                    </div>
-
-                    <nav className="hidden items-center gap-8 text-sm font-medium text-neutral-700 md:flex">
-                        <a href="#boutique" className="hover:text-black">
-                            Boutique
-                        </a>
-                        <a href="#collections" className="hover:text-black">
-                            Collections
-                        </a>
-                        <a href="#soldes" className="hover:text-black">
-                            Soldes
-                        </a>
-                        <a href="#contact" className="hover:text-black">
-                            Contact
-                        </a>
-                    </nav>
-                </div>
-            </header>
+            <PublicHeader />
 
             <section className="relative overflow-hidden bg-[#080808] text-white">
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.14),transparent_35%)]" />
@@ -65,10 +43,10 @@ export default async function HomePage() {
                             </a>
 
                             <a
-                                href="#soldes"
+                                href="#services"
                                 className="rounded-full border border-white/20 px-7 py-4 text-sm font-medium text-white transition hover:border-white hover:bg-white hover:text-black"
                             >
-                                Voir les offres
+                                Nos services
                             </a>
                         </div>
 
@@ -148,6 +126,51 @@ export default async function HomePage() {
                 </div>
             </section>
 
+            <section id="collections" className="bg-white">
+                <div className="mx-auto max-w-7xl px-6 py-14">
+                    <div className="grid gap-5 md:grid-cols-3">
+                        <div className="rounded-3xl bg-neutral-50 p-7">
+                            <p className="text-sm uppercase tracking-[0.25em] text-neutral-500">
+                                Élégance
+                            </p>
+                            <h2 className="mt-3 text-2xl font-bold">
+                                Pour le quotidien
+                            </h2>
+                            <p className="mt-3 text-neutral-600">
+                                Des articles modernes pour un style soigné tous
+                                les jours.
+                            </p>
+                        </div>
+
+                        <div className="rounded-3xl bg-neutral-950 p-7 text-white">
+                            <p className="text-sm uppercase tracking-[0.25em] text-neutral-400">
+                                Business
+                            </p>
+                            <h2 className="mt-3 text-2xl font-bold">
+                                Pour le travail
+                            </h2>
+                            <p className="mt-3 text-neutral-300">
+                                Chemises, pantalons et vestes pour une présence
+                                professionnelle.
+                            </p>
+                        </div>
+
+                        <div className="rounded-3xl bg-neutral-50 p-7">
+                            <p className="text-sm uppercase tracking-[0.25em] text-neutral-500">
+                                Occasions
+                            </p>
+                            <h2 className="mt-3 text-2xl font-bold">
+                                Pour les événements
+                            </h2>
+                            <p className="mt-3 text-neutral-600">
+                                Une sélection raffinée pour les sorties,
+                                cérémonies et rendez-vous.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <section id="boutique" className="mx-auto max-w-7xl px-6 py-16">
                 <div className="mb-10 flex flex-col justify-between gap-4 md:flex-row md:items-end">
                     <div>
@@ -184,6 +207,53 @@ export default async function HomePage() {
                     </div>
                 )}
             </section>
+
+            <section id="services" className="bg-neutral-950 text-white">
+                <div className="mx-auto max-w-7xl px-6 py-16">
+                    <div className="mb-10">
+                        <p className="text-sm uppercase tracking-[0.25em] text-neutral-400">
+                            Services
+                        </p>
+                        <h2 className="mt-2 text-4xl font-bold">
+                            Une commande simple et pratique
+                        </h2>
+                    </div>
+
+                    <div className="grid gap-5 md:grid-cols-3">
+                        <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
+                            <h3 className="text-xl font-bold">
+                                Choix taille et couleur
+                            </h3>
+                            <p className="mt-3 text-neutral-300">
+                                Consultez les tailles disponibles et choisissez
+                                votre variante avant de commander.
+                            </p>
+                        </div>
+
+                        <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
+                            <h3 className="text-xl font-bold">
+                                Paiement à la livraison
+                            </h3>
+                            <p className="mt-3 text-neutral-300">
+                                Validez votre commande et payez au moment de la
+                                réception.
+                            </p>
+                        </div>
+
+                        <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
+                            <h3 className="text-xl font-bold">
+                                Suivi par la boutique
+                            </h3>
+                            <p className="mt-3 text-neutral-300">
+                                Les commandes sont traitées par l’équipe Bigotti
+                                depuis l’espace administration.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <PublicFooter />
         </main>
     );
 }

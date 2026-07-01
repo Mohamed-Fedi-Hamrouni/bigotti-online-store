@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useCart } from "@/components/cart/CartProvider";
+import { PublicFooter } from "@/components/layout/PublicFooter";
+import { PublicHeader } from "@/components/layout/PublicHeader";
 
 function formatPrice(value: number) {
     return `${value.toFixed(3)} TND`;
@@ -19,24 +21,7 @@ export default function CartPage() {
 
     return (
         <main className="min-h-screen bg-neutral-50 text-neutral-950">
-            <header className="border-b border-neutral-200 bg-white">
-                <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-                    <Link href="/" className="flex items-center">
-                        <img
-                            src="/images/bigotti-logo.jpg"
-                            alt="Bigotti Collection"
-                            className="h-20 w-auto object-contain"
-                        />
-                    </Link>
-
-                    <Link
-                        href="/"
-                        className="text-sm font-medium text-neutral-600 hover:text-black"
-                    >
-                        Continuer mes achats
-                    </Link>
-                </div>
-            </header>
+            <PublicHeader />
 
             <section className="mx-auto max-w-7xl px-6 py-12">
                 <div className="mb-8">
@@ -57,7 +42,7 @@ export default function CartPage() {
                         </p>
 
                         <Link
-                            href="/"
+                            href="/#boutique"
                             className="mt-6 inline-flex rounded-full bg-black px-6 py-3 text-sm font-bold text-white"
                         >
                             Retour boutique
@@ -197,6 +182,8 @@ export default function CartPage() {
                     </div>
                 )}
             </section>
+
+            <PublicFooter />
         </main>
     );
 }
