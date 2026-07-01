@@ -3,77 +3,134 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type { Prisma } from '../../generated/prisma/client';
+import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 
-type OrderItemData = {
-  productId: string;
-  variantId: string;
-  productReference: string;
-  productName: string;
-  color: string;
-  size: string;
-  quantity: number;
-  unitPrice: number;
-  totalPrice: number;
-};
-
 @Injectable()
 export class OrdersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly jwtService: JwtService,
+  ) {}
 
-  async create(createOrderDto: CreateOrderDto) {
-    return this.prisma.$transaction(async (tx) => {
-      const orderNumber = await this.generateOrderNumber(tx);
+  async create(dto: CreateOrderDto, authorization?: string) {
+    if (!dto.items || dto.items.length === 0) {
+      throw new BadRequestException(
+        'La commande doit contenir au moins un article.',
+      );
+    }
 
-      const orderItemsData: OrderItemData[] = [];
+    const connectedCustomer =
+      await this.getCustomerFromAuthorizationHeader(authorization);
 
-      for (const item of createOrderDto.items) {
-        const variant = await tx.productVariant.findUnique({
-          where: {
-            id: item.variantId,
+    const variantIds = dto.items.map((item) => item.variantId);
+
+    const variants = await this.prisma.productVariant.findMany({
+      where: {
+        id: {
+          in: variantIds,
+        },
+      },
+      include: {
+        product: true,
+      },
+    });
+
+    if (variants.length !== variantIds.length) {
+      throw new BadRequestException(
+        'Un ou plusieurs articles sont introuvables.',
+      );
+    }
+
+    const orderItems = dto.items.map((item) => {
+      const variant = variants.find(
+        (currentVariant) => currentVariant.id === item.variantId,
+      );
+
+      if (!variant) {
+        throw new BadRequestException('Variante produit introuvable.');
+      }
+
+      if (item.quantity <= 0) {
+        throw new BadRequestException(
+          'La quantité doit être supérieure à zéro.',
+        );
+      }
+
+      if (variant.stockQuantity < item.quantity) {
+        throw new BadRequestException(
+          `Stock insuffisant pour ${variant.product.name} - ${variant.color} / ${variant.size}.`,
+        );
+      }
+
+      if (variant.product.status !== 'PUBLISHED') {
+        throw new BadRequestException(
+          `Le produit ${variant.product.name} n'est pas disponible.`,
+        );
+      }
+
+      const unitPrice = this.calculateProductFinalPrice(variant.product);
+      const totalPrice = unitPrice * item.quantity;
+
+      return {
+        productId: variant.productId,
+        productVariantId: variant.id,
+        productName: variant.product.name,
+        productReference: variant.product.reference,
+        color: variant.color,
+        size: variant.size,
+        quantity: item.quantity,
+        unitPrice,
+        totalPrice,
+      };
+    });
+
+    const subtotal = orderItems.reduce(
+      (sum, item) => sum + Number(item.totalPrice),
+      0,
+    );
+
+    const deliveryFee = 7;
+    const total = subtotal + deliveryFee;
+    const orderNumber = await this.generateOrderNumber();
+
+    const order = await this.prisma.$transaction(async (tx) => {
+      const createdOrder = await tx.order.create({
+        data: {
+          orderNumber,
+          customerId: connectedCustomer?.id,
+          customerName: connectedCustomer?.fullName ?? dto.customerName,
+          customerPhone: connectedCustomer?.phone ?? dto.customerPhone,
+          customerEmail: connectedCustomer?.email ?? dto.customerEmail,
+          deliveryAddress: dto.deliveryAddress,
+          deliveryCity: dto.deliveryCity,
+          deliveryNotes: dto.deliveryNotes,
+          subtotal,
+          deliveryFee,
+          total,
+          paymentMethod: dto.paymentMethod,
+          paymentStatus: 'UNPAID',
+          orderStatus: 'PENDING',
+          items: {
+            create: orderItems,
           },
-          include: {
-            product: true,
+          payment: {
+            create: {
+              amount: total,
+              method: dto.paymentMethod,
+              status: 'UNPAID',
+            },
           },
-        });
+        },
+        include: this.defaultInclude(),
+      });
 
-        if (!variant || !variant.isActive) {
-          throw new BadRequestException('Variante produit introuvable.');
-        }
-
-        if (variant.product.status !== 'PUBLISHED') {
-          throw new BadRequestException(
-            `Le produit ${variant.product.reference} n'est pas publié.`,
-          );
-        }
-
-        if (variant.stockQuantity < item.quantity) {
-          throw new BadRequestException(
-            `Stock insuffisant pour ${variant.product.name} - ${variant.color}/${variant.size}.`,
-          );
-        }
-
-        const unitPrice = this.calculateFinalPrice(variant.product);
-        const totalPrice = this.toMoney(unitPrice * item.quantity);
-
-        orderItemsData.push({
-          productId: variant.product.id,
-          variantId: variant.id,
-          productReference: variant.product.reference,
-          productName: variant.product.name,
-          color: variant.color,
-          size: variant.size,
-          quantity: item.quantity,
-          unitPrice,
-          totalPrice,
-        });
-
+      for (const item of dto.items) {
         await tx.productVariant.update({
           where: {
-            id: variant.id,
+            id: item.variantId,
           },
           data: {
             stockQuantity: {
@@ -83,65 +140,13 @@ export class OrdersService {
         });
       }
 
-      const subtotal = this.toMoney(
-        orderItemsData.reduce((sum, item) => sum + Number(item.totalPrice), 0),
-      );
-
-      const deliveryFee = this.getDeliveryFee(subtotal);
-      const total = this.toMoney(subtotal + deliveryFee);
-
-      const paymentStatus =
-        createOrderDto.paymentMethod === 'CARD' ? 'PAID' : 'UNPAID';
-
-      const customer = await tx.customer.create({
-        data: {
-          fullName: createOrderDto.customerName.trim(),
-          phone: createOrderDto.customerPhone.trim(),
-          email: createOrderDto.customerEmail?.toLowerCase().trim() || null,
-        },
-      });
-
-      const order = await tx.order.create({
-        data: {
-          orderNumber,
-          customerId: customer.id,
-          customerName: createOrderDto.customerName.trim(),
-          customerPhone: createOrderDto.customerPhone.trim(),
-          customerEmail:
-            createOrderDto.customerEmail?.toLowerCase().trim() || null,
-          deliveryAddress: createOrderDto.deliveryAddress.trim(),
-          deliveryCity: createOrderDto.deliveryCity.trim(),
-          deliveryNotes: createOrderDto.deliveryNotes?.trim() || null,
-          subtotal,
-          deliveryFee,
-          total,
-          paymentMethod: createOrderDto.paymentMethod,
-          paymentStatus,
-          orderStatus: 'PENDING',
-          items: {
-            create: orderItemsData,
-          },
-          payment: {
-            create: {
-              method: createOrderDto.paymentMethod,
-              status: paymentStatus,
-              amount: total,
-              transactionReference:
-                createOrderDto.paymentMethod === 'CARD'
-                  ? `SIM-${orderNumber}`
-                  : null,
-              paidAt: paymentStatus === 'PAID' ? new Date() : null,
-            },
-          },
-        },
-        include: this.defaultInclude(),
-      });
-
-      return this.formatOrder(order);
+      return createdOrder;
     });
+
+    return this.normalizeOrderResponse(order);
   }
 
-  async findAllForAdmin() {
+  async findAllAdmin() {
     const orders = await this.prisma.order.findMany({
       include: this.defaultInclude(),
       orderBy: {
@@ -149,12 +154,14 @@ export class OrdersService {
       },
     });
 
-    return orders.map((order) => this.formatOrder(order));
+    return orders.map((order) => this.normalizeOrderResponse(order));
   }
 
-  async findOneForAdmin(id: string) {
+  async findOneAdmin(id: string) {
     const order = await this.prisma.order.findUnique({
-      where: { id },
+      where: {
+        id,
+      },
       include: this.defaultInclude(),
     });
 
@@ -162,132 +169,33 @@ export class OrdersService {
       throw new NotFoundException('Commande introuvable.');
     }
 
-    return this.formatOrder(order);
+    return this.normalizeOrderResponse(order);
   }
 
-  async updateStatus(id: string, updateOrderStatusDto: UpdateOrderStatusDto) {
-    const existingOrder = await this.prisma.order.findUnique({
-      where: { id },
-      include: {
-        payment: true,
+  async updateStatus(id: string, dto: UpdateOrderStatusDto) {
+    const order = await this.prisma.order.findUnique({
+      where: {
+        id,
       },
     });
 
-    if (!existingOrder) {
+    if (!order) {
       throw new NotFoundException('Commande introuvable.');
     }
 
-    const data: Record<string, unknown> = {
-      orderStatus: updateOrderStatusDto.orderStatus,
-    };
-
-    if (updateOrderStatusDto.orderStatus === 'DELIVERED') {
-      data.paymentStatus = 'PAID';
-
-      if (existingOrder.payment) {
-        data.payment = {
-          update: {
-            status: 'PAID',
-            paidAt: existingOrder.payment.paidAt ?? new Date(),
-          },
-        };
-      }
-    }
-
-    const order = await this.prisma.order.update({
-      where: { id },
-      data: data as any,
+    const updatedOrder = await this.prisma.order.update({
+      where: {
+        id,
+      },
+      data: {
+        orderStatus: dto.orderStatus,
+      },
       include: this.defaultInclude(),
     });
 
-    return this.formatOrder(order);
+    return this.normalizeOrderResponse(updatedOrder);
   }
 
-  private async generateOrderNumber(tx: Prisma.TransactionClient) {
-    const count = await tx.order.count();
-    const nextNumber = count + 1;
-
-    return `BG-${String(nextNumber).padStart(4, '0')}`;
-  }
-
-  private calculateFinalPrice(product: {
-    price: unknown;
-    isOnSale: boolean;
-    discountType: string | null;
-    discountValue: unknown | null;
-    discountStartDate: Date | null;
-    discountEndDate: Date | null;
-  }) {
-    const price = Number(product.price);
-
-    if (!product.isOnSale || !product.discountType || !product.discountValue) {
-      return this.toMoney(price);
-    }
-
-    const now = new Date();
-
-    if (product.discountStartDate && product.discountStartDate > now) {
-      return this.toMoney(price);
-    }
-
-    if (product.discountEndDate && product.discountEndDate < now) {
-      return this.toMoney(price);
-    }
-
-    const discountValue = Number(product.discountValue);
-
-    if (product.discountType === 'PERCENTAGE') {
-      return this.toMoney(Math.max(0, price - (price * discountValue) / 100));
-    }
-
-    if (product.discountType === 'FIXED_AMOUNT') {
-      return this.toMoney(Math.max(0, price - discountValue));
-    }
-
-    return this.toMoney(price);
-  }
-
-  private getDeliveryFee(subtotal: number) {
-    return subtotal >= 200 ? 0 : 8;
-  }
-
-  private toMoney(value: number) {
-    return Number(value.toFixed(3));
-  }
-
-  private defaultInclude(): Prisma.OrderInclude {
-    return {
-      customer: true,
-      items: {
-        orderBy: [
-          {
-            id: 'asc',
-          },
-        ],
-      },
-      payment: true,
-    };
-  }
-
-  private formatOrder(order: any) {
-    return {
-      ...order,
-      subtotal: Number(order.subtotal),
-      deliveryFee: Number(order.deliveryFee),
-      total: Number(order.total),
-      items: order.items?.map((item: any) => ({
-        ...item,
-        unitPrice: Number(item.unitPrice),
-        totalPrice: Number(item.totalPrice),
-      })),
-      payment: order.payment
-        ? {
-            ...order.payment,
-            amount: Number(order.payment.amount),
-          }
-        : null,
-    };
-  }
   async trackOrder(orderNumber: string, customerPhone: string) {
     const order = await this.prisma.order.findFirst({
       where: {
@@ -303,6 +211,81 @@ export class OrdersService {
       );
     }
 
-    return order;
+    return this.normalizeOrderResponse(order);
+  }
+
+  private async generateOrderNumber() {
+    const ordersCount = await this.prisma.order.count();
+    const nextNumber = ordersCount + 1;
+
+    return `BG-${String(nextNumber).padStart(4, '0')}`;
+  }
+
+  private async getCustomerFromAuthorizationHeader(authorization?: string) {
+    if (!authorization?.startsWith('Bearer ')) {
+      return null;
+    }
+
+    const token = authorization.replace('Bearer ', '').trim();
+
+    try {
+      const payload = this.jwtService.verify<{
+        sub: string;
+        type?: string;
+      }>(token);
+
+      if (payload.type !== 'CUSTOMER') {
+        return null;
+      }
+
+      return this.prisma.customer.findUnique({
+        where: {
+          id: payload.sub,
+        },
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  private calculateProductFinalPrice(product: {
+    price: unknown;
+    isOnSale?: boolean | null;
+    discountType?: unknown;
+    discountValue?: unknown;
+  }) {
+    const price = Number(product.price);
+    const discountType = String(product.discountType ?? 'NONE');
+    const discountValue = Number(product.discountValue ?? 0);
+
+    if (!product.isOnSale || discountValue <= 0) {
+      return price;
+    }
+
+    if (discountType === 'PERCENTAGE') {
+      return Math.max(0, price - price * (discountValue / 100));
+    }
+
+    if (discountType === 'FIXED_AMOUNT' || discountType === 'FIXED') {
+      return Math.max(0, price - discountValue);
+    }
+
+    return price;
+  }
+
+  private defaultInclude() {
+    return {
+      items: true,
+      payment: true,
+    };
+  }
+
+  private normalizeOrderResponse<T extends { payment?: unknown }>(order: T) {
+    const { payment, ...orderWithoutPayment } = order;
+
+    return {
+      ...orderWithoutPayment,
+      payments: payment ? [payment] : [],
+    };
   }
 }

@@ -58,13 +58,20 @@ export async function getProductBySlug(slug: string) {
     return fetchJson<Product>(`/products/slug/${slug}`);
 }
 
-export async function createOrder(payload: CreateOrderPayload) {
+export async function createOrder(
+    payload: CreateOrderPayload,
+    customerToken?: string | null,
+) {
     return fetchJson<CreatedOrder>("/orders", {
         method: "POST",
+        headers: customerToken
+            ? {
+                  Authorization: `Bearer ${customerToken}`,
+              }
+            : undefined,
         body: JSON.stringify(payload),
     });
 }
-
 export async function login(payload: { email: string; password: string }) {
     return fetchJson<LoginResponse>("/auth/login", {
         method: "POST",

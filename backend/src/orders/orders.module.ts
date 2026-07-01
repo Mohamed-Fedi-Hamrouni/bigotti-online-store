@@ -1,12 +1,17 @@
 import { Module } from '@nestjs/common';
-import { AuthModule } from '../auth/auth.module';
+import { JwtModule } from '@nestjs/jwt';
+import { PrismaModule } from '../prisma/prisma.module';
 import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
 
 @Module({
-  imports: [AuthModule],
+  imports: [
+    PrismaModule,
+    JwtModule.register({
+      secret: process.env.JWT_SECRET ?? 'bigotti-demo-local-secret',
+    }),
+  ],
   controllers: [OrdersController],
   providers: [OrdersService],
-  exports: [OrdersService],
 })
 export class OrdersModule {}

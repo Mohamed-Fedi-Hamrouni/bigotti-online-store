@@ -21,7 +21,7 @@ function formatPrice(value: number | string | null | undefined) {
 
 export default function CheckoutPage() {
     const { items, subtotal, deliveryFee, total, clearCart } = useCart();
-    const { customer, isAuthenticated } = useCustomerAuth();
+    const { customer, token, isAuthenticated } = useCustomerAuth();
 
     const [customerName, setCustomerName] = useState("");
     const [customerPhone, setCustomerPhone] = useState("");
@@ -71,7 +71,7 @@ export default function CheckoutPage() {
 
         try {
             setIsSubmitting(true);
-            const order = await createOrder(payload);
+            const order = await createOrder(payload, token);
             setCreatedOrder(order);
             clearCart();
         } catch (err) {

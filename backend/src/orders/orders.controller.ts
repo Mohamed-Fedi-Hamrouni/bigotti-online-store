@@ -2,10 +2,11 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
+  Param,
   Patch,
   Post,
   Query,
-  Param,
   UseGuards,
 } from '@nestjs/common';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -20,15 +21,11 @@ export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
   @Post()
-  create(@Body() createOrderDto: CreateOrderDto) {
-    return this.ordersService.create(createOrderDto);
-  }
-
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN', 'SUPER_ADMIN')
-  @Get('admin')
-  findAllForAdmin() {
-    return this.ordersService.findAllForAdmin();
+  create(
+    @Body() dto: CreateOrderDto,
+    @Headers('authorization') authorization?: string,
+  ) {
+    return this.ordersService.create(dto, authorization);
   }
 
   @Get('track')
@@ -39,20 +36,24 @@ export class OrdersController {
     return this.ordersService.trackOrder(orderNumber, phone);
   }
 
+  @Get('admin')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN', 'SUPER_ADMIN')
-  @Get('admin/:id')
-  findOneForAdmin(@Param('id') id: string) {
-    return this.ordersService.findOneForAdmin(id);
+  @Roles('ADMIN', 'SUPER_ADMIN', 'MANAGER')
+  findAllAdmin() {
+    return this.ordersService.findAllAdmin();
   }
 
+  @Get('admin/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'MANAGER')
+  findOneAdmin(@Param('id') id: string) {
+    return this.ordersService.findOneAdmin(id);
+  }
+
   @Patch('admin/:id/status')
-  updateStatus(
-    @Param('id') id: string,
-    @Body() updateOrderStatusDto: UpdateOrderStatusDto,
-  ) {
-    return this.ordersService.updateStatus(id, updateOrderStatusDto);
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN', 'SUPER_ADMIN', 'MANAGER')
+  updateStatus(@Param('id') id: string, @Body() dto: UpdateOrderStatusDto) {
+    return this.ordersService.updateStatus(id, dto);
   }
 }
