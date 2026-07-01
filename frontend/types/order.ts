@@ -85,3 +85,5 @@ export type AdminOrder = CreatedOrder & {
     items: AdminOrderItem[];
     payment: AdminOrderPayment | null;
 };
+
+export type TrackedOrder = AdminOrder;

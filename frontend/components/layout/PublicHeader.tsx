@@ -16,6 +16,7 @@ const menuItems = [
     { label: "Chaussures", href: "/boutique" },
     { label: "Accessoires", href: "/boutique" },
     { label: "Promotions", href: "/#promotions" },
+    { label: "Suivi", href: "/suivi-commande" },
 ];
 
 export function PublicHeader() {

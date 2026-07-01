@@ -288,4 +288,21 @@ export class OrdersService {
         : null,
     };
   }
+  async trackOrder(orderNumber: string, customerPhone: string) {
+    const order = await this.prisma.order.findFirst({
+      where: {
+        orderNumber,
+        customerPhone,
+      },
+      include: this.defaultInclude(),
+    });
+
+    if (!order) {
+      throw new NotFoundException(
+        'Commande introuvable. Vérifiez le numéro de commande et le téléphone.',
+      );
+    }
+
+    return order;
+  }
 }

@@ -5,6 +5,7 @@ import type {
     CreateOrderPayload,
     CreatedOrder,
     OrderStatus,
+    TrackedOrder,
 } from "@/types/order";
 import type {
     Category,
@@ -181,4 +182,13 @@ export async function getManagerDashboard(token: string) {
             Authorization: `Bearer ${token}`,
         },
     });
+}
+
+export async function trackOrder(orderNumber: string, phone: string) {
+    const params = new URLSearchParams({
+        orderNumber,
+        phone,
+    });
+
+    return fetchJson<TrackedOrder>(`/orders/track?${params.toString()}`);
 }

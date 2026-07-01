@@ -1,0 +1,359 @@
+"use client";
+
+import Link from "next/link";
+import { FormEvent, useState } from "react";
+import { PackageCheck, Search } from "lucide-react";
+import { PublicFooter } from "@/components/layout/PublicFooter";
+import { PublicHeader } from "@/components/layout/PublicHeader";
+import { trackOrder } from "@/lib/api";
+import type { TrackedOrder } from "@/types/order";
+
+function formatPrice(value: number) {
+    return `${value.toFixed(3)} TND`;
+}
+
+function getOrderStatusLabel(status: string) {
+    const labels: Record<string, string> = {
+        PENDING: "En attente",
+        CONFIRMED: "Confirmée",
+        PREPARING: "En préparation",
+        SHIPPED: "Expédiée",
+        DELIVERED: "Livrée",
+        CANCELLED: "Annulée",
+    };
+
+    return labels[status] ?? status;
+}
+
+function getPaymentStatusLabel(status: string) {
+    const labels: Record<string, string> = {
+        UNPAID: "Non payé",
+        PAID: "Payé",
+        FAILED: "Échoué",
+        REFUNDED: "Remboursé",
+    };
+
+    return labels[status] ?? status;
+}
+
+function getStatusStep(status: string) {
+    const steps = ["PENDING", "CONFIRMED", "PREPARING", "SHIPPED", "DELIVERED"];
+
+    return Math.max(0, steps.indexOf(status));
+}
+
+export default function TrackOrderPage() {
+    const [order, setOrder] = useState<TrackedOrder | null>(null);
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState("");
+
+    async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+
+        setError("");
+        setOrder(null);
+
+        const formData = new FormData(event.currentTarget);
+
+        const orderNumber = String(formData.get("orderNumber") ?? "")
+            .trim()
+            .toUpperCase();
+
+        const phone = String(formData.get("phone") ?? "").trim();
+
+        if (!orderNumber || !phone) {
+            setError("Veuillez saisir le numéro de commande et le téléphone.");
+            return;
+        }
+
+        try {
+            setIsLoading(true);
+            const trackedOrder = await trackOrder(orderNumber, phone);
+            setOrder(trackedOrder);
+        } catch (err) {
+            setError(
+                err instanceof Error ? err.message : "Commande introuvable.",
+            );
+        } finally {
+            setIsLoading(false);
+        }
+    }
+
+    const activeStep = order ? getStatusStep(order.orderStatus) : 0;
+
+    const steps = [
+        { key: "PENDING", label: "En attente" },
+        { key: "CONFIRMED", label: "Confirmée" },
+        { key: "PREPARING", label: "Préparation" },
+        { key: "SHIPPED", label: "Expédiée" },
+        { key: "DELIVERED", label: "Livrée" },
+    ];
+
+    return (
+        <main className="min-h-screen bg-neutral-50 text-neutral-950">
+            <PublicHeader />
+
+            <section className="bg-neutral-950 text-white">
+                <div className="mx-auto max-w-7xl px-6 py-16">
+                    <p className="text-sm uppercase tracking-[0.35em] text-neutral-400">
+                        Bigotti Collection
+                    </p>
+
+                    <h1 className="mt-5 max-w-4xl text-5xl font-black uppercase leading-none md:text-7xl">
+                        Suivi de commande
+                    </h1>
+
+                    <p className="mt-6 max-w-2xl text-lg leading-8 text-neutral-300">
+                        Entrez votre numéro de commande et votre téléphone pour
+                        consulter l’état de votre commande.
+                    </p>
+                </div>
+            </section>
+
+            <section className="mx-auto grid max-w-7xl gap-8 px-6 py-12 lg:grid-cols-[420px_1fr]">
+                <form
+                    onSubmit={handleSubmit}
+                    className="h-fit rounded-[2rem] bg-white p-8 shadow-sm"
+                >
+                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-black text-white">
+                        <PackageCheck size={26} />
+                    </div>
+
+                    <h2 className="mt-6 text-3xl font-black">
+                        Rechercher une commande
+                    </h2>
+
+                    <p className="mt-3 text-neutral-600">
+                        Exemple : BG-0002 avec le numéro de téléphone utilisé
+                        lors de la commande.
+                    </p>
+
+                    {error && (
+                        <div className="mt-6 rounded-2xl bg-red-50 p-4 text-sm font-semibold text-red-700">
+                            {error}
+                        </div>
+                    )}
+
+                    <div className="mt-6 space-y-5">
+                        <div>
+                            <label className="text-sm font-bold">
+                                Numéro de commande
+                            </label>
+
+                            <input
+                                name="orderNumber"
+                                required
+                                placeholder="BG-0002"
+                                className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 uppercase outline-none focus:border-black"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="text-sm font-bold">
+                                Téléphone
+                            </label>
+
+                            <input
+                                name="phone"
+                                required
+                                placeholder="20222020"
+                                className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
+                            />
+                        </div>
+                    </div>
+
+                    <button
+                        type="submit"
+                        disabled={isLoading}
+                        className="mt-8 flex w-full items-center justify-center gap-2 rounded-full bg-black px-6 py-4 text-sm font-black uppercase tracking-[0.12em] text-white transition hover:bg-neutral-800 disabled:bg-neutral-300"
+                    >
+                        <Search size={18} />
+                        {isLoading ? "Recherche..." : "Suivre ma commande"}
+                    </button>
+                </form>
+
+                <div>
+                    {!order && !isLoading && (
+                        <div className="rounded-[2rem] bg-white p-10 text-center shadow-sm">
+                            <h2 className="text-2xl font-black">
+                                Aucun suivi affiché.
+                            </h2>
+
+                            <p className="mt-3 text-neutral-500">
+                                Recherchez une commande pour afficher son
+                                statut, ses articles et son total.
+                            </p>
+
+                            <Link
+                                href="/boutique"
+                                className="mt-6 inline-flex rounded-full bg-black px-6 py-3 text-sm font-bold text-white"
+                            >
+                                Retour boutique
+                            </Link>
+                        </div>
+                    )}
+
+                    {order && (
+                        <div className="space-y-6">
+                            <div className="rounded-[2rem] bg-white p-8 shadow-sm">
+                                <div className="flex flex-col justify-between gap-5 border-b border-neutral-200 pb-6 md:flex-row md:items-start">
+                                    <div>
+                                        <p className="text-sm uppercase tracking-[0.25em] text-neutral-500">
+                                            Commande
+                                        </p>
+
+                                        <h2 className="mt-2 text-4xl font-black">
+                                            {order.orderNumber}
+                                        </h2>
+
+                                        <p className="mt-3 text-neutral-600">
+                                            Client :{" "}
+                                            <span className="font-bold text-neutral-950">
+                                                {order.customerName}
+                                            </span>
+                                        </p>
+
+                                        <p className="mt-1 text-neutral-600">
+                                            Téléphone : {order.customerPhone}
+                                        </p>
+                                    </div>
+
+                                    <div className="text-left md:text-right">
+                                        <p className="text-sm text-neutral-500">
+                                            Total
+                                        </p>
+
+                                        <p className="mt-2 text-3xl font-black">
+                                            {formatPrice(order.total)}
+                                        </p>
+
+                                        <p className="mt-2 text-sm font-semibold text-neutral-500">
+                                            {order.paymentMethod ===
+                                            "CASH_ON_DELIVERY"
+                                                ? "Paiement à la livraison"
+                                                : "Paiement carte"}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="mt-6 grid gap-4 md:grid-cols-3">
+                                    <div className="rounded-3xl bg-neutral-50 p-5">
+                                        <p className="text-sm text-neutral-500">
+                                            Statut commande
+                                        </p>
+                                        <p className="mt-2 text-lg font-black">
+                                            {getOrderStatusLabel(
+                                                order.orderStatus,
+                                            )}
+                                        </p>
+                                    </div>
+
+                                    <div className="rounded-3xl bg-neutral-50 p-5">
+                                        <p className="text-sm text-neutral-500">
+                                            Paiement
+                                        </p>
+                                        <p className="mt-2 text-lg font-black">
+                                            {getPaymentStatusLabel(
+                                                order.paymentStatus,
+                                            )}
+                                        </p>
+                                    </div>
+
+                                    <div className="rounded-3xl bg-neutral-50 p-5">
+                                        <p className="text-sm text-neutral-500">
+                                            Livraison
+                                        </p>
+                                        <p className="mt-2 text-lg font-black">
+                                            {order.deliveryCity}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {order.orderStatus !== "CANCELLED" && (
+                                <div className="rounded-[2rem] bg-white p-8 shadow-sm">
+                                    <h3 className="text-2xl font-black">
+                                        Progression
+                                    </h3>
+
+                                    <div className="mt-8 grid gap-4 md:grid-cols-5">
+                                        {steps.map((step, index) => {
+                                            const isActive =
+                                                index <= activeStep;
+
+                                            return (
+                                                <div
+                                                    key={step.key}
+                                                    className={
+                                                        isActive
+                                                            ? "rounded-3xl bg-black p-5 text-white"
+                                                            : "rounded-3xl bg-neutral-100 p-5 text-neutral-500"
+                                                    }
+                                                >
+                                                    <p className="text-sm font-black">
+                                                        {index + 1}
+                                                    </p>
+                                                    <p className="mt-2 text-sm font-bold">
+                                                        {step.label}
+                                                    </p>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="rounded-[2rem] bg-white p-8 shadow-sm">
+                                <h3 className="text-2xl font-black">
+                                    Articles commandés
+                                </h3>
+
+                                <div className="mt-5 space-y-3">
+                                    {order.items.map((item) => (
+                                        <div
+                                            key={item.id}
+                                            className="rounded-3xl bg-neutral-50 p-5"
+                                        >
+                                            <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
+                                                <div>
+                                                    <p className="text-lg font-black">
+                                                        {item.productName}
+                                                    </p>
+
+                                                    <p className="mt-1 text-sm text-neutral-500">
+                                                        Réf.{" "}
+                                                        {item.productReference}{" "}
+                                                        — {item.color} / Taille{" "}
+                                                        {item.size}
+                                                    </p>
+                                                </div>
+
+                                                <div className="text-left md:text-right">
+                                                    <p className="font-bold">
+                                                        {item.quantity} ×{" "}
+                                                        {formatPrice(
+                                                            item.unitPrice,
+                                                        )}
+                                                    </p>
+
+                                                    <p className="mt-1 text-sm text-neutral-500">
+                                                        Total :{" "}
+                                                        {formatPrice(
+                                                            item.totalPrice,
+                                                        )}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </section>
+
+            <PublicFooter />
+        </main>
+    );
+}

@@ -2,9 +2,10 @@ import {
   Body,
   Controller,
   Get,
-  Param,
   Patch,
   Post,
+  Query,
+  Param,
   UseGuards,
 } from '@nestjs/common';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -28,6 +29,14 @@ export class OrdersController {
   @Get('admin')
   findAllForAdmin() {
     return this.ordersService.findAllForAdmin();
+  }
+
+  @Get('track')
+  trackOrder(
+    @Query('orderNumber') orderNumber: string,
+    @Query('phone') phone: string,
+  ) {
+    return this.ordersService.trackOrder(orderNumber, phone);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
