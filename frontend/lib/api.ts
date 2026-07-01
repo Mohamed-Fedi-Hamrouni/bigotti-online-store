@@ -221,3 +221,11 @@ export async function getCustomerMe(token: string) {
         },
     });
 }
+
+export async function getCustomerOrders(token: string) {
+    return fetchJson<AdminOrder[]>("/customer-auth/orders", {
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+    });
+}

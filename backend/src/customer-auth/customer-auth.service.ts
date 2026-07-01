@@ -121,6 +121,47 @@ export class CustomerAuthService {
     return this.sanitizeCustomer(customer);
   }
 
+  async getCustomerOrders(authorization?: string) {
+    const payload = this.verifyAuthorizationHeader(authorization);
+
+    const customer = await this.prisma.customer.findUnique({
+      where: {
+        id: payload.sub,
+      },
+    });
+
+    if (!customer || !customer.passwordHash || !customer.isActive) {
+      throw new UnauthorizedException('Session client invalide.');
+    }
+
+    return this.prisma.order.findMany({
+      where: {
+        OR: [
+          {
+            customerId: customer.id,
+          },
+          {
+            customerPhone: customer.phone,
+          },
+          ...(customer.email
+            ? [
+                {
+                  customerEmail: customer.email,
+                },
+              ]
+            : []),
+        ],
+      },
+      include: {
+        items: true,
+        payment: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+  }
+
   private signCustomerToken(customerId: string, email: string) {
     const payload: CustomerTokenPayload = {
       sub: customerId,

@@ -1,23 +1,72 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LogOut, PackageCheck, UserRound } from "lucide-react";
 import { useCustomerAuth } from "@/components/customer-auth/CustomerAuthProvider";
 import { PublicFooter } from "@/components/layout/PublicFooter";
 import { PublicHeader } from "@/components/layout/PublicHeader";
+import { getCustomerOrders } from "@/lib/api";
+import type { AdminOrder } from "@/types/order";
+
+function formatPrice(value: number | string | null | undefined) {
+    const numericValue = Number(value);
+
+    if (Number.isNaN(numericValue)) {
+        return "0.000 TND";
+    }
+
+    return `${numericValue.toFixed(3)} TND`;
+}
+
+function getOrderStatusLabel(status: string) {
+    const labels: Record<string, string> = {
+        PENDING: "En attente",
+        CONFIRMED: "Confirmée",
+        PREPARING: "En préparation",
+        SHIPPED: "Expédiée",
+        DELIVERED: "Livrée",
+        CANCELLED: "Annulée",
+    };
+
+    return labels[status] ?? status;
+}
 
 export default function CustomerAccountPage() {
     const router = useRouter();
-    const { customer, isLoading, isAuthenticated, logoutCustomer } =
+    const { customer, token, isLoading, isAuthenticated, logoutCustomer } =
         useCustomerAuth();
+
+    const [orders, setOrders] = useState<AdminOrder[]>([]);
+    const [ordersLoading, setOrdersLoading] = useState(false);
+    const [ordersError, setOrdersError] = useState("");
 
     useEffect(() => {
         if (!isLoading && !isAuthenticated) {
             router.push("/compte/login");
         }
     }, [isLoading, isAuthenticated, router]);
+
+    useEffect(() => {
+        if (!token || !isAuthenticated) {
+            return;
+        }
+
+        setOrdersLoading(true);
+        setOrdersError("");
+
+        getCustomerOrders(token)
+            .then(setOrders)
+            .catch((err) => {
+                setOrdersError(
+                    err instanceof Error
+                        ? err.message
+                        : "Erreur lors du chargement des commandes.",
+                );
+            })
+            .finally(() => setOrdersLoading(false));
+    }, [token, isAuthenticated]);
 
     function handleLogout() {
         logoutCustomer();
@@ -89,8 +138,7 @@ export default function CustomerAccountPage() {
 
                                 <p className="mt-3 text-neutral-600">
                                     Votre compte client est actif. Vous pouvez
-                                    utiliser votre numéro de commande et votre
-                                    téléphone pour suivre vos commandes.
+                                    consulter vos commandes et suivre leur état.
                                 </p>
                             </div>
 
@@ -126,6 +174,115 @@ export default function CustomerAccountPage() {
                                         sauvegardés.
                                     </p>
                                 </Link>
+                            </div>
+
+                            <div className="rounded-[2rem] bg-white p-8 shadow-sm">
+                                <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
+                                    <div>
+                                        <p className="text-sm uppercase tracking-[0.25em] text-neutral-500">
+                                            Historique
+                                        </p>
+
+                                        <h2 className="mt-2 text-3xl font-black">
+                                            Mes commandes
+                                        </h2>
+                                    </div>
+
+                                    <Link
+                                        href="/boutique"
+                                        className="rounded-full bg-black px-5 py-3 text-sm font-bold text-white"
+                                    >
+                                        Commander encore
+                                    </Link>
+                                </div>
+
+                                {ordersLoading && (
+                                    <div className="mt-6 rounded-2xl bg-neutral-50 p-5 text-neutral-500">
+                                        Chargement des commandes...
+                                    </div>
+                                )}
+
+                                {ordersError && (
+                                    <div className="mt-6 rounded-2xl bg-red-50 p-5 text-sm font-semibold text-red-700">
+                                        {ordersError}
+                                    </div>
+                                )}
+
+                                {!ordersLoading &&
+                                    !ordersError &&
+                                    orders.length === 0 && (
+                                        <div className="mt-6 rounded-2xl bg-neutral-50 p-5 text-neutral-500">
+                                            Vous n’avez pas encore de commande.
+                                        </div>
+                                    )}
+
+                                {!ordersLoading &&
+                                    !ordersError &&
+                                    orders.length > 0 && (
+                                        <div className="mt-6 space-y-4">
+                                            {orders.map((order) => (
+                                                <div
+                                                    key={order.id}
+                                                    className="rounded-3xl border border-neutral-200 p-5"
+                                                >
+                                                    <div className="flex flex-col justify-between gap-5 md:flex-row md:items-center">
+                                                        <div>
+                                                            <p className="text-sm uppercase tracking-[0.2em] text-neutral-500">
+                                                                Commande
+                                                            </p>
+
+                                                            <h3 className="mt-1 text-2xl font-black">
+                                                                {
+                                                                    order.orderNumber
+                                                                }
+                                                            </h3>
+
+                                                            <p className="mt-2 text-sm text-neutral-500">
+                                                                {
+                                                                    order.items
+                                                                        .length
+                                                                }{" "}
+                                                                article(s) —
+                                                                Statut :{" "}
+                                                                <span className="font-bold text-neutral-950">
+                                                                    {getOrderStatusLabel(
+                                                                        order.orderStatus,
+                                                                    )}
+                                                                </span>
+                                                            </p>
+                                                        </div>
+
+                                                        <div className="text-left md:text-right">
+                                                            <p className="text-2xl font-black">
+                                                                {formatPrice(
+                                                                    order.total,
+                                                                )}
+                                                            </p>
+
+                                                            <p className="mt-1 text-sm text-neutral-500">
+                                                                {new Date(
+                                                                    order.createdAt,
+                                                                ).toLocaleDateString(
+                                                                    "fr-FR",
+                                                                )}
+                                                            </p>
+
+                                                            <Link
+                                                                href={`/suivi-commande?orderNumber=${encodeURIComponent(
+                                                                    order.orderNumber,
+                                                                )}&phone=${encodeURIComponent(
+                                                                    order.customerPhone,
+                                                                )}`}
+                                                                className="mt-4 inline-flex rounded-full bg-black px-5 py-3 text-sm font-bold text-white"
+                                                            >
+                                                                Suivre
+                                                            </Link>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                             </div>
                         </div>
                     </div>

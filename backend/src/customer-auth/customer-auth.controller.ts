@@ -21,4 +21,9 @@ export class CustomerAuthController {
   me(@Headers('authorization') authorization?: string) {
     return this.customerAuthService.me(authorization);
   }
+
+  @Get('orders')
+  orders(@Headers('authorization') authorization?: string) {
+    return this.customerAuthService.getCustomerOrders(authorization);
+  }
 }
