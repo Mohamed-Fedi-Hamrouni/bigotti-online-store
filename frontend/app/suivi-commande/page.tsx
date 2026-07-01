@@ -8,8 +8,14 @@ import { PublicHeader } from "@/components/layout/PublicHeader";
 import { trackOrder } from "@/lib/api";
 import type { TrackedOrder } from "@/types/order";
 
-function formatPrice(value: number) {
-    return `${value.toFixed(3)} TND`;
+function formatPrice(value: number | string | null | undefined) {
+    const numericValue = Number(value);
+
+    if (Number.isNaN(numericValue)) {
+        return "0.000 TND";
+    }
+
+    return `${numericValue.toFixed(3)} TND`;
 }
 
 function getOrderStatusLabel(status: string) {
