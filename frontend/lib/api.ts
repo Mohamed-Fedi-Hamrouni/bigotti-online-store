@@ -1,4 +1,5 @@
 import type { LoginResponse } from "@/types/auth";
+import type { ManagerDashboard } from "@/types/dashboard";
 import type {
     AdminOrder,
     CreateOrderPayload,
@@ -10,10 +11,9 @@ import type {
     Collection,
     CreateProductPayload,
     Product,
+    ProductStatus,
     SaleCampaign,
 } from "@/types/product";
-
-import type { ManagerDashboard } from "@/types/dashboard";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
@@ -104,6 +104,20 @@ export async function createProduct(
             Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(payload),
+    });
+}
+
+export async function updateProductStatus(
+    token: string,
+    productId: string,
+    status: ProductStatus,
+) {
+    return fetchJson<Product>(`/products/${productId}/status`, {
+        method: "PATCH",
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ status }),
     });
 }
 

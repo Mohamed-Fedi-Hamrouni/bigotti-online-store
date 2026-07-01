@@ -3,11 +3,39 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getAdminProducts } from "@/lib/api";
-import type { Product } from "@/types/product";
+import { getAdminProducts, updateProductStatus } from "@/lib/api";
+import type { Product, ProductStatus } from "@/types/product";
+
+const PRODUCT_STATUS_OPTIONS: Array<{
+    value: ProductStatus;
+    label: string;
+}> = [
+    { value: "DRAFT", label: "Brouillon" },
+    { value: "PUBLISHED", label: "Publié" },
+    { value: "ARCHIVED", label: "Archivé" },
+];
 
 function formatPrice(value: number) {
     return `${value.toFixed(3)} TND`;
+}
+
+function getStatusLabel(status: ProductStatus) {
+    return (
+        PRODUCT_STATUS_OPTIONS.find((option) => option.value === status)
+            ?.label ?? status
+    );
+}
+
+function getStatusClassName(status: ProductStatus) {
+    if (status === "PUBLISHED") {
+        return "rounded-full bg-green-50 px-3 py-1 text-sm font-semibold text-green-700";
+    }
+
+    if (status === "ARCHIVED") {
+        return "rounded-full bg-red-50 px-3 py-1 text-sm font-semibold text-red-700";
+    }
+
+    return "rounded-full bg-yellow-50 px-3 py-1 text-sm font-semibold text-yellow-700";
 }
 
 export default function AdminProductsPage() {
@@ -16,6 +44,9 @@ export default function AdminProductsPage() {
     const [products, setProducts] = useState<Product[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState("");
+    const [updatingProductId, setUpdatingProductId] = useState<string | null>(
+        null,
+    );
 
     useEffect(() => {
         const token = window.localStorage.getItem("bigotti-admin-token");
@@ -42,6 +73,54 @@ export default function AdminProductsPage() {
         window.localStorage.removeItem("bigotti-admin-user");
         router.push("/admin/login");
     }
+
+    async function handleStatusChange(
+        productId: string,
+        status: ProductStatus,
+    ) {
+        const token = window.localStorage.getItem("bigotti-admin-token");
+
+        if (!token) {
+            router.push("/admin/login");
+            return;
+        }
+
+        try {
+            setUpdatingProductId(productId);
+
+            const updatedProduct = await updateProductStatus(
+                token,
+                productId,
+                status,
+            );
+
+            setProducts((currentProducts) =>
+                currentProducts.map((product) =>
+                    product.id === productId ? updatedProduct : product,
+                ),
+            );
+        } catch (err) {
+            alert(
+                err instanceof Error
+                    ? err.message
+                    : "Erreur lors de la mise à jour du statut.",
+            );
+        } finally {
+            setUpdatingProductId(null);
+        }
+    }
+
+    const publishedProducts = products.filter(
+        (product) => product.status === "PUBLISHED",
+    ).length;
+
+    const archivedProducts = products.filter(
+        (product) => product.status === "ARCHIVED",
+    ).length;
+
+    const draftProducts = products.filter(
+        (product) => product.status === "DRAFT",
+    ).length;
 
     return (
         <main className="min-h-screen bg-neutral-50 text-neutral-950">
@@ -87,12 +166,53 @@ export default function AdminProductsPage() {
                         </p>
                     </div>
 
-                    <Link
-                        href="/admin/produits/nouveau"
-                        className="rounded-full bg-black px-6 py-3 text-sm font-bold text-white transition hover:bg-neutral-800"
-                    >
-                        Ajouter un produit
-                    </Link>
+                    <div className="flex flex-wrap gap-3">
+                        <Link
+                            href="/admin"
+                            className="rounded-full border border-neutral-300 px-5 py-3 text-sm font-semibold hover:border-black"
+                        >
+                            Dashboard admin
+                        </Link>
+
+                        <Link
+                            href="/admin/produits/nouveau"
+                            className="rounded-full bg-black px-6 py-3 text-sm font-bold text-white transition hover:bg-neutral-800"
+                        >
+                            Ajouter un produit
+                        </Link>
+                    </div>
+                </div>
+
+                <div className="mb-8 grid gap-5 md:grid-cols-4">
+                    <div className="rounded-3xl bg-white p-6 shadow-sm">
+                        <p className="text-sm text-neutral-500">
+                            Total produits
+                        </p>
+                        <p className="mt-2 text-3xl font-bold">
+                            {products.length}
+                        </p>
+                    </div>
+
+                    <div className="rounded-3xl bg-white p-6 shadow-sm">
+                        <p className="text-sm text-neutral-500">Publiés</p>
+                        <p className="mt-2 text-3xl font-bold text-green-700">
+                            {publishedProducts}
+                        </p>
+                    </div>
+
+                    <div className="rounded-3xl bg-white p-6 shadow-sm">
+                        <p className="text-sm text-neutral-500">Brouillons</p>
+                        <p className="mt-2 text-3xl font-bold text-yellow-700">
+                            {draftProducts}
+                        </p>
+                    </div>
+
+                    <div className="rounded-3xl bg-white p-6 shadow-sm">
+                        <p className="text-sm text-neutral-500">Archivés</p>
+                        <p className="mt-2 text-3xl font-bold text-red-700">
+                            {archivedProducts}
+                        </p>
+                    </div>
                 </div>
 
                 {isLoading && (
@@ -124,7 +244,7 @@ export default function AdminProductsPage() {
                         return (
                             <article
                                 key={product.id}
-                                className="grid gap-5 rounded-[2rem] bg-white p-5 shadow-sm md:grid-cols-[140px_1fr_auto]"
+                                className="grid gap-5 rounded-[2rem] bg-white p-5 shadow-sm md:grid-cols-[140px_1fr_280px]"
                             >
                                 <div className="overflow-hidden rounded-2xl bg-neutral-100">
                                     {mainImage ? (
@@ -149,8 +269,12 @@ export default function AdminProductsPage() {
                                             {product.name}
                                         </h2>
 
-                                        <span className="rounded-full bg-neutral-100 px-3 py-1 text-sm font-semibold text-neutral-700">
-                                            {product.status}
+                                        <span
+                                            className={getStatusClassName(
+                                                product.status,
+                                            )}
+                                        >
+                                            {getStatusLabel(product.status)}
                                         </span>
 
                                         {product.isOnSale && (
@@ -171,9 +295,21 @@ export default function AdminProductsPage() {
                                     <p className="mt-1 text-neutral-600">
                                         Stock total : {product.totalStock}
                                     </p>
+
+                                    <div className="mt-4 flex flex-wrap gap-2">
+                                        {product.variants.map((variant) => (
+                                            <span
+                                                key={variant.id}
+                                                className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-700"
+                                            >
+                                                {variant.color} / {variant.size}{" "}
+                                                : {variant.stockQuantity}
+                                            </span>
+                                        ))}
+                                    </div>
                                 </div>
 
-                                <div className="text-left md:text-right">
+                                <div className="space-y-4 text-left md:text-right">
                                     {product.isOnSale ? (
                                         <div>
                                             <p className="text-sm text-neutral-400 line-through">
@@ -192,12 +328,56 @@ export default function AdminProductsPage() {
                                         </p>
                                     )}
 
-                                    <Link
-                                        href={`/produit/${product.slug}`}
-                                        className="mt-4 inline-flex rounded-full border border-neutral-300 px-5 py-2 text-sm font-semibold hover:border-black"
-                                    >
-                                        Voir boutique
-                                    </Link>
+                                    <div>
+                                        <label className="text-sm font-semibold">
+                                            Statut
+                                        </label>
+
+                                        <select
+                                            value={product.status}
+                                            disabled={
+                                                updatingProductId === product.id
+                                            }
+                                            onChange={(event) =>
+                                                handleStatusChange(
+                                                    product.id,
+                                                    event.target
+                                                        .value as ProductStatus,
+                                                )
+                                            }
+                                            className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-black"
+                                        >
+                                            {PRODUCT_STATUS_OPTIONS.map(
+                                                (status) => (
+                                                    <option
+                                                        key={status.value}
+                                                        value={status.value}
+                                                    >
+                                                        {status.label}
+                                                    </option>
+                                                ),
+                                            )}
+                                        </select>
+
+                                        {updatingProductId === product.id && (
+                                            <p className="mt-2 text-sm text-neutral-500">
+                                                Mise à jour...
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    {product.status === "PUBLISHED" ? (
+                                        <Link
+                                            href={`/produit/${product.slug}`}
+                                            className="inline-flex rounded-full border border-neutral-300 px-5 py-2 text-sm font-semibold hover:border-black"
+                                        >
+                                            Voir boutique
+                                        </Link>
+                                    ) : (
+                                        <p className="text-sm text-neutral-500">
+                                            Non visible côté client
+                                        </p>
+                                    )}
                                 </div>
                             </article>
                         );
