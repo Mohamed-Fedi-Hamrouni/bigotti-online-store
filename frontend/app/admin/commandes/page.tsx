@@ -25,8 +25,14 @@ const PAYMENT_STATUS_LABELS = {
     REFUNDED: "Remboursé",
 };
 
-function formatPrice(value: number) {
-    return `${value.toFixed(3)} TND`;
+function formatPrice(value: number | string | null | undefined) {
+    const numericValue = Number(value);
+
+    if (!Number.isFinite(numericValue)) {
+        return "0.000 TND";
+    }
+
+    return `${numericValue.toFixed(3)} TND`;
 }
 
 function getOrderStatusLabel(status: OrderStatus) {
