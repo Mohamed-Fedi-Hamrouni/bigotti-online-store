@@ -6,6 +6,7 @@ import { AuthModule } from './auth/auth.module';
 import { CategoriesModule } from './categories/categories.module';
 import { CollectionsModule } from './collections/collections.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { SaleCampaignsModule } from './sale-campaigns/sale-campaigns.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -16,6 +17,7 @@ import { UsersModule } from './users/users.module';
     UsersModule,
     CategoriesModule,
     CollectionsModule,
+    SaleCampaignsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
