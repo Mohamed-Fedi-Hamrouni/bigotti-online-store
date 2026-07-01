@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AddToCartPanel } from "@/components/cart/AddToCartPanel";
 import { getProductBySlug } from "@/lib/api";
 
 type ProductDetailPageProps = {
@@ -32,12 +33,21 @@ export default async function ProductDetailPage({
                         />
                     </Link>
 
-                    <Link
-                        href="/"
-                        className="text-sm font-medium text-neutral-600 hover:text-black"
-                    >
-                        Retour boutique
-                    </Link>
+                    <div className="flex items-center gap-6">
+                        <Link
+                            href="/panier"
+                            className="text-sm font-medium text-neutral-600 hover:text-black"
+                        >
+                            Panier
+                        </Link>
+
+                        <Link
+                            href="/"
+                            className="text-sm font-medium text-neutral-600 hover:text-black"
+                        >
+                            Retour boutique
+                        </Link>
+                    </div>
                 </div>
             </header>
 
@@ -103,49 +113,7 @@ export default async function ProductDetailPage({
                         {product.description ?? product.shortDescription}
                     </p>
 
-                    <div className="mt-8">
-                        <h2 className="text-lg font-bold">
-                            Tailles et couleurs disponibles
-                        </h2>
-
-                        <div className="mt-4 grid gap-3">
-                            {product.variants.map((variant) => (
-                                <div
-                                    key={variant.id}
-                                    className="flex items-center justify-between rounded-2xl border border-neutral-200 p-4"
-                                >
-                                    <div>
-                                        <p className="font-semibold">
-                                            {variant.color} / Taille{" "}
-                                            {variant.size}
-                                        </p>
-
-                                        <p className="text-sm text-neutral-500">
-                                            SKU : {variant.sku ?? "Non défini"}
-                                        </p>
-                                    </div>
-
-                                    <span
-                                        className={
-                                            variant.stockQuantity > 0
-                                                ? "rounded-full bg-green-50 px-3 py-1 text-sm font-medium text-green-700"
-                                                : "rounded-full bg-red-50 px-3 py-1 text-sm font-medium text-red-700"
-                                        }
-                                    >
-                                        Stock {variant.stockQuantity}
-                                    </span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    <button className="mt-8 w-full rounded-full bg-black px-6 py-4 text-sm font-bold text-white transition hover:bg-neutral-800">
-                        Ajouter au panier bientôt
-                    </button>
-
-                    <p className="mt-4 text-center text-sm text-neutral-500">
-                        La logique panier sera ajoutée dans l’étape suivante.
-                    </p>
+                    <AddToCartPanel product={product} />
                 </div>
             </section>
         </main>
