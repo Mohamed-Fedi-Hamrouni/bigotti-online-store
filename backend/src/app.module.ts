@@ -6,6 +6,7 @@ import { AuthModule } from './auth/auth.module';
 import { CategoriesModule } from './categories/categories.module';
 import { CollectionsModule } from './collections/collections.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { ProductsModule } from './products/products.module';
 import { SaleCampaignsModule } from './sale-campaigns/sale-campaigns.module';
 import { UsersModule } from './users/users.module';
 
@@ -18,6 +19,7 @@ import { UsersModule } from './users/users.module';
     CategoriesModule,
     CollectionsModule,
     SaleCampaignsModule,
+    ProductsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
