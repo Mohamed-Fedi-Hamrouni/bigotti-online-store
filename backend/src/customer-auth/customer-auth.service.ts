@@ -8,6 +8,7 @@ import { compare, hash } from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginCustomerDto } from './dto/login-customer.dto';
 import { RegisterCustomerDto } from './dto/register-customer.dto';
+import { UpdateCustomerProfileDto } from './dto/update-customer-profile.dto';
 import type { CustomerTokenPayload } from './types/customer-token-payload.type';
 
 @Injectable()
@@ -121,6 +122,54 @@ export class CustomerAuthService {
     return this.sanitizeCustomer(customer);
   }
 
+  async updateProfile(dto: UpdateCustomerProfileDto, authorization?: string) {
+    const payload = this.verifyAuthorizationHeader(authorization);
+
+    const customer = await this.prisma.customer.findUnique({
+      where: {
+        id: payload.sub,
+      },
+    });
+
+    if (!customer || !customer.passwordHash || !customer.isActive) {
+      throw new UnauthorizedException('Session client invalide.');
+    }
+
+    const email = dto.email.trim().toLowerCase();
+    const phone = dto.phone.trim();
+
+    const existingEmail = await this.prisma.customer.findFirst({
+      where: {
+        email,
+        id: {
+          not: customer.id,
+        },
+        passwordHash: {
+          not: null,
+        },
+      },
+    });
+
+    if (existingEmail) {
+      throw new ConflictException(
+        'Cet email est déjà utilisé par un autre compte.',
+      );
+    }
+
+    const updatedCustomer = await this.prisma.customer.update({
+      where: {
+        id: customer.id,
+      },
+      data: {
+        fullName: dto.fullName.trim(),
+        phone,
+        email,
+      },
+    });
+
+    return this.sanitizeCustomer(updatedCustomer);
+  }
+
   async getCustomerOrders(authorization?: string) {
     const payload = this.verifyAuthorizationHeader(authorization);
 
@@ -134,23 +183,24 @@ export class CustomerAuthService {
       throw new UnauthorizedException('Session client invalide.');
     }
 
-    return this.prisma.order.findMany({
+    const orderFilters: any[] = [
+      {
+        customerId: customer.id,
+      },
+      {
+        customerPhone: customer.phone,
+      },
+    ];
+
+    if (customer.email) {
+      orderFilters.push({
+        customerEmail: customer.email,
+      });
+    }
+
+    const orders = await this.prisma.order.findMany({
       where: {
-        OR: [
-          {
-            customerId: customer.id,
-          },
-          {
-            customerPhone: customer.phone,
-          },
-          ...(customer.email
-            ? [
-                {
-                  customerEmail: customer.email,
-                },
-              ]
-            : []),
-        ],
+        OR: orderFilters,
       },
       include: {
         items: true,
@@ -160,6 +210,11 @@ export class CustomerAuthService {
         createdAt: 'desc',
       },
     });
+
+    return orders.map(({ payment, ...order }) => ({
+      ...order,
+      payments: payment ? [payment] : [],
+    }));
   }
 
   private signCustomerToken(customerId: string, email: string) {

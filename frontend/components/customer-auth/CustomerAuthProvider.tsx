@@ -17,6 +17,7 @@ type CustomerAuthContextValue = {
     isLoading: boolean;
     isAuthenticated: boolean;
     saveCustomerSession: (response: CustomerAuthResponse) => void;
+    updateCustomerSession: (customer: Customer) => void;
     logoutCustomer: () => void;
 };
 
@@ -79,6 +80,15 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
         setCustomer(response.customer);
     }
 
+    function updateCustomerSession(updatedCustomer: Customer) {
+        window.localStorage.setItem(
+            CUSTOMER_KEY,
+            JSON.stringify(updatedCustomer),
+        );
+
+        setCustomer(updatedCustomer);
+    }
+
     function logoutCustomer() {
         window.localStorage.removeItem(TOKEN_KEY);
         window.localStorage.removeItem(CUSTOMER_KEY);
@@ -94,6 +104,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
             isLoading,
             isAuthenticated: Boolean(customer && token),
             saveCustomerSession,
+            updateCustomerSession,
             logoutCustomer,
         }),
         [customer, token, isLoading],

@@ -24,3 +24,9 @@ export type LoginCustomerPayload = {
     email: string;
     password: string;
 };
+
+export type UpdateCustomerProfilePayload = {
+    fullName: string;
+    phone: string;
+    email: string;
+};

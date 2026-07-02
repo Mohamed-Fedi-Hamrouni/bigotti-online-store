@@ -21,6 +21,7 @@ import type {
     CustomerAuthResponse,
     LoginCustomerPayload,
     RegisterCustomerPayload,
+    UpdateCustomerProfilePayload,
 } from "@/types/customer";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
@@ -234,5 +235,18 @@ export async function getCustomerOrders(token: string) {
         headers: {
             Authorization: `Bearer ${token}`,
         },
+    });
+}
+
+export async function updateCustomerProfile(
+    token: string,
+    payload: UpdateCustomerProfilePayload,
+) {
+    return fetchJson<Customer>("/customer-auth/profile", {
+        method: "PATCH",
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
     });
 }

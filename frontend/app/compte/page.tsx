@@ -1,19 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LogOut, PackageCheck, UserRound } from "lucide-react";
+import { LogOut, PackageCheck, Save, UserRound } from "lucide-react";
 import { useCustomerAuth } from "@/components/customer-auth/CustomerAuthProvider";
 import { PublicFooter } from "@/components/layout/PublicFooter";
 import { PublicHeader } from "@/components/layout/PublicHeader";
-import { getCustomerOrders } from "@/lib/api";
+import { getCustomerOrders, updateCustomerProfile } from "@/lib/api";
 import type { AdminOrder } from "@/types/order";
 
 function formatPrice(value: number | string | null | undefined) {
     const numericValue = Number(value);
 
-    if (Number.isNaN(numericValue)) {
+    if (!Number.isFinite(numericValue)) {
         return "0.000 TND";
     }
 
@@ -35,18 +35,39 @@ function getOrderStatusLabel(status: string) {
 
 export default function CustomerAccountPage() {
     const router = useRouter();
-    const { customer, token, isLoading, isAuthenticated, logoutCustomer } =
-        useCustomerAuth();
+    const {
+        customer,
+        token,
+        isLoading,
+        isAuthenticated,
+        updateCustomerSession,
+        logoutCustomer,
+    } = useCustomerAuth();
 
     const [orders, setOrders] = useState<AdminOrder[]>([]);
     const [ordersLoading, setOrdersLoading] = useState(false);
     const [ordersError, setOrdersError] = useState("");
+
+    const [profileFullName, setProfileFullName] = useState("");
+    const [profilePhone, setProfilePhone] = useState("");
+    const [profileEmail, setProfileEmail] = useState("");
+    const [profileLoading, setProfileLoading] = useState(false);
+    const [profileSuccess, setProfileSuccess] = useState("");
+    const [profileError, setProfileError] = useState("");
 
     useEffect(() => {
         if (!isLoading && !isAuthenticated) {
             router.push("/compte/login");
         }
     }, [isLoading, isAuthenticated, router]);
+
+    useEffect(() => {
+        if (customer) {
+            setProfileFullName(customer.fullName);
+            setProfilePhone(customer.phone);
+            setProfileEmail(customer.email ?? "");
+        }
+    }, [customer]);
 
     useEffect(() => {
         if (!token || !isAuthenticated) {
@@ -67,6 +88,39 @@ export default function CustomerAccountPage() {
             })
             .finally(() => setOrdersLoading(false));
     }, [token, isAuthenticated]);
+
+    async function handleUpdateProfile(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+
+        if (!token) {
+            setProfileError("Session client invalide.");
+            return;
+        }
+
+        setProfileSuccess("");
+        setProfileError("");
+
+        try {
+            setProfileLoading(true);
+
+            const updatedCustomer = await updateCustomerProfile(token, {
+                fullName: profileFullName.trim(),
+                phone: profilePhone.trim(),
+                email: profileEmail.trim().toLowerCase(),
+            });
+
+            updateCustomerSession(updatedCustomer);
+            setProfileSuccess("Profil mis à jour avec succès.");
+        } catch (err) {
+            setProfileError(
+                err instanceof Error
+                    ? err.message
+                    : "Erreur lors de la mise à jour du profil.",
+            );
+        } finally {
+            setProfileLoading(false);
+        }
+    }
 
     function handleLogout() {
         logoutCustomer();
@@ -141,6 +195,106 @@ export default function CustomerAccountPage() {
                                     consulter vos commandes et suivre leur état.
                                 </p>
                             </div>
+
+                            <form
+                                onSubmit={handleUpdateProfile}
+                                className="rounded-[2rem] bg-white p-8 shadow-sm"
+                            >
+                                <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
+                                    <div>
+                                        <p className="text-sm uppercase tracking-[0.25em] text-neutral-500">
+                                            Profil
+                                        </p>
+
+                                        <h2 className="mt-2 text-3xl font-black">
+                                            Modifier mes informations
+                                        </h2>
+
+                                        <p className="mt-3 text-neutral-600">
+                                            Mettez à jour vos informations
+                                            personnelles utilisées pour vos
+                                            commandes.
+                                        </p>
+                                    </div>
+
+                                    <button
+                                        type="submit"
+                                        disabled={profileLoading}
+                                        className="inline-flex items-center justify-center gap-2 rounded-full bg-black px-6 py-3 text-sm font-bold text-white transition hover:bg-neutral-800 disabled:bg-neutral-300"
+                                    >
+                                        <Save size={18} />
+                                        {profileLoading
+                                            ? "Enregistrement..."
+                                            : "Enregistrer"}
+                                    </button>
+                                </div>
+
+                                {profileSuccess && (
+                                    <div className="mt-6 rounded-2xl bg-green-50 p-4 text-sm font-semibold text-green-700">
+                                        {profileSuccess}
+                                    </div>
+                                )}
+
+                                {profileError && (
+                                    <div className="mt-6 rounded-2xl bg-red-50 p-4 text-sm font-semibold text-red-700">
+                                        {profileError}
+                                    </div>
+                                )}
+
+                                <div className="mt-6 grid gap-5 md:grid-cols-3">
+                                    <div>
+                                        <label className="text-sm font-bold">
+                                            Nom complet
+                                        </label>
+
+                                        <input
+                                            value={profileFullName}
+                                            onChange={(event) =>
+                                                setProfileFullName(
+                                                    event.target.value,
+                                                )
+                                            }
+                                            required
+                                            className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="text-sm font-bold">
+                                            Téléphone
+                                        </label>
+
+                                        <input
+                                            value={profilePhone}
+                                            onChange={(event) =>
+                                                setProfilePhone(
+                                                    event.target.value,
+                                                )
+                                            }
+                                            required
+                                            className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="text-sm font-bold">
+                                            Email
+                                        </label>
+
+                                        <input
+                                            value={profileEmail}
+                                            onChange={(event) =>
+                                                setProfileEmail(
+                                                    event.target.value,
+                                                )
+                                            }
+                                            required
+                                            type="email"
+                                            className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
+                                        />
+                                    </div>
+                                </div>
+                            </form>
 
                             <div className="grid gap-5 md:grid-cols-2">
                                 <Link

@@ -1,7 +1,8 @@
-import { Body, Controller, Get, Headers, Post } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Patch, Post } from '@nestjs/common';
 import { CustomerAuthService } from './customer-auth.service';
 import { LoginCustomerDto } from './dto/login-customer.dto';
 import { RegisterCustomerDto } from './dto/register-customer.dto';
+import { UpdateCustomerProfileDto } from './dto/update-customer-profile.dto';
 
 @Controller('customer-auth')
 export class CustomerAuthController {
@@ -20,6 +21,14 @@ export class CustomerAuthController {
   @Get('me')
   me(@Headers('authorization') authorization?: string) {
     return this.customerAuthService.me(authorization);
+  }
+
+  @Patch('profile')
+  updateProfile(
+    @Body() dto: UpdateCustomerProfileDto,
+    @Headers('authorization') authorization?: string,
+  ) {
+    return this.customerAuthService.updateProfile(dto, authorization);
   }
 
   @Get('orders')
