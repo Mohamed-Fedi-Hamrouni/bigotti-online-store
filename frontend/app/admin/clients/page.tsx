@@ -2,41 +2,83 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { getAdminOrders, updateOrderStatus } from "@/lib/api";
-import type { AdminOrder, OrderStatus, PaymentStatus } from "@/types/order";
+import {
+    Mail,
+    PackageCheck,
+    Phone,
+    Search,
+    ShieldCheck,
+    ShieldOff,
+    UserRound,
+} from "lucide-react";
+import type { AdminCustomer } from "@/types/customer";
 
-const ORDER_STATUS_OPTIONS: Array<{
-    value: OrderStatus;
-    label: string;
-}> = [
-    { value: "PENDING", label: "En attente" },
-    { value: "CONFIRMED", label: "Confirmée" },
-    { value: "PREPARING", label: "En préparation" },
-    { value: "SHIPPED", label: "Expédiée" },
-    { value: "DELIVERED", label: "Livrée" },
-    { value: "CANCELLED", label: "Annulée" },
-];
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
-const PAYMENT_STATUS_OPTIONS: Array<{
-    value: PaymentStatus;
-    label: string;
-}> = [
-    { value: "UNPAID", label: "Non payé" },
-    { value: "PAID", label: "Payé" },
-    { value: "FAILED", label: "Échoué" },
-    { value: "REFUNDED", label: "Remboursé" },
-];
+type CustomerStatusFilter = "ALL" | "ACTIVE" | "INACTIVE";
+type CustomerSortOption =
+    | "RECENT_ORDER"
+    | "TOTAL_SPENT_DESC"
+    | "ORDERS_DESC"
+    | "NAME_ASC";
 
-const PAYMENT_STATUS_LABELS: Record<string, string> = {
-    UNPAID: "Non payé",
-    PAID: "Payé",
-    FAILED: "Échoué",
-    REFUNDED: "Remboursé",
-};
+function getAdminToken() {
+    if (typeof window === "undefined") {
+        return null;
+    }
 
-type OrderStatusFilter = "ALL" | OrderStatus;
-type PaymentStatusFilter = "ALL" | PaymentStatus;
+    return (
+        window.localStorage.getItem("bigotti-admin-token") ??
+        window.localStorage.getItem("admin-token") ??
+        window.localStorage.getItem("token")
+    );
+}
+
+async function fetchAdminCustomers(token: string) {
+    const response = await fetch(`${API_BASE_URL}/customers/admin`, {
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+    });
+
+    if (!response.ok) {
+        const errorPayload = await response.json().catch(() => null);
+
+        throw new Error(
+            errorPayload?.message ?? "Erreur lors du chargement des clients.",
+        );
+    }
+
+    return response.json() as Promise<AdminCustomer[]>;
+}
+
+async function updateCustomerStatus(
+    token: string,
+    customerId: string,
+    isActive: boolean,
+) {
+    const response = await fetch(
+        `${API_BASE_URL}/customers/admin/${customerId}/status`,
+        {
+            method: "PATCH",
+            headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ isActive }),
+        },
+    );
+
+    if (!response.ok) {
+        const errorPayload = await response.json().catch(() => null);
+
+        throw new Error(
+            errorPayload?.message ?? "Erreur lors de la mise à jour du client.",
+        );
+    }
+
+    return response.json() as Promise<AdminCustomer>;
+}
 
 function formatPrice(value: number | string | null | undefined) {
     const numericValue = Number(value);
@@ -48,448 +90,514 @@ function formatPrice(value: number | string | null | undefined) {
     return `${numericValue.toFixed(3)} TND`;
 }
 
-function formatDate(value: string) {
+function formatDate(value: string | null) {
+    if (!value) {
+        return "Aucune commande";
+    }
+
     return new Date(value).toLocaleDateString("fr-FR");
 }
 
-function getOrderStatusLabel(status: OrderStatus) {
-    return (
-        ORDER_STATUS_OPTIONS.find((option) => option.value === status)?.label ??
-        status
-    );
+function getDateTimestamp(value: string | null) {
+    if (!value) {
+        return 0;
+    }
+
+    return new Date(value).getTime();
 }
 
-export default function AdminOrdersPage() {
-    const router = useRouter();
+function getOrderStatusLabel(status: string) {
+    const labels: Record<string, string> = {
+        PENDING: "En attente",
+        CONFIRMED: "Confirmée",
+        PREPARING: "En préparation",
+        SHIPPED: "Expédiée",
+        DELIVERED: "Livrée",
+        CANCELLED: "Annulée",
+    };
 
-    const [orders, setOrders] = useState<AdminOrder[]>([]);
+    return labels[status] ?? status;
+}
+
+export default function AdminCustomersPage() {
+    const [customers, setCustomers] = useState<AdminCustomer[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
-    const [orderStatusFilter, setOrderStatusFilter] =
-        useState<OrderStatusFilter>("ALL");
-    const [paymentStatusFilter, setPaymentStatusFilter] =
-        useState<PaymentStatusFilter>("ALL");
+    const [statusFilter, setStatusFilter] =
+        useState<CustomerStatusFilter>("ALL");
+    const [sortOption, setSortOption] =
+        useState<CustomerSortOption>("RECENT_ORDER");
     const [isLoading, setIsLoading] = useState(true);
+    const [actionLoadingId, setActionLoadingId] = useState("");
     const [error, setError] = useState("");
-    const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
 
     useEffect(() => {
-        const token = window.localStorage.getItem("bigotti-admin-token");
+        const token = getAdminToken();
 
         if (!token) {
-            router.push("/admin/login");
+            setError("Session admin introuvable. Connectez-vous à nouveau.");
+            setIsLoading(false);
             return;
         }
 
-        getAdminOrders(token)
-            .then(setOrders)
+        fetchAdminCustomers(token)
+            .then(setCustomers)
             .catch((err) => {
                 setError(
                     err instanceof Error
                         ? err.message
-                        : "Erreur de chargement.",
+                        : "Erreur lors du chargement des clients.",
                 );
             })
             .finally(() => setIsLoading(false));
-    }, [router]);
+    }, []);
 
-    const filteredOrders = useMemo(() => {
+    const filteredCustomers = useMemo(() => {
         const normalizedSearch = searchQuery.trim().toLowerCase();
 
-        return orders.filter((order) => {
+        const filtered = customers.filter((customer) => {
             const matchesSearch =
                 !normalizedSearch ||
-                order.orderNumber.toLowerCase().includes(normalizedSearch) ||
-                order.customerName.toLowerCase().includes(normalizedSearch) ||
-                order.customerPhone.toLowerCase().includes(normalizedSearch) ||
-                String(order.customerEmail ?? "")
+                customer.fullName.toLowerCase().includes(normalizedSearch) ||
+                customer.phone.toLowerCase().includes(normalizedSearch) ||
+                String(customer.email ?? "")
                     .toLowerCase()
-                    .includes(normalizedSearch) ||
-                order.deliveryCity.toLowerCase().includes(normalizedSearch);
+                    .includes(normalizedSearch);
 
-            const matchesOrderStatus =
-                orderStatusFilter === "ALL" ||
-                order.orderStatus === orderStatusFilter;
+            const matchesStatus =
+                statusFilter === "ALL" ||
+                (statusFilter === "ACTIVE" && customer.isActive) ||
+                (statusFilter === "INACTIVE" && !customer.isActive);
 
-            const matchesPaymentStatus =
-                paymentStatusFilter === "ALL" ||
-                order.paymentStatus === paymentStatusFilter;
-
-            return matchesSearch && matchesOrderStatus && matchesPaymentStatus;
+            return matchesSearch && matchesStatus;
         });
-    }, [orders, searchQuery, orderStatusFilter, paymentStatusFilter]);
 
-    const totalOrders = orders.length;
-    const pendingOrders = orders.filter(
-        (order) => order.orderStatus === "PENDING",
-    ).length;
-    const deliveredOrders = orders.filter(
-        (order) => order.orderStatus === "DELIVERED",
-    ).length;
-    const cancelledOrders = orders.filter(
-        (order) => order.orderStatus === "CANCELLED",
-    ).length;
-    const totalRevenue = orders
-        .filter((order) => order.orderStatus !== "CANCELLED")
-        .reduce((sum, order) => sum + Number(order.total), 0);
+        return [...filtered].sort((firstCustomer, secondCustomer) => {
+            if (sortOption === "TOTAL_SPENT_DESC") {
+                return (
+                    Number(secondCustomer.totalSpent) -
+                    Number(firstCustomer.totalSpent)
+                );
+            }
 
-    async function handleStatusChange(
-        orderId: string,
-        orderStatus: OrderStatus,
-    ) {
-        const token = window.localStorage.getItem("bigotti-admin-token");
+            if (sortOption === "ORDERS_DESC") {
+                return secondCustomer.ordersCount - firstCustomer.ordersCount;
+            }
+
+            if (sortOption === "NAME_ASC") {
+                return firstCustomer.fullName.localeCompare(
+                    secondCustomer.fullName,
+                );
+            }
+
+            const secondDate =
+                getDateTimestamp(secondCustomer.lastOrderAt) ||
+                getDateTimestamp(secondCustomer.createdAt);
+
+            const firstDate =
+                getDateTimestamp(firstCustomer.lastOrderAt) ||
+                getDateTimestamp(firstCustomer.createdAt);
+
+            return secondDate - firstDate;
+        });
+    }, [customers, searchQuery, statusFilter, sortOption]);
+
+    const totalCustomers = customers.length;
+
+    const activeCustomers = customers.filter(
+        (customer) => customer.isActive,
+    ).length;
+
+    const inactiveCustomers = totalCustomers - activeCustomers;
+
+    const totalRevenue = customers.reduce(
+        (sum, customer) => sum + Number(customer.totalSpent),
+        0,
+    );
+
+    async function handleToggleStatus(customer: AdminCustomer) {
+        const token = getAdminToken();
 
         if (!token) {
-            router.push("/admin/login");
+            setError("Session admin introuvable. Connectez-vous à nouveau.");
             return;
         }
 
+        setError("");
+        setActionLoadingId(customer.id);
+
         try {
-            setUpdatingOrderId(orderId);
-            const updatedOrder = await updateOrderStatus(
+            const updatedCustomer = await updateCustomerStatus(
                 token,
-                orderId,
-                orderStatus,
+                customer.id,
+                !customer.isActive,
             );
 
-            setOrders((currentOrders) =>
-                currentOrders.map((order) =>
-                    order.id === orderId ? updatedOrder : order,
+            setCustomers((currentCustomers) =>
+                currentCustomers.map((currentCustomer) =>
+                    currentCustomer.id === customer.id
+                        ? updatedCustomer
+                        : currentCustomer,
                 ),
             );
         } catch (err) {
-            alert(
+            setError(
                 err instanceof Error
                     ? err.message
-                    : "Erreur lors de la mise à jour.",
+                    : "Erreur lors de la mise à jour du client.",
             );
         } finally {
-            setUpdatingOrderId(null);
+            setActionLoadingId("");
         }
-    }
-
-    function logout() {
-        window.localStorage.removeItem("bigotti-admin-token");
-        window.localStorage.removeItem("bigotti-admin-user");
-        router.push("/admin/login");
     }
 
     return (
         <main className="min-h-screen bg-neutral-50 text-neutral-950">
-            <header className="border-b border-neutral-200 bg-white">
-                <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-                    <Link href="/admin" className="flex items-center">
-                        <img
-                            src="/images/bigotti-logo.jpg"
-                            alt="Bigotti Collection"
-                            className="h-20 w-auto object-contain"
-                        />
-                    </Link>
-
-                    <div className="flex items-center gap-6">
-                        <Link
-                            href="/"
-                            className="text-sm font-medium text-neutral-600 hover:text-black"
-                        >
-                            Boutique
-                        </Link>
-
-                        <button
-                            type="button"
-                            onClick={logout}
-                            className="text-sm font-medium text-neutral-600 hover:text-black"
-                        >
-                            Déconnexion
-                        </button>
-                    </div>
-                </div>
-            </header>
-
-            <section className="mx-auto max-w-7xl px-6 py-12">
-                <div className="mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-end">
+            <section className="border-b border-neutral-200 bg-white">
+                <div className="mx-auto flex max-w-7xl flex-col gap-6 px-6 py-8 md:flex-row md:items-center md:justify-between">
                     <div>
                         <p className="text-sm uppercase tracking-[0.25em] text-neutral-500">
                             Administration
                         </p>
 
-                        <h1 className="mt-2 text-4xl font-bold">
-                            Commandes clients
-                        </h1>
+                        <h1 className="mt-2 text-4xl font-black">Clients</h1>
 
                         <p className="mt-2 text-neutral-600">
-                            Recherchez, filtrez et suivez les commandes.
+                            Consultez, filtrez et gérez les clients.
                         </p>
                     </div>
 
                     <div className="flex flex-wrap gap-3">
                         <Link
                             href="/admin"
-                            className="rounded-full border border-neutral-300 px-5 py-3 text-sm font-semibold hover:border-black"
+                            className="rounded-full border border-neutral-300 px-5 py-3 text-sm font-bold hover:border-black"
                         >
-                            Retour dashboard
+                            Tableau de bord
                         </Link>
 
                         <Link
-                            href="/admin/clients"
-                            className="rounded-full bg-black px-5 py-3 text-sm font-semibold text-white"
+                            href="/admin/commandes"
+                            className="rounded-full bg-black px-5 py-3 text-sm font-bold text-white"
                         >
-                            Clients
+                            Commandes
                         </Link>
                     </div>
                 </div>
+            </section>
 
-                <div className="mb-8 grid gap-5 md:grid-cols-5">
-                    <div className="rounded-3xl bg-white p-6 shadow-sm">
-                        <p className="text-sm text-neutral-500">
-                            Total commandes
+            <section className="mx-auto max-w-7xl px-6 py-8">
+                <div className="grid gap-5 md:grid-cols-4">
+                    <div className="rounded-[2rem] bg-white p-6 shadow-sm">
+                        <UserRound size={30} />
+
+                        <p className="mt-5 text-sm text-neutral-500">
+                            Total clients
                         </p>
-                        <p className="mt-2 text-3xl font-bold">{totalOrders}</p>
-                    </div>
 
-                    <div className="rounded-3xl bg-white p-6 shadow-sm">
-                        <p className="text-sm text-neutral-500">En attente</p>
-                        <p className="mt-2 text-3xl font-bold">
-                            {pendingOrders}
-                        </p>
-                    </div>
-
-                    <div className="rounded-3xl bg-white p-6 shadow-sm">
-                        <p className="text-sm text-neutral-500">Livrées</p>
-                        <p className="mt-2 text-3xl font-bold">
-                            {deliveredOrders}
+                        <p className="mt-1 text-3xl font-black">
+                            {totalCustomers}
                         </p>
                     </div>
 
-                    <div className="rounded-3xl bg-white p-6 shadow-sm">
-                        <p className="text-sm text-neutral-500">Annulées</p>
-                        <p className="mt-2 text-3xl font-bold">
-                            {cancelledOrders}
+                    <div className="rounded-[2rem] bg-white p-6 shadow-sm">
+                        <ShieldCheck size={30} />
+
+                        <p className="mt-5 text-sm text-neutral-500">
+                            Clients actifs
+                        </p>
+
+                        <p className="mt-1 text-3xl font-black">
+                            {activeCustomers}
                         </p>
                     </div>
 
-                    <div className="rounded-3xl bg-white p-6 shadow-sm">
-                        <p className="text-sm text-neutral-500">
-                            CA hors annulation
+                    <div className="rounded-[2rem] bg-white p-6 shadow-sm">
+                        <ShieldOff size={30} />
+
+                        <p className="mt-5 text-sm text-neutral-500">
+                            Désactivés
                         </p>
-                        <p className="mt-2 text-2xl font-bold">
+
+                        <p className="mt-1 text-3xl font-black">
+                            {inactiveCustomers}
+                        </p>
+                    </div>
+
+                    <div className="rounded-[2rem] bg-white p-6 shadow-sm">
+                        <PackageCheck size={30} />
+
+                        <p className="mt-5 text-sm text-neutral-500">
+                            CA clients
+                        </p>
+
+                        <p className="mt-1 text-2xl font-black">
                             {formatPrice(totalRevenue)}
                         </p>
                     </div>
                 </div>
 
-                <div className="mb-8 rounded-[2rem] bg-white p-6 shadow-sm">
-                    <div className="grid gap-4 lg:grid-cols-[1fr_220px_220px]">
-                        <input
-                            value={searchQuery}
-                            onChange={(event) =>
-                                setSearchQuery(event.target.value)
-                            }
-                            placeholder="Rechercher numéro, client, téléphone, email, ville..."
-                            className="rounded-2xl border border-neutral-300 px-4 py-3 text-sm outline-none focus:border-black"
-                        />
+                <div className="mt-8 rounded-[2rem] bg-white p-6 shadow-sm">
+                    <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
+                        <div>
+                            <h2 className="text-2xl font-black">
+                                Liste des clients
+                            </h2>
 
-                        <select
-                            value={orderStatusFilter}
-                            onChange={(event) =>
-                                setOrderStatusFilter(
-                                    event.target.value as OrderStatusFilter,
-                                )
-                            }
-                            className="rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-black"
-                        >
-                            <option value="ALL">Tous les statuts</option>
-                            {ORDER_STATUS_OPTIONS.map((status) => (
-                                <option key={status.value} value={status.value}>
-                                    {status.label}
+                            <p className="mt-1 text-neutral-500">
+                                {filteredCustomers.length} client(s) affiché(s)
+                            </p>
+                        </div>
+
+                        <div className="grid w-full gap-3 lg:max-w-3xl lg:grid-cols-[1fr_180px_210px]">
+                            <div className="relative">
+                                <Search
+                                    size={18}
+                                    className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400"
+                                />
+
+                                <input
+                                    value={searchQuery}
+                                    onChange={(event) =>
+                                        setSearchQuery(event.target.value)
+                                    }
+                                    placeholder="Rechercher nom, téléphone, email..."
+                                    className="w-full rounded-full border border-neutral-300 py-3 pl-11 pr-4 outline-none focus:border-black"
+                                />
+                            </div>
+
+                            <select
+                                value={statusFilter}
+                                onChange={(event) =>
+                                    setStatusFilter(
+                                        event.target
+                                            .value as CustomerStatusFilter,
+                                    )
+                                }
+                                className="rounded-full border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-black"
+                            >
+                                <option value="ALL">Tous</option>
+                                <option value="ACTIVE">Actifs</option>
+                                <option value="INACTIVE">Désactivés</option>
+                            </select>
+
+                            <select
+                                value={sortOption}
+                                onChange={(event) =>
+                                    setSortOption(
+                                        event.target
+                                            .value as CustomerSortOption,
+                                    )
+                                }
+                                className="rounded-full border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-black"
+                            >
+                                <option value="RECENT_ORDER">
+                                    Dernière commande
                                 </option>
-                            ))}
-                        </select>
-
-                        <select
-                            value={paymentStatusFilter}
-                            onChange={(event) =>
-                                setPaymentStatusFilter(
-                                    event.target.value as PaymentStatusFilter,
-                                )
-                            }
-                            className="rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-black"
-                        >
-                            <option value="ALL">Tous les paiements</option>
-                            {PAYMENT_STATUS_OPTIONS.map((status) => (
-                                <option key={status.value} value={status.value}>
-                                    {status.label}
+                                <option value="TOTAL_SPENT_DESC">
+                                    Plus dépensé
                                 </option>
-                            ))}
-                        </select>
+                                <option value="ORDERS_DESC">
+                                    Plus de commandes
+                                </option>
+                                <option value="NAME_ASC">Nom A-Z</option>
+                            </select>
+                        </div>
                     </div>
 
-                    <p className="mt-4 text-sm text-neutral-500">
-                        {filteredOrders.length} commande(s) affichée(s)
-                    </p>
-                </div>
+                    {error && (
+                        <div className="mt-6 rounded-2xl bg-red-50 p-5 text-sm font-semibold text-red-700">
+                            {error}
+                        </div>
+                    )}
 
-                {isLoading && (
-                    <div className="rounded-3xl bg-white p-8 shadow-sm">
-                        Chargement des commandes...
-                    </div>
-                )}
+                    {isLoading && (
+                        <div className="mt-6 rounded-2xl bg-neutral-50 p-5 text-neutral-500">
+                            Chargement des clients...
+                        </div>
+                    )}
 
-                {error && (
-                    <div className="rounded-3xl bg-red-50 p-8 text-red-700">
-                        {error}
-                    </div>
-                )}
+                    {!isLoading && !error && filteredCustomers.length === 0 && (
+                        <div className="mt-6 rounded-2xl bg-neutral-50 p-5 text-neutral-500">
+                            Aucun client trouvé.
+                        </div>
+                    )}
 
-                {!isLoading && !error && filteredOrders.length === 0 && (
-                    <div className="rounded-3xl bg-white p-8 text-center shadow-sm">
-                        <h2 className="text-2xl font-bold">
-                            Aucune commande trouvée.
-                        </h2>
-                    </div>
-                )}
+                    {!isLoading && filteredCustomers.length > 0 && (
+                        <div className="mt-6 space-y-5">
+                            {filteredCustomers.map((customer) => (
+                                <article
+                                    key={customer.id}
+                                    className="rounded-[2rem] border border-neutral-200 p-6"
+                                >
+                                    <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-start">
+                                        <div>
+                                            <div className="flex flex-wrap items-center gap-3">
+                                                <h3 className="text-2xl font-black">
+                                                    {customer.fullName}
+                                                </h3>
 
-                <div className="space-y-5">
-                    {filteredOrders.map((order) => (
-                        <article
-                            key={order.id}
-                            className="rounded-[2rem] bg-white p-6 shadow-sm"
-                        >
-                            <div className="flex flex-col justify-between gap-5 border-b border-neutral-200 pb-5 lg:flex-row lg:items-start">
-                                <div>
-                                    <div className="flex flex-wrap items-center gap-3">
-                                        <h2 className="text-2xl font-bold">
-                                            {order.orderNumber}
-                                        </h2>
+                                                <span
+                                                    className={
+                                                        customer.isActive
+                                                            ? "rounded-full bg-green-50 px-3 py-1 text-xs font-bold text-green-700"
+                                                            : "rounded-full bg-red-50 px-3 py-1 text-xs font-bold text-red-700"
+                                                    }
+                                                >
+                                                    {customer.isActive
+                                                        ? "Actif"
+                                                        : "Désactivé"}
+                                                </span>
+                                            </div>
 
-                                        <span className="rounded-full bg-neutral-100 px-3 py-1 text-sm font-semibold text-neutral-700">
-                                            {getOrderStatusLabel(
-                                                order.orderStatus,
-                                            )}
-                                        </span>
+                                            <div className="mt-4 flex flex-wrap gap-4 text-sm text-neutral-600">
+                                                <span className="inline-flex items-center gap-2">
+                                                    <Phone size={16} />
+                                                    {customer.phone}
+                                                </span>
 
-                                        <span className="rounded-full bg-neutral-100 px-3 py-1 text-sm font-semibold text-neutral-700">
-                                            {
-                                                PAYMENT_STATUS_LABELS[
-                                                    order.paymentStatus
-                                                ]
-                                            }
-                                        </span>
+                                                <span className="inline-flex items-center gap-2">
+                                                    <Mail size={16} />
+                                                    {customer.email ??
+                                                        "Email non renseigné"}
+                                                </span>
+                                            </div>
+
+                                            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                                                <div className="rounded-2xl bg-neutral-50 p-4">
+                                                    <p className="text-xs text-neutral-500">
+                                                        Commandes
+                                                    </p>
+
+                                                    <p className="mt-1 text-xl font-black">
+                                                        {customer.ordersCount}
+                                                    </p>
+                                                </div>
+
+                                                <div className="rounded-2xl bg-neutral-50 p-4">
+                                                    <p className="text-xs text-neutral-500">
+                                                        Total dépensé
+                                                    </p>
+
+                                                    <p className="mt-1 text-xl font-black">
+                                                        {formatPrice(
+                                                            customer.totalSpent,
+                                                        )}
+                                                    </p>
+                                                </div>
+
+                                                <div className="rounded-2xl bg-neutral-50 p-4">
+                                                    <p className="text-xs text-neutral-500">
+                                                        Dernière commande
+                                                    </p>
+
+                                                    <p className="mt-1 text-xl font-black">
+                                                        {formatDate(
+                                                            customer.lastOrderAt,
+                                                        )}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-col gap-3">
+                                            <Link
+                                                href={`/admin/clients/${customer.id}`}
+                                                className="inline-flex items-center justify-center rounded-full bg-black px-5 py-3 text-sm font-bold text-white"
+                                            >
+                                                Détail
+                                            </Link>
+
+                                            <button
+                                                type="button"
+                                                disabled={
+                                                    actionLoadingId ===
+                                                    customer.id
+                                                }
+                                                onClick={() =>
+                                                    handleToggleStatus(customer)
+                                                }
+                                                className={
+                                                    customer.isActive
+                                                        ? "inline-flex items-center justify-center gap-2 rounded-full border border-red-200 px-5 py-3 text-sm font-bold text-red-700 transition hover:border-red-600 disabled:opacity-50"
+                                                        : "inline-flex items-center justify-center gap-2 rounded-full border border-green-200 px-5 py-3 text-sm font-bold text-green-700 transition hover:border-green-600 disabled:opacity-50"
+                                                }
+                                            >
+                                                {customer.isActive ? (
+                                                    <ShieldOff size={18} />
+                                                ) : (
+                                                    <ShieldCheck size={18} />
+                                                )}
+
+                                                {actionLoadingId === customer.id
+                                                    ? "Mise à jour..."
+                                                    : customer.isActive
+                                                      ? "Désactiver"
+                                                      : "Activer"}
+                                            </button>
+                                        </div>
                                     </div>
 
-                                    <p className="mt-3 text-neutral-600">
-                                        Client :{" "}
-                                        <span className="font-semibold text-neutral-950">
-                                            {order.customerName}
-                                        </span>{" "}
-                                        — {order.customerPhone}
-                                    </p>
-
-                                    <p className="mt-1 text-neutral-600">
-                                        Adresse : {order.deliveryAddress},{" "}
-                                        {order.deliveryCity}
-                                    </p>
-
-                                    <p className="mt-1 text-sm text-neutral-500">
-                                        Date : {formatDate(order.createdAt)}
-                                    </p>
-                                </div>
-
-                                <div className="text-left lg:text-right">
-                                    <p className="text-sm text-neutral-500">
-                                        Total
-                                    </p>
-
-                                    <p className="text-2xl font-bold">
-                                        {formatPrice(order.total)}
-                                    </p>
-
-                                    <p className="mt-2 text-sm text-neutral-500">
-                                        {order.paymentMethod ===
-                                        "CASH_ON_DELIVERY"
-                                            ? "Paiement à la livraison"
-                                            : "Paiement carte"}
-                                    </p>
-
-                                    <Link
-                                        href={`/admin/commandes/${order.id}`}
-                                        className="mt-4 inline-flex rounded-full bg-black px-5 py-3 text-sm font-bold text-white"
-                                    >
-                                        Détail
-                                    </Link>
-                                </div>
-                            </div>
-
-                            <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_260px]">
-                                <div className="space-y-3">
-                                    {order.items.map((item) => (
-                                        <div
-                                            key={item.id}
-                                            className="rounded-2xl bg-neutral-50 p-4"
-                                        >
-                                            <p className="font-bold">
-                                                {item.productName}
+                                    {customer.orders.length > 0 && (
+                                        <div className="mt-6 border-t border-neutral-200 pt-5">
+                                            <p className="text-sm font-bold uppercase tracking-[0.2em] text-neutral-500">
+                                                Dernières commandes
                                             </p>
 
-                                            <p className="mt-1 text-sm text-neutral-500">
-                                                Réf. {item.productReference} —{" "}
-                                                {item.color} / Taille{" "}
-                                                {item.size}
-                                            </p>
+                                            <div className="mt-4 space-y-3">
+                                                {customer.orders
+                                                    .slice(0, 3)
+                                                    .map((order) => (
+                                                        <div
+                                                            key={order.id}
+                                                            className="flex flex-col justify-between gap-3 rounded-2xl bg-neutral-50 p-4 md:flex-row md:items-center"
+                                                        >
+                                                            <div>
+                                                                <p className="font-black">
+                                                                    {
+                                                                        order.orderNumber
+                                                                    }
+                                                                </p>
 
-                                            <p className="mt-2 text-sm">
-                                                Quantité : {item.quantity} ×{" "}
-                                                {formatPrice(item.unitPrice)}
-                                            </p>
+                                                                <p className="mt-1 text-sm text-neutral-500">
+                                                                    {getOrderStatusLabel(
+                                                                        order.orderStatus,
+                                                                    )}{" "}
+                                                                    —{" "}
+                                                                    {
+                                                                        order
+                                                                            .items
+                                                                            .length
+                                                                    }{" "}
+                                                                    article(s)
+                                                                </p>
+                                                            </div>
+
+                                                            <div className="text-left md:text-right">
+                                                                <p className="font-black">
+                                                                    {formatPrice(
+                                                                        order.total,
+                                                                    )}
+                                                                </p>
+
+                                                                <Link
+                                                                    href={`/suivi-commande?orderNumber=${encodeURIComponent(
+                                                                        order.orderNumber,
+                                                                    )}&phone=${encodeURIComponent(
+                                                                        order.customerPhone,
+                                                                    )}`}
+                                                                    className="mt-2 inline-flex text-sm font-bold underline"
+                                                                >
+                                                                    Suivre
+                                                                </Link>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                            </div>
                                         </div>
-                                    ))}
-                                </div>
-
-                                <div>
-                                    <label className="text-sm font-semibold">
-                                        Statut commande
-                                    </label>
-
-                                    <select
-                                        value={order.orderStatus}
-                                        disabled={updatingOrderId === order.id}
-                                        onChange={(event) =>
-                                            handleStatusChange(
-                                                order.id,
-                                                event.target
-                                                    .value as OrderStatus,
-                                            )
-                                        }
-                                        className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-black"
-                                    >
-                                        {ORDER_STATUS_OPTIONS.map((status) => (
-                                            <option
-                                                key={status.value}
-                                                value={status.value}
-                                            >
-                                                {status.label}
-                                            </option>
-                                        ))}
-                                    </select>
-
-                                    {updatingOrderId === order.id && (
-                                        <p className="mt-2 text-sm text-neutral-500">
-                                            Mise à jour...
-                                        </p>
                                     )}
-
-                                    <Link
-                                        href={`/suivi-commande?orderNumber=${encodeURIComponent(
-                                            order.orderNumber,
-                                        )}&phone=${encodeURIComponent(
-                                            order.customerPhone,
-                                        )}`}
-                                        className="mt-4 inline-flex w-full justify-center rounded-full border border-neutral-300 px-5 py-3 text-sm font-bold hover:border-black"
-                                    >
-                                        Suivi client
-                                    </Link>
-                                </div>
-                            </div>
-                        </article>
-                    ))}
+                                </article>
+                            ))}
+                        </div>
+                    )}
                 </div>
             </section>
         </main>
