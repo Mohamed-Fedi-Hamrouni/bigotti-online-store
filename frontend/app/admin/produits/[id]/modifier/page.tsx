@@ -1,15 +1,26 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import {
+    useEffect,
+    useMemo,
+    useState,
+    type ChangeEvent,
+    type FormEvent,
+} from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
+    AlertTriangle,
     ArrowLeft,
+    CheckCircle2,
     ImagePlus,
     PackageCheck,
     Plus,
     Save,
+    Shirt,
+    Tags,
     Trash2,
+    Upload,
 } from "lucide-react";
 import {
     getAdminCategories,
@@ -44,8 +55,8 @@ const DISCOUNT_TYPE_OPTIONS: Array<{
     value: DiscountType;
     label: string;
 }> = [
-    { value: "PERCENTAGE", label: "Pourcentage" },
-    { value: "FIXED_AMOUNT", label: "Montant fixe" },
+    { value: "PERCENTAGE", label: "Pourcentage %" },
+    { value: "FIXED_AMOUNT", label: "Montant fixe TND" },
 ];
 
 type EditableImage = {
@@ -93,12 +104,73 @@ function getAdminToken() {
     return window.localStorage.getItem("bigotti-admin-token");
 }
 
+function slugify(value: string) {
+    return value
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+}
+
 function toDateInputValue(value: string | null) {
     if (!value) {
         return "";
     }
 
     return value.slice(0, 10);
+}
+
+function formatPrice(value: number | string | null | undefined) {
+    const numericValue = Number(value);
+
+    if (!Number.isFinite(numericValue)) {
+        return "0.000 TND";
+    }
+
+    return `${numericValue.toFixed(3)} TND`;
+}
+
+function calculateFinalPrice(form: ProductFormState) {
+    const price = Number(form.price);
+    const discountValue = Number(form.discountValue);
+
+    if (!Number.isFinite(price) || price <= 0) {
+        return 0;
+    }
+
+    if (
+        !form.isOnSale ||
+        !Number.isFinite(discountValue) ||
+        discountValue <= 0
+    ) {
+        return price;
+    }
+
+    if (form.discountType === "PERCENTAGE") {
+        return Math.max(0, price - price * (discountValue / 100));
+    }
+
+    return Math.max(0, price - discountValue);
+}
+
+function getStatusLabel(status: ProductStatus) {
+    return (
+        PRODUCT_STATUS_OPTIONS.find((option) => option.value === status)
+            ?.label ?? status
+    );
+}
+
+function getStatusClassName(status: ProductStatus) {
+    if (status === "PUBLISHED") {
+        return "rounded-full bg-green-50 px-3 py-1 text-xs font-bold text-green-700";
+    }
+
+    if (status === "ARCHIVED") {
+        return "rounded-full bg-red-50 px-3 py-1 text-xs font-bold text-red-700";
+    }
+
+    return "rounded-full bg-yellow-50 px-3 py-1 text-xs font-bold text-yellow-700";
 }
 
 function createEmptyImage(position: number): EditableImage {
@@ -162,36 +234,14 @@ function productToFormState(product: Product): ProductFormState {
     };
 }
 
-function buildUpdatePayload(form: ProductFormState): UpdateProductPayload {
-    const images: CreateProductImagePayload[] = form.images
-        .filter((image) => image.url.trim())
-        .map((image, index) => ({
-            url: image.url.trim(),
-            storagePath: image.storagePath,
-            altText: image.altText.trim() || form.name.trim(),
-            isMain: image.isMain,
-            position: index,
-        }));
+function buildUpdatePayload(params: {
+    form: ProductFormState;
+    imagesTouched: boolean;
+    variantsTouched: boolean;
+}) {
+    const { form, imagesTouched, variantsTouched } = params;
 
-    const hasMainImage = images.some((image) => image.isMain);
-
-    const normalizedImages = images.map((image, index) => ({
-        ...image,
-        isMain: hasMainImage ? Boolean(image.isMain) : index === 0,
-        position: index,
-    }));
-
-    const variants: CreateProductVariantPayload[] = form.variants
-        .filter((variant) => variant.color.trim() && variant.size.trim())
-        .map((variant) => ({
-            color: variant.color.trim(),
-            size: variant.size.trim(),
-            stockQuantity: Number(variant.stockQuantity),
-            sku: variant.sku.trim() || undefined,
-            isActive: true,
-        }));
-
-    return {
+    const payload: UpdateProductPayload = {
         reference: form.reference.trim(),
         name: form.name.trim(),
         slug: form.slug.trim(),
@@ -217,9 +267,48 @@ function buildUpdatePayload(form: ProductFormState): UpdateProductPayload {
                 : null,
         discountEndDate:
             form.isOnSale && form.discountEndDate ? form.discountEndDate : null,
-        images: normalizedImages,
-        variants,
     };
+
+    if (imagesTouched) {
+        const images: CreateProductImagePayload[] = form.images
+            .filter((image) => image.url.trim())
+            .map((image, index) => ({
+                url: image.url.trim(),
+                storagePath: image.storagePath,
+                altText: image.altText.trim() || form.name.trim(),
+                isMain: image.isMain,
+                position: index,
+            }));
+
+        const hasMainImage = images.some((image) => image.isMain);
+
+        payload.images = images.map((image, index) => ({
+            ...image,
+            isMain: hasMainImage ? Boolean(image.isMain) : index === 0,
+            position: index,
+        }));
+    }
+
+    if (variantsTouched) {
+        const variants: CreateProductVariantPayload[] = form.variants
+            .filter(
+                (variant) =>
+                    variant.color.trim() &&
+                    variant.size.trim() &&
+                    Number(variant.stockQuantity) >= 0,
+            )
+            .map((variant) => ({
+                color: variant.color.trim(),
+                size: variant.size.trim().toUpperCase(),
+                stockQuantity: Number(variant.stockQuantity),
+                sku: variant.sku.trim() || undefined,
+                isActive: Number(variant.stockQuantity) > 0,
+            }));
+
+        payload.variants = variants;
+    }
+
+    return payload;
 }
 
 export default function EditProductPage() {
@@ -227,6 +316,8 @@ export default function EditProductPage() {
     const params = useParams<{ id: string }>();
 
     const [form, setForm] = useState<ProductFormState | null>(null);
+    const [originalStatus, setOriginalStatus] =
+        useState<ProductStatus>("DRAFT");
     const [categories, setCategories] = useState<Category[]>([]);
     const [collections, setCollections] = useState<Collection[]>([]);
     const [saleCampaigns, setSaleCampaigns] = useState<SaleCampaign[]>([]);
@@ -235,6 +326,8 @@ export default function EditProductPage() {
     const [uploadingImageIndex, setUploadingImageIndex] = useState<
         number | null
     >(null);
+    const [imagesTouched, setImagesTouched] = useState(false);
+    const [variantsTouched, setVariantsTouched] = useState(false);
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
 
@@ -255,6 +348,7 @@ export default function EditProductPage() {
             .then(
                 ([product, categoriesResult, collectionsResult, campaigns]) => {
                     setForm(productToFormState(product));
+                    setOriginalStatus(product.status);
                     setCategories(categoriesResult);
                     setCollections(collectionsResult);
                     setSaleCampaigns(campaigns);
@@ -270,6 +364,43 @@ export default function EditProductPage() {
             .finally(() => setIsLoading(false));
     }, [params.id, router]);
 
+    const mainImage = useMemo(() => {
+        if (!form) {
+            return null;
+        }
+
+        return (
+            form.images.find((image) => image.isMain && image.url.trim()) ??
+            form.images.find((image) => image.url.trim()) ??
+            null
+        );
+    }, [form]);
+
+    const totalStock = useMemo(() => {
+        if (!form) {
+            return 0;
+        }
+
+        return form.variants.reduce(
+            (sum, variant) => sum + Number(variant.stockQuantity || 0),
+            0,
+        );
+    }, [form]);
+
+    const finalPrice = form ? calculateFinalPrice(form) : 0;
+
+    const selectedCategory = form
+        ? categories.find((category) => category.id === form.categoryId)
+        : null;
+
+    const selectedCollection = form
+        ? collections.find((collection) => collection.id === form.collectionId)
+        : null;
+
+    const selectedCampaign = form
+        ? saleCampaigns.find((campaign) => campaign.id === form.saleCampaignId)
+        : null;
+
     function updateField<K extends keyof ProductFormState>(
         field: K,
         value: ProductFormState[K],
@@ -284,7 +415,13 @@ export default function EditProductPage() {
         );
     }
 
+    function handleSlugChange(value: string) {
+        updateField("slug", slugify(value));
+    }
+
     function updateImage(index: number, image: Partial<EditableImage>) {
+        setImagesTouched(true);
+
         setForm((currentForm) => {
             if (!currentForm) {
                 return currentForm;
@@ -305,6 +442,8 @@ export default function EditProductPage() {
     }
 
     function setMainImage(index: number) {
+        setImagesTouched(true);
+
         setForm((currentForm) => {
             if (!currentForm) {
                 return currentForm;
@@ -321,6 +460,8 @@ export default function EditProductPage() {
     }
 
     function addImage() {
+        setImagesTouched(true);
+
         setForm((currentForm) => {
             if (!currentForm) {
                 return currentForm;
@@ -337,6 +478,8 @@ export default function EditProductPage() {
     }
 
     function removeImage(index: number) {
+        setImagesTouched(true);
+
         setForm((currentForm) => {
             if (!currentForm) {
                 return currentForm;
@@ -346,16 +489,15 @@ export default function EditProductPage() {
                 (_, currentIndex) => currentIndex !== index,
             );
 
+            const hasMainImage = remainingImages.some((image) => image.isMain);
+
             const normalizedImages =
                 remainingImages.length > 0
                     ? remainingImages.map((image, currentIndex) => ({
                           ...image,
-                          isMain:
-                              image.isMain ||
-                              (!remainingImages.some(
-                                  (remainingImage) => remainingImage.isMain,
-                              ) &&
-                                  currentIndex === 0),
+                          isMain: hasMainImage
+                              ? image.isMain
+                              : currentIndex === 0,
                           position: currentIndex,
                       }))
                     : [createEmptyImage(0)];
@@ -368,6 +510,8 @@ export default function EditProductPage() {
     }
 
     function updateVariant(index: number, variant: Partial<EditableVariant>) {
+        setVariantsTouched(true);
+
         setForm((currentForm) => {
             if (!currentForm) {
                 return currentForm;
@@ -389,6 +533,8 @@ export default function EditProductPage() {
     }
 
     function addVariant() {
+        setVariantsTouched(true);
+
         setForm((currentForm) => {
             if (!currentForm) {
                 return currentForm;
@@ -402,6 +548,8 @@ export default function EditProductPage() {
     }
 
     function removeVariant(index: number) {
+        setVariantsTouched(true);
+
         setForm((currentForm) => {
             if (!currentForm) {
                 return currentForm;
@@ -421,8 +569,36 @@ export default function EditProductPage() {
         });
     }
 
-    async function handleImageUpload(index: number, file: File | null) {
+    function validateImageFile(file: File) {
+        const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+        const maxSize = 5 * 1024 * 1024;
+
+        if (!allowedTypes.includes(file.type)) {
+            return "Format image invalide. Utilisez JPG, PNG ou WEBP.";
+        }
+
+        if (file.size > maxSize) {
+            return "L’image dépasse 5 MB.";
+        }
+
+        return "";
+    }
+
+    async function handleImageUpload(
+        index: number,
+        event: ChangeEvent<HTMLInputElement>,
+    ) {
+        const file = event.target.files?.[0] ?? null;
+
         if (!file) {
+            return;
+        }
+
+        const validationError = validateImageFile(file);
+
+        if (validationError) {
+            event.target.value = "";
+            setError(validationError);
             return;
         }
 
@@ -454,7 +630,102 @@ export default function EditProductPage() {
         }
     }
 
-    async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    function validateForm(payload: UpdateProductPayload) {
+        if (!payload.reference || payload.reference.length < 2) {
+            return "La référence doit contenir au moins 2 caractères.";
+        }
+
+        if (!payload.name || payload.name.length < 2) {
+            return "Le nom du produit doit contenir au moins 2 caractères.";
+        }
+
+        if (!payload.slug) {
+            return "Le slug est obligatoire.";
+        }
+
+        if (!payload.categoryId) {
+            return "La catégorie est obligatoire.";
+        }
+
+        if (!payload.price || payload.price <= 0) {
+            return "Le prix doit être supérieur à 0.";
+        }
+
+        if (form?.status === "PUBLISHED") {
+            const hasImage = form.images.some((image) => image.url.trim());
+
+            if (!hasImage) {
+                return "Un produit publié doit avoir au moins une image.";
+            }
+
+            if (totalStock <= 0) {
+                return "Un produit publié doit avoir au moins une variante avec stock.";
+            }
+        }
+
+        if (variantsTouched) {
+            if (!payload.variants || payload.variants.length === 0) {
+                return "Ajoutez au moins une variante couleur/taille.";
+            }
+
+            if (
+                payload.variants.some(
+                    (variant) =>
+                        !Number.isFinite(variant.stockQuantity) ||
+                        variant.stockQuantity < 0,
+                )
+            ) {
+                return "Le stock des variantes doit être supérieur ou égal à 0.";
+            }
+        }
+
+        if (payload.isOnSale && !payload.discountType) {
+            return "Le type de remise est obligatoire pour une promo.";
+        }
+
+        if (
+            payload.isOnSale &&
+            (payload.discountValue === null ||
+                payload.discountValue === undefined ||
+                payload.discountValue <= 0)
+        ) {
+            return "La valeur de remise doit être supérieure à 0.";
+        }
+
+        if (
+            payload.isOnSale &&
+            payload.discountType === "PERCENTAGE" &&
+            payload.discountValue !== null &&
+            payload.discountValue !== undefined &&
+            payload.discountValue > 100
+        ) {
+            return "La remise en pourcentage ne peut pas dépasser 100%.";
+        }
+
+        if (
+            payload.isOnSale &&
+            payload.discountType === "FIXED_AMOUNT" &&
+            payload.discountValue !== null &&
+            payload.discountValue !== undefined &&
+            payload.price !== undefined &&
+            payload.discountValue >= payload.price
+        ) {
+            return "La remise fixe doit être inférieure au prix du produit.";
+        }
+
+        if (
+            payload.discountStartDate &&
+            payload.discountEndDate &&
+            new Date(payload.discountStartDate).getTime() >
+                new Date(payload.discountEndDate).getTime()
+        ) {
+            return "La date de début de remise doit être avant la date de fin.";
+        }
+
+        return "";
+    }
+
+    async function handleSubmit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
 
         if (!form) {
@@ -468,52 +739,50 @@ export default function EditProductPage() {
             return;
         }
 
-        const payload = buildUpdatePayload(form);
+        const payload = buildUpdatePayload({
+            form,
+            imagesTouched,
+            variantsTouched,
+        });
 
-        if (!payload.reference || !payload.name || !payload.slug) {
-            setError("La référence, le nom et le slug sont obligatoires.");
+        const validationError = validateForm(payload);
+
+        if (validationError) {
+            setError(validationError);
+            setSuccess("");
             return;
         }
 
-        if (!payload.categoryId) {
-            setError("La catégorie est obligatoire.");
-            return;
+        if (originalStatus !== "ARCHIVED" && payload.status === "ARCHIVED") {
+            const confirmed = window.confirm(
+                `Confirmer l’archivage du produit "${form.name}" ?\n\nLe produit ne sera pas supprimé. Il ne sera plus visible côté client, mais restera disponible dans l’administration.`,
+            );
+
+            if (!confirmed) {
+                return;
+            }
         }
 
-        if (!payload.price || payload.price <= 0) {
-            setError("Le prix doit être supérieur à 0.");
-            return;
+        if (originalStatus === "ARCHIVED" && payload.status !== "ARCHIVED") {
+            const confirmed = window.confirm(
+                `Réactiver le produit "${form.name}" avec le statut "${getStatusLabel(
+                    payload.status ?? form.status,
+                )}" ?`,
+            );
+
+            if (!confirmed) {
+                return;
+            }
         }
 
-        if (!payload.variants || payload.variants.length === 0) {
-            setError("Ajoutez au moins une variante couleur/taille.");
-            return;
-        }
+        if (variantsTouched) {
+            const confirmed = window.confirm(
+                "Vous avez modifié les variantes ou le stock.\n\nCette action va remplacer la liste des variantes enregistrées pour ce produit. Confirmer la sauvegarde ?",
+            );
 
-        if (
-            payload.variants.some(
-                (variant) =>
-                    !Number.isFinite(variant.stockQuantity) ||
-                    variant.stockQuantity < 0,
-            )
-        ) {
-            setError("Le stock des variantes doit être supérieur ou égal à 0.");
-            return;
-        }
-
-        if (payload.isOnSale && !payload.discountType) {
-            setError("Le type de remise est obligatoire pour une promo.");
-            return;
-        }
-
-        if (
-            payload.isOnSale &&
-            (payload.discountValue === null ||
-                payload.discountValue === undefined ||
-                payload.discountValue <= 0)
-        ) {
-            setError("La valeur de remise doit être supérieure à 0.");
-            return;
+            if (!confirmed) {
+                return;
+            }
         }
 
         setError("");
@@ -521,12 +790,16 @@ export default function EditProductPage() {
         setIsSaving(true);
 
         try {
-            await updateProduct(token, params.id, payload);
+            const updatedProduct = await updateProduct(
+                token,
+                params.id,
+                payload,
+            );
+            setForm(productToFormState(updatedProduct));
+            setOriginalStatus(updatedProduct.status);
+            setImagesTouched(false);
+            setVariantsTouched(false);
             setSuccess("Produit mis à jour avec succès.");
-
-            setTimeout(() => {
-                router.push("/admin/produits");
-            }, 800);
         } catch (err) {
             setError(
                 err instanceof Error
@@ -558,6 +831,11 @@ export default function EditProductPage() {
                         <h1 className="mt-2 text-4xl font-black">
                             Modifier le produit
                         </h1>
+
+                        <p className="mt-3 text-neutral-600">
+                            Modifiez les informations, images, variantes et
+                            publication sans supprimer le produit.
+                        </p>
                     </div>
 
                     <div className="flex flex-wrap gap-3">
@@ -592,663 +870,862 @@ export default function EditProductPage() {
                 )}
 
                 {form && (
-                    <form onSubmit={handleSubmit} className="space-y-8">
-                        {error && (
-                            <div className="rounded-2xl bg-red-50 p-5 text-sm font-semibold text-red-700">
-                                {error}
-                            </div>
-                        )}
+                    <form
+                        onSubmit={handleSubmit}
+                        className="grid gap-8 lg:grid-cols-[1fr_380px]"
+                    >
+                        <div className="space-y-8">
+                            {error && (
+                                <div className="rounded-2xl bg-red-50 p-5 text-sm font-semibold text-red-700">
+                                    {error}
+                                </div>
+                            )}
 
-                        {success && (
-                            <div className="rounded-2xl bg-green-50 p-5 text-sm font-semibold text-green-700">
-                                {success}
-                            </div>
-                        )}
+                            {success && (
+                                <div className="flex items-center gap-3 rounded-2xl bg-green-50 p-5 text-sm font-semibold text-green-700">
+                                    <CheckCircle2 size={18} />
+                                    {success}
+                                </div>
+                            )}
 
-                        <div className="grid gap-8 lg:grid-cols-[1fr_360px]">
-                            <div className="space-y-8">
-                                <section className="rounded-[2rem] bg-white p-8 shadow-sm">
+                            <section className="rounded-[2rem] bg-white p-8 shadow-sm">
+                                <div className="flex items-center gap-3">
+                                    <Shirt size={28} />
+
                                     <h2 className="text-2xl font-black">
-                                        Informations générales
+                                        Informations produit
                                     </h2>
+                                </div>
 
-                                    <div className="mt-6 grid gap-5 md:grid-cols-2">
-                                        <div>
-                                            <label className="text-sm font-bold">
-                                                Référence
-                                            </label>
+                                <div className="mt-6 grid gap-5 md:grid-cols-2">
+                                    <div>
+                                        <label className="text-sm font-bold">
+                                            Référence *
+                                        </label>
 
-                                            <input
-                                                value={form.reference}
-                                                onChange={(event) =>
-                                                    updateField(
-                                                        "reference",
-                                                        event.target.value,
-                                                    )
-                                                }
-                                                className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
-                                            />
-                                        </div>
-
-                                        <div>
-                                            <label className="text-sm font-bold">
-                                                Nom
-                                            </label>
-
-                                            <input
-                                                value={form.name}
-                                                onChange={(event) =>
-                                                    updateField(
-                                                        "name",
-                                                        event.target.value,
-                                                    )
-                                                }
-                                                className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
-                                            />
-                                        </div>
-
-                                        <div>
-                                            <label className="text-sm font-bold">
-                                                Slug
-                                            </label>
-
-                                            <input
-                                                value={form.slug}
-                                                onChange={(event) =>
-                                                    updateField(
-                                                        "slug",
-                                                        event.target.value,
-                                                    )
-                                                }
-                                                className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
-                                            />
-                                        </div>
-
-                                        <div>
-                                            <label className="text-sm font-bold">
-                                                Prix
-                                            </label>
-
-                                            <input
-                                                type="number"
-                                                step="0.001"
-                                                min="0"
-                                                value={form.price}
-                                                onChange={(event) =>
-                                                    updateField(
-                                                        "price",
-                                                        event.target.value,
-                                                    )
-                                                }
-                                                className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
-                                            />
-                                        </div>
-
-                                        <div className="md:col-span-2">
-                                            <label className="text-sm font-bold">
-                                                Description courte
-                                            </label>
-
-                                            <input
-                                                value={form.shortDescription}
-                                                onChange={(event) =>
-                                                    updateField(
-                                                        "shortDescription",
-                                                        event.target.value,
-                                                    )
-                                                }
-                                                className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
-                                            />
-                                        </div>
-
-                                        <div className="md:col-span-2">
-                                            <label className="text-sm font-bold">
-                                                Description
-                                            </label>
-
-                                            <textarea
-                                                rows={6}
-                                                value={form.description}
-                                                onChange={(event) =>
-                                                    updateField(
-                                                        "description",
-                                                        event.target.value,
-                                                    )
-                                                }
-                                                className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
-                                            />
-                                        </div>
+                                        <input
+                                            value={form.reference}
+                                            onChange={(event) =>
+                                                updateField(
+                                                    "reference",
+                                                    event.target.value,
+                                                )
+                                            }
+                                            className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
+                                        />
                                     </div>
-                                </section>
 
-                                <section className="rounded-[2rem] bg-white p-8 shadow-sm">
+                                    <div>
+                                        <label className="text-sm font-bold">
+                                            Nom *
+                                        </label>
+
+                                        <input
+                                            value={form.name}
+                                            onChange={(event) =>
+                                                updateField(
+                                                    "name",
+                                                    event.target.value,
+                                                )
+                                            }
+                                            className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="text-sm font-bold">
+                                            Slug *
+                                        </label>
+
+                                        <input
+                                            value={form.slug}
+                                            onChange={(event) =>
+                                                handleSlugChange(
+                                                    event.target.value,
+                                                )
+                                            }
+                                            className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="text-sm font-bold">
+                                            Prix TND *
+                                        </label>
+
+                                        <input
+                                            type="number"
+                                            step="0.001"
+                                            min="0"
+                                            value={form.price}
+                                            onChange={(event) =>
+                                                updateField(
+                                                    "price",
+                                                    event.target.value,
+                                                )
+                                            }
+                                            className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
+                                        />
+                                    </div>
+
+                                    <div className="md:col-span-2">
+                                        <label className="text-sm font-bold">
+                                            Description courte
+                                        </label>
+
+                                        <input
+                                            value={form.shortDescription}
+                                            onChange={(event) =>
+                                                updateField(
+                                                    "shortDescription",
+                                                    event.target.value,
+                                                )
+                                            }
+                                            className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
+                                        />
+                                    </div>
+
+                                    <div className="md:col-span-2">
+                                        <label className="text-sm font-bold">
+                                            Description détaillée
+                                        </label>
+
+                                        <textarea
+                                            rows={6}
+                                            value={form.description}
+                                            onChange={(event) =>
+                                                updateField(
+                                                    "description",
+                                                    event.target.value,
+                                                )
+                                            }
+                                            className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
+                                        />
+                                    </div>
+                                </div>
+                            </section>
+
+                            <section className="rounded-[2rem] bg-white p-8 shadow-sm">
+                                <div className="flex items-center gap-3">
+                                    <Tags size={28} />
+
                                     <h2 className="text-2xl font-black">
-                                        Classification
+                                        Classification et prix
                                     </h2>
+                                </div>
 
-                                    <div className="mt-6 grid gap-5 md:grid-cols-3">
-                                        <div>
-                                            <label className="text-sm font-bold">
-                                                Catégorie
-                                            </label>
+                                <div className="mt-6 grid gap-5 md:grid-cols-3">
+                                    <div>
+                                        <label className="text-sm font-bold">
+                                            Catégorie *
+                                        </label>
 
-                                            <select
-                                                value={form.categoryId}
-                                                onChange={(event) =>
-                                                    updateField(
-                                                        "categoryId",
-                                                        event.target.value,
-                                                    )
-                                                }
-                                                className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 outline-none focus:border-black"
-                                            >
-                                                <option value="">
-                                                    Choisir une catégorie
+                                        <select
+                                            value={form.categoryId}
+                                            onChange={(event) =>
+                                                updateField(
+                                                    "categoryId",
+                                                    event.target.value,
+                                                )
+                                            }
+                                            className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 outline-none focus:border-black"
+                                        >
+                                            <option value="">
+                                                Choisir une catégorie
+                                            </option>
+
+                                            {categories.map((category) => (
+                                                <option
+                                                    key={category.id}
+                                                    value={category.id}
+                                                >
+                                                    {category.name}
+                                                    {!category.isActive
+                                                        ? " — désactivée"
+                                                        : ""}
                                                 </option>
+                                            ))}
+                                        </select>
 
-                                                {categories.map((category) => (
-                                                    <option
-                                                        key={category.id}
-                                                        value={category.id}
-                                                    >
-                                                        {category.name}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                        </div>
-
-                                        <div>
-                                            <label className="text-sm font-bold">
-                                                Collection
-                                            </label>
-
-                                            <select
-                                                value={form.collectionId}
-                                                onChange={(event) =>
-                                                    updateField(
-                                                        "collectionId",
-                                                        event.target.value,
-                                                    )
-                                                }
-                                                className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 outline-none focus:border-black"
-                                            >
-                                                <option value="">
-                                                    Aucune collection
-                                                </option>
-
-                                                {collections.map(
-                                                    (collection) => (
-                                                        <option
-                                                            key={collection.id}
-                                                            value={
-                                                                collection.id
-                                                            }
-                                                        >
-                                                            {collection.name}
-                                                        </option>
-                                                    ),
-                                                )}
-                                            </select>
-                                        </div>
-
-                                        <div>
-                                            <label className="text-sm font-bold">
-                                                Campagne
-                                            </label>
-
-                                            <select
-                                                value={form.saleCampaignId}
-                                                onChange={(event) =>
-                                                    updateField(
-                                                        "saleCampaignId",
-                                                        event.target.value,
-                                                    )
-                                                }
-                                                className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 outline-none focus:border-black"
-                                            >
-                                                <option value="">
-                                                    Aucune campagne
-                                                </option>
-
-                                                {saleCampaigns.map(
-                                                    (campaign) => (
-                                                        <option
-                                                            key={campaign.id}
-                                                            value={campaign.id}
-                                                        >
-                                                            {campaign.name}
-                                                        </option>
-                                                    ),
-                                                )}
-                                            </select>
-                                        </div>
+                                        {selectedCategory &&
+                                            !selectedCategory.isActive && (
+                                                <p className="mt-2 text-xs font-semibold text-red-700">
+                                                    Catégorie actuellement
+                                                    désactivée.
+                                                </p>
+                                            )}
                                     </div>
-                                </section>
 
-                                <section className="rounded-[2rem] bg-white p-8 shadow-sm">
-                                    <div className="flex items-center justify-between gap-4">
+                                    <div>
+                                        <label className="text-sm font-bold">
+                                            Collection
+                                        </label>
+
+                                        <select
+                                            value={form.collectionId}
+                                            onChange={(event) =>
+                                                updateField(
+                                                    "collectionId",
+                                                    event.target.value,
+                                                )
+                                            }
+                                            className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 outline-none focus:border-black"
+                                        >
+                                            <option value="">
+                                                Aucune collection
+                                            </option>
+
+                                            {collections.map((collection) => (
+                                                <option
+                                                    key={collection.id}
+                                                    value={collection.id}
+                                                >
+                                                    {collection.name}
+                                                    {!collection.isActive
+                                                        ? " — désactivée"
+                                                        : ""}
+                                                </option>
+                                            ))}
+                                        </select>
+
+                                        {selectedCollection &&
+                                            !selectedCollection.isActive && (
+                                                <p className="mt-2 text-xs font-semibold text-red-700">
+                                                    Collection actuellement
+                                                    désactivée.
+                                                </p>
+                                            )}
+                                    </div>
+
+                                    <div>
+                                        <label className="text-sm font-bold">
+                                            Campagne
+                                        </label>
+
+                                        <select
+                                            value={form.saleCampaignId}
+                                            onChange={(event) =>
+                                                updateField(
+                                                    "saleCampaignId",
+                                                    event.target.value,
+                                                )
+                                            }
+                                            className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 outline-none focus:border-black"
+                                        >
+                                            <option value="">
+                                                Aucune campagne
+                                            </option>
+
+                                            {saleCampaigns.map((campaign) => (
+                                                <option
+                                                    key={campaign.id}
+                                                    value={campaign.id}
+                                                >
+                                                    {campaign.name}
+                                                    {!campaign.isActive
+                                                        ? " — désactivée"
+                                                        : ""}
+                                                </option>
+                                            ))}
+                                        </select>
+
+                                        {selectedCampaign &&
+                                            !selectedCampaign.isActive && (
+                                                <p className="mt-2 text-xs font-semibold text-red-700">
+                                                    Campagne actuellement
+                                                    désactivée.
+                                                </p>
+                                            )}
+                                    </div>
+                                </div>
+
+                                <div className="mt-6 rounded-3xl bg-neutral-50 p-6">
+                                    <label className="flex cursor-pointer items-center gap-3">
+                                        <input
+                                            type="checkbox"
+                                            checked={form.isOnSale}
+                                            onChange={(event) =>
+                                                updateField(
+                                                    "isOnSale",
+                                                    event.target.checked,
+                                                )
+                                            }
+                                        />
+
+                                        <span className="font-bold">
+                                            Produit en promotion
+                                        </span>
+                                    </label>
+
+                                    {form.isOnSale && (
+                                        <div className="mt-5 grid gap-5 md:grid-cols-2">
+                                            <div>
+                                                <label className="text-sm font-bold">
+                                                    Type de remise
+                                                </label>
+
+                                                <select
+                                                    value={form.discountType}
+                                                    onChange={(event) =>
+                                                        updateField(
+                                                            "discountType",
+                                                            event.target
+                                                                .value as DiscountType,
+                                                        )
+                                                    }
+                                                    className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 outline-none focus:border-black"
+                                                >
+                                                    {DISCOUNT_TYPE_OPTIONS.map(
+                                                        (discountType) => (
+                                                            <option
+                                                                key={
+                                                                    discountType.value
+                                                                }
+                                                                value={
+                                                                    discountType.value
+                                                                }
+                                                            >
+                                                                {
+                                                                    discountType.label
+                                                                }
+                                                            </option>
+                                                        ),
+                                                    )}
+                                                </select>
+                                            </div>
+
+                                            <div>
+                                                <label className="text-sm font-bold">
+                                                    Valeur remise
+                                                </label>
+
+                                                <input
+                                                    type="number"
+                                                    step={
+                                                        form.discountType ===
+                                                        "PERCENTAGE"
+                                                            ? "1"
+                                                            : "0.001"
+                                                    }
+                                                    min="0"
+                                                    value={form.discountValue}
+                                                    onChange={(event) =>
+                                                        updateField(
+                                                            "discountValue",
+                                                            event.target.value,
+                                                        )
+                                                    }
+                                                    className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="text-sm font-bold">
+                                                    Date début
+                                                </label>
+
+                                                <input
+                                                    type="date"
+                                                    value={
+                                                        form.discountStartDate
+                                                    }
+                                                    onChange={(event) =>
+                                                        updateField(
+                                                            "discountStartDate",
+                                                            event.target.value,
+                                                        )
+                                                    }
+                                                    className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="text-sm font-bold">
+                                                    Date fin
+                                                </label>
+
+                                                <input
+                                                    type="date"
+                                                    value={form.discountEndDate}
+                                                    onChange={(event) =>
+                                                        updateField(
+                                                            "discountEndDate",
+                                                            event.target.value,
+                                                        )
+                                                    }
+                                                    className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </section>
+
+                            <section className="rounded-[2rem] bg-white p-8 shadow-sm">
+                                <div className="flex items-center justify-between gap-4">
+                                    <div className="flex items-center gap-3">
+                                        <Upload size={28} />
+
                                         <div>
                                             <h2 className="text-2xl font-black">
                                                 Images
                                             </h2>
 
                                             <p className="mt-1 text-sm text-neutral-500">
-                                                L’image principale sera affichée
-                                                en premier.
+                                                La première image principale est
+                                                utilisée dans les cartes
+                                                produit.
                                             </p>
                                         </div>
+                                    </div>
 
-                                        <button
-                                            type="button"
-                                            onClick={addImage}
-                                            className="inline-flex items-center gap-2 rounded-full border border-neutral-300 px-5 py-3 text-sm font-bold hover:border-black"
+                                    <button
+                                        type="button"
+                                        onClick={addImage}
+                                        className="inline-flex items-center gap-2 rounded-full border border-neutral-300 px-5 py-3 text-sm font-bold hover:border-black"
+                                    >
+                                        <Plus size={18} />
+                                        Image
+                                    </button>
+                                </div>
+
+                                {imagesTouched && (
+                                    <div className="mt-5 flex gap-3 rounded-2xl bg-yellow-50 p-4 text-sm font-semibold text-yellow-800">
+                                        <AlertTriangle size={18} />
+                                        Les images seront remplacées lors de la
+                                        sauvegarde.
+                                    </div>
+                                )}
+
+                                <div className="mt-6 space-y-4">
+                                    {form.images.map((image, index) => (
+                                        <div
+                                            key={`${image.url}-${index}`}
+                                            className="grid gap-4 rounded-3xl bg-neutral-50 p-5 md:grid-cols-[130px_1fr_auto]"
                                         >
-                                            <Plus size={18} />
-                                            Image
-                                        </button>
-                                    </div>
-
-                                    <div className="mt-6 space-y-4">
-                                        {form.images.map((image, index) => (
-                                            <div
-                                                key={`${image.url}-${index}`}
-                                                className="grid gap-4 rounded-3xl bg-neutral-50 p-5 md:grid-cols-[120px_1fr_auto]"
-                                            >
-                                                <div className="overflow-hidden rounded-2xl bg-white">
-                                                    {image.url ? (
-                                                        <img
-                                                            src={image.url}
-                                                            alt={
-                                                                image.altText ||
-                                                                form.name
-                                                            }
-                                                            className="h-28 w-full object-cover"
-                                                        />
-                                                    ) : (
-                                                        <div className="flex h-28 items-center justify-center text-sm text-neutral-400">
-                                                            Image
-                                                        </div>
-                                                    )}
-                                                </div>
-
-                                                <div className="space-y-3">
-                                                    <input
-                                                        value={image.url}
-                                                        onChange={(event) =>
-                                                            updateImage(index, {
-                                                                url: event
-                                                                    .target
-                                                                    .value,
-                                                            })
+                                            <div className="overflow-hidden rounded-2xl bg-white">
+                                                {image.url ? (
+                                                    <img
+                                                        src={image.url}
+                                                        alt={
+                                                            image.altText ||
+                                                            form.name
                                                         }
-                                                        placeholder="URL de l’image"
-                                                        className="w-full rounded-2xl border border-neutral-300 px-4 py-3 text-sm outline-none focus:border-black"
+                                                        className="h-32 w-full object-cover"
                                                     />
-
-                                                    <input
-                                                        value={image.altText}
-                                                        onChange={(event) =>
-                                                            updateImage(index, {
-                                                                altText:
-                                                                    event.target
-                                                                        .value,
-                                                            })
-                                                        }
-                                                        placeholder="Texte alternatif"
-                                                        className="w-full rounded-2xl border border-neutral-300 px-4 py-3 text-sm outline-none focus:border-black"
-                                                    />
-
-                                                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-neutral-300 px-4 py-2 text-sm font-bold hover:border-black">
-                                                        <ImagePlus size={16} />
-                                                        {uploadingImageIndex ===
-                                                        index
-                                                            ? "Upload..."
-                                                            : "Uploader"}
-                                                        <input
-                                                            type="file"
-                                                            accept="image/*"
-                                                            className="hidden"
-                                                            onChange={(event) =>
-                                                                handleImageUpload(
-                                                                    index,
-                                                                    event.target
-                                                                        .files?.[0] ??
-                                                                        null,
-                                                                )
-                                                            }
-                                                        />
-                                                    </label>
-                                                </div>
-
-                                                <div className="flex flex-col gap-2">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                            setMainImage(index)
-                                                        }
-                                                        className={
-                                                            image.isMain
-                                                                ? "rounded-full bg-black px-4 py-2 text-sm font-bold text-white"
-                                                                : "rounded-full border border-neutral-300 px-4 py-2 text-sm font-bold hover:border-black"
-                                                        }
-                                                    >
-                                                        Principale
-                                                    </button>
-
-                                                    <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                            removeImage(index)
-                                                        }
-                                                        className="inline-flex items-center justify-center gap-2 rounded-full border border-red-200 px-4 py-2 text-sm font-bold text-red-700 hover:border-red-600"
-                                                    >
-                                                        <Trash2 size={16} />
-                                                        Supprimer
-                                                    </button>
-                                                </div>
+                                                ) : (
+                                                    <div className="flex h-32 items-center justify-center text-sm text-neutral-400">
+                                                        Image
+                                                    </div>
+                                                )}
                                             </div>
-                                        ))}
-                                    </div>
-                                </section>
 
-                                <section className="rounded-[2rem] bg-white p-8 shadow-sm">
-                                    <div className="flex items-center justify-between gap-4">
+                                            <div className="space-y-3">
+                                                <input
+                                                    value={image.url}
+                                                    onChange={(event) =>
+                                                        updateImage(index, {
+                                                            url: event.target
+                                                                .value,
+                                                        })
+                                                    }
+                                                    placeholder="URL de l’image"
+                                                    className="w-full rounded-2xl border border-neutral-300 px-4 py-3 text-sm outline-none focus:border-black"
+                                                />
+
+                                                <input
+                                                    value={image.altText}
+                                                    onChange={(event) =>
+                                                        updateImage(index, {
+                                                            altText:
+                                                                event.target
+                                                                    .value,
+                                                        })
+                                                    }
+                                                    placeholder="Texte alternatif"
+                                                    className="w-full rounded-2xl border border-neutral-300 px-4 py-3 text-sm outline-none focus:border-black"
+                                                />
+
+                                                <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-neutral-300 px-4 py-2 text-sm font-bold hover:border-black">
+                                                    <ImagePlus size={16} />
+                                                    {uploadingImageIndex ===
+                                                    index
+                                                        ? "Upload..."
+                                                        : "Uploader image"}
+                                                    <input
+                                                        type="file"
+                                                        accept="image/jpeg,image/png,image/webp"
+                                                        className="hidden"
+                                                        onChange={(event) =>
+                                                            handleImageUpload(
+                                                                index,
+                                                                event,
+                                                            )
+                                                        }
+                                                    />
+                                                </label>
+                                            </div>
+
+                                            <div className="flex flex-col gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setMainImage(index)
+                                                    }
+                                                    className={
+                                                        image.isMain
+                                                            ? "rounded-full bg-black px-4 py-2 text-sm font-bold text-white"
+                                                            : "rounded-full border border-neutral-300 px-4 py-2 text-sm font-bold hover:border-black"
+                                                    }
+                                                >
+                                                    Principale
+                                                </button>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        removeImage(index)
+                                                    }
+                                                    className="inline-flex items-center justify-center gap-2 rounded-full border border-red-200 px-4 py-2 text-sm font-bold text-red-700 hover:border-red-600"
+                                                >
+                                                    <Trash2 size={16} />
+                                                    Supprimer
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </section>
+
+                            <section className="rounded-[2rem] bg-white p-8 shadow-sm">
+                                <div className="flex items-center justify-between gap-4">
+                                    <div className="flex items-center gap-3">
+                                        <PackageCheck size={28} />
+
                                         <div>
                                             <h2 className="text-2xl font-black">
                                                 Variantes / stock
                                             </h2>
 
                                             <p className="mt-1 text-sm text-neutral-500">
-                                                Chaque combinaison
-                                                couleur/taille a son propre
-                                                stock.
+                                                Évitez de supprimer des
+                                                variantes utilisées par
+                                                d’anciennes commandes.
                                             </p>
                                         </div>
-
-                                        <button
-                                            type="button"
-                                            onClick={addVariant}
-                                            className="inline-flex items-center gap-2 rounded-full border border-neutral-300 px-5 py-3 text-sm font-bold hover:border-black"
-                                        >
-                                            <Plus size={18} />
-                                            Variante
-                                        </button>
                                     </div>
 
-                                    <div className="mt-6 space-y-4">
-                                        {form.variants.map((variant, index) => (
-                                            <div
-                                                key={`${variant.color}-${variant.size}-${index}`}
-                                                className="grid gap-4 rounded-3xl bg-neutral-50 p-5 md:grid-cols-4"
-                                            >
-                                                <input
-                                                    value={variant.color}
-                                                    onChange={(event) =>
-                                                        updateVariant(index, {
-                                                            color: event.target
-                                                                .value,
-                                                        })
-                                                    }
-                                                    placeholder="Couleur"
-                                                    className="rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
-                                                />
-
-                                                <input
-                                                    value={variant.size}
-                                                    onChange={(event) =>
-                                                        updateVariant(index, {
-                                                            size: event.target
-                                                                .value,
-                                                        })
-                                                    }
-                                                    placeholder="Taille"
-                                                    className="rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
-                                                />
-
-                                                <input
-                                                    type="number"
-                                                    min="0"
-                                                    value={
-                                                        variant.stockQuantity
-                                                    }
-                                                    onChange={(event) =>
-                                                        updateVariant(index, {
-                                                            stockQuantity:
-                                                                event.target
-                                                                    .value,
-                                                        })
-                                                    }
-                                                    placeholder="Stock"
-                                                    className="rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
-                                                />
-
-                                                <div className="flex gap-2">
-                                                    <input
-                                                        value={variant.sku}
-                                                        onChange={(event) =>
-                                                            updateVariant(
-                                                                index,
-                                                                {
-                                                                    sku: event
-                                                                        .target
-                                                                        .value,
-                                                                },
-                                                            )
-                                                        }
-                                                        placeholder="SKU"
-                                                        className="min-w-0 flex-1 rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
-                                                    />
-
-                                                    <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                            removeVariant(index)
-                                                        }
-                                                        className="rounded-2xl border border-red-200 px-4 text-red-700 hover:border-red-600"
-                                                    >
-                                                        <Trash2 size={18} />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </section>
-                            </div>
-
-                            <aside className="h-fit space-y-6">
-                                <section className="rounded-[2rem] bg-white p-8 shadow-sm">
-                                    <div className="flex items-center gap-3">
-                                        <PackageCheck size={28} />
-
-                                        <h2 className="text-2xl font-black">
-                                            Publication
-                                        </h2>
-                                    </div>
-
-                                    <label className="mt-6 block text-sm font-bold">
-                                        Statut
-                                    </label>
-
-                                    <select
-                                        value={form.status}
-                                        onChange={(event) =>
-                                            updateField(
-                                                "status",
-                                                event.target
-                                                    .value as ProductStatus,
-                                            )
-                                        }
-                                        className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 outline-none focus:border-black"
+                                    <button
+                                        type="button"
+                                        onClick={addVariant}
+                                        className="inline-flex items-center gap-2 rounded-full border border-neutral-300 px-5 py-3 text-sm font-bold hover:border-black"
                                     >
-                                        {PRODUCT_STATUS_OPTIONS.map(
-                                            (status) => (
-                                                <option
-                                                    key={status.value}
-                                                    value={status.value}
-                                                >
-                                                    {status.label}
-                                                </option>
-                                            ),
-                                        )}
-                                    </select>
+                                        <Plus size={18} />
+                                        Variante
+                                    </button>
+                                </div>
 
-                                    <div className="mt-6 space-y-4">
-                                        <label className="flex items-center justify-between gap-4 rounded-2xl bg-neutral-50 p-4 text-sm font-bold">
-                                            Produit en avant
-                                            <input
-                                                type="checkbox"
-                                                checked={form.isFeatured}
-                                                onChange={(event) =>
-                                                    updateField(
-                                                        "isFeatured",
-                                                        event.target.checked,
-                                                    )
-                                                }
-                                            />
-                                        </label>
-
-                                        <label className="flex items-center justify-between gap-4 rounded-2xl bg-neutral-50 p-4 text-sm font-bold">
-                                            Nouveauté
-                                            <input
-                                                type="checkbox"
-                                                checked={form.isNewArrival}
-                                                onChange={(event) =>
-                                                    updateField(
-                                                        "isNewArrival",
-                                                        event.target.checked,
-                                                    )
-                                                }
-                                            />
-                                        </label>
-
-                                        <label className="flex items-center justify-between gap-4 rounded-2xl bg-neutral-50 p-4 text-sm font-bold">
-                                            En promotion
-                                            <input
-                                                type="checkbox"
-                                                checked={form.isOnSale}
-                                                onChange={(event) =>
-                                                    updateField(
-                                                        "isOnSale",
-                                                        event.target.checked,
-                                                    )
-                                                }
-                                            />
-                                        </label>
+                                {variantsTouched && (
+                                    <div className="mt-5 flex gap-3 rounded-2xl bg-yellow-50 p-4 text-sm font-semibold text-yellow-800">
+                                        <AlertTriangle size={18} />
+                                        Les variantes seront remplacées lors de
+                                        la sauvegarde. Vérifiez bien les
+                                        tailles, couleurs, SKU et stocks.
                                     </div>
-                                </section>
+                                )}
 
-                                <section className="rounded-[2rem] bg-white p-8 shadow-sm">
-                                    <h2 className="text-2xl font-black">
-                                        Promotion
-                                    </h2>
-
-                                    <div className="mt-6 space-y-5">
-                                        <div>
-                                            <label className="text-sm font-bold">
-                                                Type de remise
-                                            </label>
-
-                                            <select
-                                                value={form.discountType}
-                                                disabled={!form.isOnSale}
+                                <div className="mt-6 space-y-4">
+                                    {form.variants.map((variant, index) => (
+                                        <div
+                                            key={`${variant.color}-${variant.size}-${index}`}
+                                            className="grid gap-4 rounded-3xl bg-neutral-50 p-5 md:grid-cols-[1fr_120px_120px_1fr_auto]"
+                                        >
+                                            <input
+                                                value={variant.color}
                                                 onChange={(event) =>
-                                                    updateField(
-                                                        "discountType",
-                                                        event.target
-                                                            .value as DiscountType,
-                                                    )
+                                                    updateVariant(index, {
+                                                        color: event.target
+                                                            .value,
+                                                    })
                                                 }
-                                                className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 outline-none focus:border-black disabled:bg-neutral-100"
-                                            >
-                                                {DISCOUNT_TYPE_OPTIONS.map(
-                                                    (discountType) => (
-                                                        <option
-                                                            key={
-                                                                discountType.value
-                                                            }
-                                                            value={
-                                                                discountType.value
-                                                            }
-                                                        >
-                                                            {discountType.label}
-                                                        </option>
-                                                    ),
-                                                )}
-                                            </select>
-                                        </div>
+                                                placeholder="Couleur"
+                                                className="rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
+                                            />
 
-                                        <div>
-                                            <label className="text-sm font-bold">
-                                                Valeur
-                                            </label>
+                                            <input
+                                                value={variant.size}
+                                                onChange={(event) =>
+                                                    updateVariant(index, {
+                                                        size: event.target
+                                                            .value,
+                                                    })
+                                                }
+                                                placeholder="Taille"
+                                                className="rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
+                                            />
 
                                             <input
                                                 type="number"
-                                                step="0.001"
                                                 min="0"
-                                                disabled={!form.isOnSale}
-                                                value={form.discountValue}
+                                                value={variant.stockQuantity}
                                                 onChange={(event) =>
-                                                    updateField(
-                                                        "discountValue",
-                                                        event.target.value,
-                                                    )
+                                                    updateVariant(index, {
+                                                        stockQuantity:
+                                                            event.target.value,
+                                                    })
                                                 }
-                                                className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black disabled:bg-neutral-100"
+                                                placeholder="Stock"
+                                                className="rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
                                             />
-                                        </div>
-
-                                        <div>
-                                            <label className="text-sm font-bold">
-                                                Date début
-                                            </label>
 
                                             <input
-                                                type="date"
-                                                disabled={!form.isOnSale}
-                                                value={form.discountStartDate}
+                                                value={variant.sku}
                                                 onChange={(event) =>
-                                                    updateField(
-                                                        "discountStartDate",
-                                                        event.target.value,
-                                                    )
+                                                    updateVariant(index, {
+                                                        sku: event.target.value,
+                                                    })
                                                 }
-                                                className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black disabled:bg-neutral-100"
+                                                placeholder="SKU"
+                                                className="rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
                                             />
-                                        </div>
 
-                                        <div>
-                                            <label className="text-sm font-bold">
-                                                Date fin
-                                            </label>
-
-                                            <input
-                                                type="date"
-                                                disabled={!form.isOnSale}
-                                                value={form.discountEndDate}
-                                                onChange={(event) =>
-                                                    updateField(
-                                                        "discountEndDate",
-                                                        event.target.value,
-                                                    )
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    removeVariant(index)
                                                 }
-                                                className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black disabled:bg-neutral-100"
-                                            />
+                                                className="rounded-2xl border border-red-200 px-4 text-red-700 hover:border-red-600"
+                                            >
+                                                <Trash2 size={18} />
+                                            </button>
                                         </div>
-                                    </div>
-                                </section>
-
-                                <button
-                                    type="submit"
-                                    disabled={isSaving}
-                                    className="flex w-full items-center justify-center gap-2 rounded-full bg-black px-6 py-4 text-sm font-black text-white transition hover:bg-neutral-800 disabled:opacity-60"
-                                >
-                                    <Save size={18} />
-
-                                    {isSaving ? "Sauvegarde..." : "Sauvegarder"}
-                                </button>
-                            </aside>
+                                    ))}
+                                </div>
+                            </section>
                         </div>
+
+                        <aside className="h-fit space-y-6 lg:sticky lg:top-6">
+                            <section className="rounded-[2rem] bg-white p-6 shadow-sm">
+                                <p className="text-sm uppercase tracking-[0.25em] text-neutral-500">
+                                    Prévisualisation
+                                </p>
+
+                                <div className="mt-5 overflow-hidden rounded-[2rem] bg-neutral-100">
+                                    {mainImage ? (
+                                        <img
+                                            src={mainImage.url}
+                                            alt={mainImage.altText || form.name}
+                                            className="h-80 w-full object-cover"
+                                        />
+                                    ) : (
+                                        <div className="flex h-80 items-center justify-center text-neutral-400">
+                                            Image produit
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="mt-6">
+                                    <div className="flex flex-wrap gap-2">
+                                        <span
+                                            className={getStatusClassName(
+                                                form.status,
+                                            )}
+                                        >
+                                            {getStatusLabel(form.status)}
+                                        </span>
+
+                                        {form.isNewArrival && (
+                                            <span className="rounded-full bg-black px-3 py-1 text-xs font-bold text-white">
+                                                Nouveauté
+                                            </span>
+                                        )}
+
+                                        {form.isFeatured && (
+                                            <span className="rounded-full bg-neutral-900 px-3 py-1 text-xs font-bold text-white">
+                                                En avant
+                                            </span>
+                                        )}
+
+                                        {form.isOnSale && (
+                                            <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-bold text-red-700">
+                                                Promo
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    <h3 className="mt-4 text-2xl font-black">
+                                        {form.name || "Nom du produit"}
+                                    </h3>
+
+                                    <p className="mt-2 text-sm text-neutral-500">
+                                        Réf.{" "}
+                                        {form.reference.trim().toUpperCase() ||
+                                            "REFERENCE"}
+                                    </p>
+
+                                    <p className="mt-2 text-neutral-600">
+                                        {selectedCategory?.name ??
+                                            "Catégorie non sélectionnée"}
+                                    </p>
+
+                                    <p className="mt-4 text-sm text-neutral-600">
+                                        {form.shortDescription ||
+                                            "Description courte du produit."}
+                                    </p>
+
+                                    <div className="mt-5">
+                                        {form.isOnSale &&
+                                        Number(form.price) > 0 ? (
+                                            <>
+                                                <p className="text-sm text-neutral-400 line-through">
+                                                    {formatPrice(form.price)}
+                                                </p>
+
+                                                <p className="text-3xl font-black">
+                                                    {formatPrice(finalPrice)}
+                                                </p>
+                                            </>
+                                        ) : (
+                                            <p className="text-3xl font-black">
+                                                {formatPrice(form.price)}
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    <div className="mt-6 rounded-2xl bg-neutral-50 p-4">
+                                        <p className="text-sm font-bold">
+                                            Stock total
+                                        </p>
+
+                                        <p className="mt-1 text-2xl font-black">
+                                            {totalStock}
+                                        </p>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <section className="rounded-[2rem] bg-white p-6 shadow-sm">
+                                <h2 className="text-2xl font-black">
+                                    Publication
+                                </h2>
+
+                                <label className="mt-6 block text-sm font-bold">
+                                    Statut
+                                </label>
+
+                                <select
+                                    value={form.status}
+                                    onChange={(event) =>
+                                        updateField(
+                                            "status",
+                                            event.target.value as ProductStatus,
+                                        )
+                                    }
+                                    className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 outline-none focus:border-black"
+                                >
+                                    {PRODUCT_STATUS_OPTIONS.map((status) => (
+                                        <option
+                                            key={status.value}
+                                            value={status.value}
+                                        >
+                                            {status.label}
+                                        </option>
+                                    ))}
+                                </select>
+
+                                {form.status === "ARCHIVED" && (
+                                    <p className="mt-4 rounded-2xl bg-red-50 p-4 text-sm font-semibold text-red-700">
+                                        Produit archivé : il n’est pas supprimé,
+                                        mais il n’est plus visible côté client.
+                                    </p>
+                                )}
+
+                                <div className="mt-6 space-y-4">
+                                    <label className="flex items-center justify-between gap-4 rounded-2xl bg-neutral-50 p-4 text-sm font-bold">
+                                        Produit en avant
+                                        <input
+                                            type="checkbox"
+                                            checked={form.isFeatured}
+                                            onChange={(event) =>
+                                                updateField(
+                                                    "isFeatured",
+                                                    event.target.checked,
+                                                )
+                                            }
+                                        />
+                                    </label>
+
+                                    <label className="flex items-center justify-between gap-4 rounded-2xl bg-neutral-50 p-4 text-sm font-bold">
+                                        Nouveauté
+                                        <input
+                                            type="checkbox"
+                                            checked={form.isNewArrival}
+                                            onChange={(event) =>
+                                                updateField(
+                                                    "isNewArrival",
+                                                    event.target.checked,
+                                                )
+                                            }
+                                        />
+                                    </label>
+                                </div>
+                            </section>
+
+                            <section className="rounded-[2rem] bg-white p-6 shadow-sm">
+                                <h2 className="text-2xl font-black">
+                                    Checklist
+                                </h2>
+
+                                <div className="mt-4 space-y-2 text-sm">
+                                    <p>
+                                        {form.reference.trim() ? "✅" : "⬜"}{" "}
+                                        Référence
+                                    </p>
+
+                                    <p>{form.name.trim() ? "✅" : "⬜"} Nom</p>
+
+                                    <p>
+                                        {form.categoryId ? "✅" : "⬜"}{" "}
+                                        Catégorie
+                                    </p>
+
+                                    <p>
+                                        {Number(form.price) > 0 ? "✅" : "⬜"}{" "}
+                                        Prix
+                                    </p>
+
+                                    <p>
+                                        {form.images.some((image) =>
+                                            image.url.trim(),
+                                        )
+                                            ? "✅"
+                                            : "⬜"}{" "}
+                                        Image
+                                    </p>
+
+                                    <p>{totalStock > 0 ? "✅" : "⬜"} Stock</p>
+                                </div>
+                            </section>
+
+                            <button
+                                type="submit"
+                                disabled={isSaving}
+                                className="flex w-full items-center justify-center gap-2 rounded-full bg-black px-6 py-4 text-sm font-black text-white transition hover:bg-neutral-800 disabled:opacity-60"
+                            >
+                                <Save size={18} />
+
+                                {isSaving ? "Sauvegarde..." : "Sauvegarder"}
+                            </button>
+
+                            {form.status === "PUBLISHED" && (
+                                <Link
+                                    href={`/produit/${form.slug}`}
+                                    className="flex w-full justify-center rounded-full border border-neutral-300 px-6 py-4 text-sm font-black hover:border-black"
+                                >
+                                    Voir côté boutique
+                                </Link>
+                            )}
+                        </aside>
                     </form>
                 )}
             </section>
