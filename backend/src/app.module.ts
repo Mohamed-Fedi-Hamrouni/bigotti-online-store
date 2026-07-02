@@ -6,6 +6,7 @@ import { AuthModule } from './auth/auth.module';
 import { CategoriesModule } from './categories/categories.module';
 import { CollectionsModule } from './collections/collections.module';
 import { CustomerAuthModule } from './customer-auth/customer-auth.module';
+import { CustomersModule } from './customers/customers.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { OrdersModule } from './orders/orders.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -28,6 +29,7 @@ import { UsersModule } from './users/users.module';
     DashboardModule,
     UploadsModule,
     CustomerAuthModule,
+    CustomersModule,
   ],
   controllers: [AppController],
   providers: [AppService],

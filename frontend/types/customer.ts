@@ -1,3 +1,5 @@
+import type { AdminOrder } from "@/types/order";
+
 export type Customer = {
     id: string;
     fullName: string;
@@ -38,4 +40,11 @@ export type ChangeCustomerPasswordPayload = {
 
 export type ChangeCustomerPasswordResponse = {
     message: string;
+};
+
+export type AdminCustomer = Customer & {
+    orders: AdminOrder[];
+    ordersCount: number;
+    totalSpent: number | string;
+    lastOrderAt: string | null;
 };
