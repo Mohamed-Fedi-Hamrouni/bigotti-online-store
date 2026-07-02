@@ -182,10 +182,33 @@ export default function AdminProductsPage() {
         router.push("/admin/login");
     }
 
-    async function handleStatusChange(
-        productId: string,
-        status: ProductStatus,
-    ) {
+    async function handleStatusChange(product: Product, status: ProductStatus) {
+        if (product.status === status) {
+            return;
+        }
+
+        if (status === "ARCHIVED") {
+            const confirmed = window.confirm(
+                `Confirmer l’archivage du produit "${product.name}" ?\n\nLe produit ne sera pas supprimé. Il ne sera plus visible côté client, mais il restera disponible dans l’administration.`,
+            );
+
+            if (!confirmed) {
+                return;
+            }
+        }
+
+        if (product.status === "ARCHIVED" && status !== "ARCHIVED") {
+            const confirmed = window.confirm(
+                `Réactiver le produit "${product.name}" en statut "${getStatusLabel(
+                    status,
+                )}" ?`,
+            );
+
+            if (!confirmed) {
+                return;
+            }
+        }
+
         const token = window.localStorage.getItem("bigotti-admin-token");
 
         if (!token) {
@@ -194,17 +217,19 @@ export default function AdminProductsPage() {
         }
 
         try {
-            setUpdatingProductId(productId);
+            setUpdatingProductId(product.id);
 
             const updatedProduct = await updateProductStatus(
                 token,
-                productId,
+                product.id,
                 status,
             );
 
             setProducts((currentProducts) =>
-                currentProducts.map((product) =>
-                    product.id === productId ? updatedProduct : product,
+                currentProducts.map((currentProduct) =>
+                    currentProduct.id === product.id
+                        ? updatedProduct
+                        : currentProduct,
                 ),
             );
         } catch (err) {
@@ -283,8 +308,8 @@ export default function AdminProductsPage() {
                         <h1 className="mt-2 text-4xl font-bold">Produits</h1>
 
                         <p className="mt-3 text-neutral-600">
-                            Gérez, filtrez et modifiez les articles visibles
-                            dans la boutique.
+                            Gérez, filtrez, modifiez et archivez les articles de
+                            la boutique sans suppression définitive.
                         </p>
                     </div>
 
@@ -475,10 +500,17 @@ export default function AdminProductsPage() {
                             product.images.find((image) => image.isMain) ??
                             product.images[0];
 
+                        const isArchived = product.status === "ARCHIVED";
+                        const isUpdating = updatingProductId === product.id;
+
                         return (
                             <article
                                 key={product.id}
-                                className="grid gap-5 rounded-[2rem] bg-white p-5 shadow-sm md:grid-cols-[140px_1fr_280px]"
+                                className={
+                                    isArchived
+                                        ? "grid gap-5 rounded-[2rem] border border-red-100 bg-white p-5 opacity-80 shadow-sm md:grid-cols-[140px_1fr_280px]"
+                                        : "grid gap-5 rounded-[2rem] bg-white p-5 shadow-sm md:grid-cols-[140px_1fr_280px]"
+                                }
                             >
                                 <div className="overflow-hidden rounded-2xl bg-neutral-100">
                                     {mainImage ? (
@@ -543,6 +575,14 @@ export default function AdminProductsPage() {
                                         Stock total : {product.totalStock}
                                     </p>
 
+                                    {isArchived && (
+                                        <p className="mt-3 rounded-2xl bg-red-50 p-3 text-sm font-semibold text-red-700">
+                                            Ce produit est archivé. Il reste
+                                            dans l’administration, mais il n’est
+                                            pas visible dans la boutique.
+                                        </p>
+                                    )}
+
                                     <div className="mt-4 flex flex-wrap gap-2">
                                         {product.variants.map((variant) => (
                                             <span
@@ -582,12 +622,10 @@ export default function AdminProductsPage() {
 
                                         <select
                                             value={product.status}
-                                            disabled={
-                                                updatingProductId === product.id
-                                            }
+                                            disabled={isUpdating}
                                             onChange={(event) =>
                                                 handleStatusChange(
-                                                    product.id,
+                                                    product,
                                                     event.target
                                                         .value as ProductStatus,
                                                 )
@@ -606,7 +644,7 @@ export default function AdminProductsPage() {
                                             )}
                                         </select>
 
-                                        {updatingProductId === product.id && (
+                                        {isUpdating && (
                                             <p className="mt-2 text-sm text-neutral-500">
                                                 Mise à jour...
                                             </p>
@@ -615,15 +653,45 @@ export default function AdminProductsPage() {
 
                                     <Link
                                         href={`/admin/produits/${product.id}/modifier`}
-                                        className="inline-flex rounded-full bg-black px-5 py-2 text-sm font-bold text-white"
+                                        className="inline-flex w-full justify-center rounded-full bg-black px-5 py-2 text-sm font-bold text-white"
                                     >
                                         Modifier
                                     </Link>
 
+                                    {!isArchived ? (
+                                        <button
+                                            type="button"
+                                            disabled={isUpdating}
+                                            onClick={() =>
+                                                handleStatusChange(
+                                                    product,
+                                                    "ARCHIVED",
+                                                )
+                                            }
+                                            className="inline-flex w-full justify-center rounded-full border border-red-200 px-5 py-2 text-sm font-bold text-red-700 hover:border-red-600 disabled:opacity-50"
+                                        >
+                                            Archiver
+                                        </button>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            disabled={isUpdating}
+                                            onClick={() =>
+                                                handleStatusChange(
+                                                    product,
+                                                    "DRAFT",
+                                                )
+                                            }
+                                            className="inline-flex w-full justify-center rounded-full border border-green-200 px-5 py-2 text-sm font-bold text-green-700 hover:border-green-600 disabled:opacity-50"
+                                        >
+                                            Réactiver en brouillon
+                                        </button>
+                                    )}
+
                                     {product.status === "PUBLISHED" ? (
                                         <Link
                                             href={`/produit/${product.slug}`}
-                                            className="inline-flex rounded-full border border-neutral-300 px-5 py-2 text-sm font-semibold hover:border-black"
+                                            className="inline-flex w-full justify-center rounded-full border border-neutral-300 px-5 py-2 text-sm font-semibold hover:border-black"
                                         >
                                             Voir boutique
                                         </Link>
