@@ -382,32 +382,42 @@ export default function AdminCustomersPage() {
                                             </div>
                                         </div>
 
-                                        <button
-                                            type="button"
-                                            disabled={
-                                                actionLoadingId === customer.id
-                                            }
-                                            onClick={() =>
-                                                handleToggleStatus(customer)
-                                            }
-                                            className={
-                                                customer.isActive
-                                                    ? "inline-flex items-center justify-center gap-2 rounded-full border border-red-200 px-5 py-3 text-sm font-bold text-red-700 transition hover:border-red-600 disabled:opacity-50"
-                                                    : "inline-flex items-center justify-center gap-2 rounded-full border border-green-200 px-5 py-3 text-sm font-bold text-green-700 transition hover:border-green-600 disabled:opacity-50"
-                                            }
-                                        >
-                                            {customer.isActive ? (
-                                                <ShieldOff size={18} />
-                                            ) : (
-                                                <ShieldCheck size={18} />
-                                            )}
+                                        <div className="flex flex-col gap-3">
+                                            <Link
+                                                href={`/admin/clients/${customer.id}`}
+                                                className="inline-flex items-center justify-center rounded-full bg-black px-5 py-3 text-sm font-bold text-white"
+                                            >
+                                                Détail
+                                            </Link>
 
-                                            {actionLoadingId === customer.id
-                                                ? "Mise à jour..."
-                                                : customer.isActive
-                                                  ? "Désactiver"
-                                                  : "Activer"}
-                                        </button>
+                                            <button
+                                                type="button"
+                                                disabled={
+                                                    actionLoadingId ===
+                                                    customer.id
+                                                }
+                                                onClick={() =>
+                                                    handleToggleStatus(customer)
+                                                }
+                                                className={
+                                                    customer.isActive
+                                                        ? "inline-flex items-center justify-center gap-2 rounded-full border border-red-200 px-5 py-3 text-sm font-bold text-red-700 transition hover:border-red-600 disabled:opacity-50"
+                                                        : "inline-flex items-center justify-center gap-2 rounded-full border border-green-200 px-5 py-3 text-sm font-bold text-green-700 transition hover:border-green-600 disabled:opacity-50"
+                                                }
+                                            >
+                                                {customer.isActive ? (
+                                                    <ShieldOff size={18} />
+                                                ) : (
+                                                    <ShieldCheck size={18} />
+                                                )}
+
+                                                {actionLoadingId === customer.id
+                                                    ? "Mise à jour..."
+                                                    : customer.isActive
+                                                      ? "Désactiver"
+                                                      : "Activer"}
+                                            </button>
+                                        </div>
                                     </div>
 
                                     {customer.orders.length > 0 && (
