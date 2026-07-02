@@ -18,7 +18,7 @@ const ORDER_STATUS_OPTIONS: Array<{
     { value: "CANCELLED", label: "Annulée" },
 ];
 
-const PAYMENT_STATUS_LABELS = {
+const PAYMENT_STATUS_LABELS: Record<string, string> = {
     UNPAID: "Non payé",
     PAID: "Payé",
     FAILED: "Échoué",
@@ -33,6 +33,10 @@ function formatPrice(value: number | string | null | undefined) {
     }
 
     return `${numericValue.toFixed(3)} TND`;
+}
+
+function formatDate(value: string) {
+    return new Date(value).toLocaleDateString("fr-FR");
 }
 
 function getOrderStatusLabel(status: OrderStatus) {
@@ -132,6 +136,7 @@ export default function AdminOrdersPage() {
                         </Link>
 
                         <button
+                            type="button"
                             onClick={logout}
                             className="text-sm font-medium text-neutral-600 hover:text-black"
                         >
@@ -151,14 +156,28 @@ export default function AdminOrdersPage() {
                         <h1 className="mt-2 text-4xl font-bold">
                             Commandes clients
                         </h1>
+
+                        <p className="mt-2 text-neutral-600">
+                            Consultez les commandes, les articles et les
+                            statuts.
+                        </p>
                     </div>
 
-                    <Link
-                        href="/admin"
-                        className="rounded-full border border-neutral-300 px-5 py-3 text-sm font-semibold hover:border-black"
-                    >
-                        Retour dashboard
-                    </Link>
+                    <div className="flex flex-wrap gap-3">
+                        <Link
+                            href="/admin"
+                            className="rounded-full border border-neutral-300 px-5 py-3 text-sm font-semibold hover:border-black"
+                        >
+                            Retour dashboard
+                        </Link>
+
+                        <Link
+                            href="/admin/clients"
+                            className="rounded-full bg-black px-5 py-3 text-sm font-semibold text-white"
+                        >
+                            Clients
+                        </Link>
+                    </div>
                 </div>
 
                 {isLoading && (
@@ -221,6 +240,10 @@ export default function AdminOrdersPage() {
                                         Adresse : {order.deliveryAddress},{" "}
                                         {order.deliveryCity}
                                     </p>
+
+                                    <p className="mt-1 text-sm text-neutral-500">
+                                        Date : {formatDate(order.createdAt)}
+                                    </p>
                                 </div>
 
                                 <div className="text-left lg:text-right">
@@ -238,6 +261,13 @@ export default function AdminOrdersPage() {
                                             ? "Paiement à la livraison"
                                             : "Paiement carte"}
                                     </p>
+
+                                    <Link
+                                        href={`/admin/commandes/${order.id}`}
+                                        className="mt-4 inline-flex rounded-full bg-black px-5 py-3 text-sm font-bold text-white"
+                                    >
+                                        Détail
+                                    </Link>
                                 </div>
                             </div>
 
@@ -298,6 +328,17 @@ export default function AdminOrdersPage() {
                                             Mise à jour...
                                         </p>
                                     )}
+
+                                    <Link
+                                        href={`/suivi-commande?orderNumber=${encodeURIComponent(
+                                            order.orderNumber,
+                                        )}&phone=${encodeURIComponent(
+                                            order.customerPhone,
+                                        )}`}
+                                        className="mt-4 inline-flex w-full justify-center rounded-full border border-neutral-300 px-5 py-3 text-sm font-bold hover:border-black"
+                                    >
+                                        Suivi client
+                                    </Link>
                                 </div>
                             </div>
                         </article>
