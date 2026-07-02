@@ -43,6 +43,9 @@ export default function AdminHomePage() {
         user?.role === "SUPER_ADMIN" ||
         user?.role === "MANAGER";
 
+    const canManageCatalog =
+        user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
+
     return (
         <main className="min-h-screen bg-neutral-50 text-neutral-950">
             <header className="border-b border-neutral-200 bg-white">
@@ -99,8 +102,8 @@ export default function AdminHomePage() {
                             <h2 className="text-2xl font-bold">Produits</h2>
 
                             <p className="mt-3 text-neutral-500">
-                                Voir les produits et ajouter de nouveaux
-                                articles.
+                                Voir les produits, modifier les articles et
+                                gérer les stocks.
                             </p>
                         </Link>
                     )}
@@ -115,6 +118,47 @@ export default function AdminHomePage() {
                             <p className="mt-3 text-neutral-500">
                                 Voir les clients, leurs commandes, leur statut
                                 et le total dépensé.
+                            </p>
+                        </Link>
+                    )}
+
+                    {canManageCatalog && (
+                        <Link
+                            href="/admin/categories"
+                            className="rounded-3xl bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
+                        >
+                            <h2 className="text-2xl font-bold">Catégories</h2>
+
+                            <p className="mt-3 text-neutral-500">
+                                Créer, modifier, activer ou désactiver les
+                                catégories.
+                            </p>
+                        </Link>
+                    )}
+
+                    {canManageCatalog && (
+                        <Link
+                            href="/admin/collections"
+                            className="rounded-3xl bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
+                        >
+                            <h2 className="text-2xl font-bold">Collections</h2>
+
+                            <p className="mt-3 text-neutral-500">
+                                Gérer les collections affichées dans la
+                                boutique.
+                            </p>
+                        </Link>
+                    )}
+
+                    {canManageCatalog && (
+                        <Link
+                            href="/admin/promotions"
+                            className="rounded-3xl bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
+                        >
+                            <h2 className="text-2xl font-bold">Promotions</h2>
+
+                            <p className="mt-3 text-neutral-500">
+                                Créer et gérer les campagnes de solde.
                             </p>
                         </Link>
                     )}

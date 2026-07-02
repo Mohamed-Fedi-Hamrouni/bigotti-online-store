@@ -10,11 +10,17 @@ import type {
 import type {
     Category,
     Collection,
+    CreateCategoryPayload,
+    CreateCollectionPayload,
     CreateProductPayload,
+    CreateSaleCampaignPayload,
     Product,
     ProductStatus,
     SaleCampaign,
+    UpdateCategoryPayload,
+    UpdateCollectionPayload,
     UpdateProductPayload,
+    UpdateSaleCampaignPayload,
 } from "@/types/product";
 
 import type {
@@ -171,6 +177,47 @@ export async function getAdminCategories(token: string) {
     });
 }
 
+export async function createCategory(
+    token: string,
+    payload: CreateCategoryPayload,
+) {
+    return fetchJson<Category>("/categories", {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+    });
+}
+
+export async function updateCategory(
+    token: string,
+    categoryId: string,
+    payload: UpdateCategoryPayload,
+) {
+    return fetchJson<Category>(`/categories/${categoryId}`, {
+        method: "PATCH",
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+    });
+}
+
+export async function updateCategoryStatus(
+    token: string,
+    categoryId: string,
+    isActive: boolean,
+) {
+    return fetchJson<Category>(`/categories/${categoryId}/status`, {
+        method: "PATCH",
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ isActive }),
+    });
+}
+
 export async function getAdminCollections(token: string) {
     return fetchJson<Collection[]>("/collections/admin", {
         headers: {
@@ -179,11 +226,93 @@ export async function getAdminCollections(token: string) {
     });
 }
 
+export async function createCollection(
+    token: string,
+    payload: CreateCollectionPayload,
+) {
+    return fetchJson<Collection>("/collections", {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+    });
+}
+
+export async function updateCollection(
+    token: string,
+    collectionId: string,
+    payload: UpdateCollectionPayload,
+) {
+    return fetchJson<Collection>(`/collections/${collectionId}`, {
+        method: "PATCH",
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+    });
+}
+
+export async function updateCollectionStatus(
+    token: string,
+    collectionId: string,
+    isActive: boolean,
+) {
+    return fetchJson<Collection>(`/collections/${collectionId}/status`, {
+        method: "PATCH",
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ isActive }),
+    });
+}
+
 export async function getAdminSaleCampaigns(token: string) {
     return fetchJson<SaleCampaign[]>("/sale-campaigns/admin", {
         headers: {
             Authorization: `Bearer ${token}`,
         },
+    });
+}
+
+export async function createSaleCampaign(
+    token: string,
+    payload: CreateSaleCampaignPayload,
+) {
+    return fetchJson<SaleCampaign>("/sale-campaigns", {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+    });
+}
+
+export async function updateSaleCampaign(
+    token: string,
+    campaignId: string,
+    payload: UpdateSaleCampaignPayload,
+) {
+    return fetchJson<SaleCampaign>(`/sale-campaigns/${campaignId}`, {
+        method: "PATCH",
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+    });
+}
+
+export async function updateSaleCampaignStatus(
+    token: string,
+    campaignId: string,
+    isActive: boolean,
+) {
+    return fetchJson<SaleCampaign>(`/sale-campaigns/${campaignId}/status`, {
+        method: "PATCH",
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ isActive }),
     });
 }
 

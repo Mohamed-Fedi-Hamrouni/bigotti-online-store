@@ -8,6 +8,8 @@ export type Category = {
     slug: string;
     description: string | null;
     isActive: boolean;
+    createdAt?: string;
+    updatedAt?: string;
 };
 
 export type Collection = {
@@ -19,6 +21,8 @@ export type Collection = {
     isFeatured: boolean;
     startDate: string | null;
     endDate: string | null;
+    createdAt?: string;
+    updatedAt?: string;
 };
 
 export type SaleCampaign = {
@@ -29,6 +33,8 @@ export type SaleCampaign = {
     isActive: boolean;
     startDate: string | null;
     endDate: string | null;
+    createdAt?: string;
+    updatedAt?: string;
 };
 
 export type ProductImage = {
@@ -141,4 +147,56 @@ export type UpdateProductPayload = {
     isOnSale?: boolean;
     images?: CreateProductImagePayload[];
     variants?: CreateProductVariantPayload[];
+};
+
+export type CreateCategoryPayload = {
+    name: string;
+    slug?: string;
+    description?: string;
+    isActive?: boolean;
+};
+
+export type UpdateCategoryPayload = {
+    name?: string;
+    slug?: string;
+    description?: string | null;
+    isActive?: boolean;
+};
+
+export type CreateCollectionPayload = {
+    name: string;
+    slug?: string;
+    description?: string;
+    isActive?: boolean;
+    isFeatured?: boolean;
+    startDate?: string | null;
+    endDate?: string | null;
+};
+
+export type UpdateCollectionPayload = {
+    name?: string;
+    slug?: string;
+    description?: string | null;
+    isActive?: boolean;
+    isFeatured?: boolean;
+    startDate?: string | null;
+    endDate?: string | null;
+};
+
+export type CreateSaleCampaignPayload = {
+    name: string;
+    slug?: string;
+    description?: string;
+    isActive?: boolean;
+    startDate?: string | null;
+    endDate?: string | null;
+};
+
+export type UpdateSaleCampaignPayload = {
+    name?: string;
+    slug?: string;
+    description?: string | null;
+    isActive?: boolean;
+    startDate?: string | null;
+    endDate?: string | null;
 };
