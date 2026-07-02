@@ -3,11 +3,15 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LogOut, PackageCheck, Save, UserRound } from "lucide-react";
+import { KeyRound, LogOut, PackageCheck, Save, UserRound } from "lucide-react";
 import { useCustomerAuth } from "@/components/customer-auth/CustomerAuthProvider";
 import { PublicFooter } from "@/components/layout/PublicFooter";
 import { PublicHeader } from "@/components/layout/PublicHeader";
-import { getCustomerOrders, updateCustomerProfile } from "@/lib/api";
+import {
+    changeCustomerPassword,
+    getCustomerOrders,
+    updateCustomerProfile,
+} from "@/lib/api";
 import type { AdminOrder } from "@/types/order";
 
 function formatPrice(value: number | string | null | undefined) {
@@ -54,6 +58,13 @@ export default function CustomerAccountPage() {
     const [profileLoading, setProfileLoading] = useState(false);
     const [profileSuccess, setProfileSuccess] = useState("");
     const [profileError, setProfileError] = useState("");
+
+    const [currentPassword, setCurrentPassword] = useState("");
+    const [newPassword, setNewPassword] = useState("");
+    const [confirmNewPassword, setConfirmNewPassword] = useState("");
+    const [passwordLoading, setPasswordLoading] = useState(false);
+    const [passwordSuccess, setPasswordSuccess] = useState("");
+    const [passwordError, setPasswordError] = useState("");
 
     useEffect(() => {
         if (!isLoading && !isAuthenticated) {
@@ -119,6 +130,54 @@ export default function CustomerAccountPage() {
             );
         } finally {
             setProfileLoading(false);
+        }
+    }
+
+    async function handleChangePassword(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+
+        if (!token) {
+            setPasswordError("Session client invalide.");
+            return;
+        }
+
+        setPasswordSuccess("");
+        setPasswordError("");
+
+        if (newPassword !== confirmNewPassword) {
+            setPasswordError(
+                "Les nouveaux mots de passe ne correspondent pas.",
+            );
+            return;
+        }
+
+        if (newPassword.length < 6) {
+            setPasswordError(
+                "Le nouveau mot de passe doit contenir au moins 6 caractères.",
+            );
+            return;
+        }
+
+        try {
+            setPasswordLoading(true);
+
+            const response = await changeCustomerPassword(token, {
+                currentPassword,
+                newPassword,
+            });
+
+            setPasswordSuccess(response.message);
+            setCurrentPassword("");
+            setNewPassword("");
+            setConfirmNewPassword("");
+        } catch (err) {
+            setPasswordError(
+                err instanceof Error
+                    ? err.message
+                    : "Erreur lors du changement du mot de passe.",
+            );
+        } finally {
+            setPasswordLoading(false);
         }
     }
 
@@ -294,6 +353,114 @@ export default function CustomerAccountPage() {
                                         />
                                     </div>
                                 </div>
+                            </form>
+
+                            <form
+                                onSubmit={handleChangePassword}
+                                className="rounded-[2rem] bg-white p-8 shadow-sm"
+                            >
+                                <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
+                                    <div>
+                                        <p className="text-sm uppercase tracking-[0.25em] text-neutral-500">
+                                            Sécurité
+                                        </p>
+
+                                        <h2 className="mt-2 text-3xl font-black">
+                                            Changer mon mot de passe
+                                        </h2>
+
+                                        <p className="mt-3 text-neutral-600">
+                                            Utilisez un mot de passe différent
+                                            de votre mot de passe actuel.
+                                        </p>
+                                    </div>
+
+                                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-black text-white">
+                                        <KeyRound size={24} />
+                                    </div>
+                                </div>
+
+                                {passwordSuccess && (
+                                    <div className="mt-6 rounded-2xl bg-green-50 p-4 text-sm font-semibold text-green-700">
+                                        {passwordSuccess}
+                                    </div>
+                                )}
+
+                                {passwordError && (
+                                    <div className="mt-6 rounded-2xl bg-red-50 p-4 text-sm font-semibold text-red-700">
+                                        {passwordError}
+                                    </div>
+                                )}
+
+                                <div className="mt-6 grid gap-5 md:grid-cols-3">
+                                    <div>
+                                        <label className="text-sm font-bold">
+                                            Mot de passe actuel
+                                        </label>
+
+                                        <input
+                                            value={currentPassword}
+                                            onChange={(event) =>
+                                                setCurrentPassword(
+                                                    event.target.value,
+                                                )
+                                            }
+                                            required
+                                            type="password"
+                                            minLength={6}
+                                            className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="text-sm font-bold">
+                                            Nouveau mot de passe
+                                        </label>
+
+                                        <input
+                                            value={newPassword}
+                                            onChange={(event) =>
+                                                setNewPassword(
+                                                    event.target.value,
+                                                )
+                                            }
+                                            required
+                                            type="password"
+                                            minLength={6}
+                                            className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="text-sm font-bold">
+                                            Confirmer
+                                        </label>
+
+                                        <input
+                                            value={confirmNewPassword}
+                                            onChange={(event) =>
+                                                setConfirmNewPassword(
+                                                    event.target.value,
+                                                )
+                                            }
+                                            required
+                                            type="password"
+                                            minLength={6}
+                                            className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
+                                        />
+                                    </div>
+                                </div>
+
+                                <button
+                                    type="submit"
+                                    disabled={passwordLoading}
+                                    className="mt-6 inline-flex items-center justify-center gap-2 rounded-full bg-black px-6 py-3 text-sm font-bold text-white transition hover:bg-neutral-800 disabled:bg-neutral-300"
+                                >
+                                    <KeyRound size={18} />
+                                    {passwordLoading
+                                        ? "Modification..."
+                                        : "Modifier le mot de passe"}
+                                </button>
                             </form>
 
                             <div className="grid gap-5 md:grid-cols-2">

@@ -17,6 +17,8 @@ import type {
 } from "@/types/product";
 
 import type {
+    ChangeCustomerPasswordPayload,
+    ChangeCustomerPasswordResponse,
     Customer,
     CustomerAuthResponse,
     LoginCustomerPayload,
@@ -249,4 +251,20 @@ export async function updateCustomerProfile(
         },
         body: JSON.stringify(payload),
     });
+}
+
+export async function changeCustomerPassword(
+    token: string,
+    payload: ChangeCustomerPasswordPayload,
+) {
+    return fetchJson<ChangeCustomerPasswordResponse>(
+        "/customer-auth/password",
+        {
+            method: "PATCH",
+            headers: {
+                Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify(payload),
+        },
+    );
 }

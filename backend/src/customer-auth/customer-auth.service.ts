@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   UnauthorizedException,
@@ -6,6 +7,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { compare, hash } from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
+import { ChangeCustomerPasswordDto } from './dto/change-customer-password.dto';
 import { LoginCustomerDto } from './dto/login-customer.dto';
 import { RegisterCustomerDto } from './dto/register-customer.dto';
 import { UpdateCustomerProfileDto } from './dto/update-customer-profile.dto';
@@ -168,6 +170,50 @@ export class CustomerAuthService {
     });
 
     return this.sanitizeCustomer(updatedCustomer);
+  }
+
+  async changePassword(dto: ChangeCustomerPasswordDto, authorization?: string) {
+    const payload = this.verifyAuthorizationHeader(authorization);
+
+    const customer = await this.prisma.customer.findUnique({
+      where: {
+        id: payload.sub,
+      },
+    });
+
+    if (!customer || !customer.passwordHash || !customer.isActive) {
+      throw new UnauthorizedException('Session client invalide.');
+    }
+
+    const isCurrentPasswordValid = await compare(
+      dto.currentPassword,
+      customer.passwordHash,
+    );
+
+    if (!isCurrentPasswordValid) {
+      throw new UnauthorizedException('Mot de passe actuel incorrect.');
+    }
+
+    if (dto.currentPassword === dto.newPassword) {
+      throw new BadRequestException(
+        'Le nouveau mot de passe doit être différent du mot de passe actuel.',
+      );
+    }
+
+    const newPasswordHash = await hash(dto.newPassword, 10);
+
+    await this.prisma.customer.update({
+      where: {
+        id: customer.id,
+      },
+      data: {
+        passwordHash: newPasswordHash,
+      },
+    });
+
+    return {
+      message: 'Mot de passe mis à jour avec succès.',
+    };
   }
 
   async getCustomerOrders(authorization?: string) {

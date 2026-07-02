@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Headers, Patch, Post } from '@nestjs/common';
 import { CustomerAuthService } from './customer-auth.service';
+import { ChangeCustomerPasswordDto } from './dto/change-customer-password.dto';
 import { LoginCustomerDto } from './dto/login-customer.dto';
 import { RegisterCustomerDto } from './dto/register-customer.dto';
 import { UpdateCustomerProfileDto } from './dto/update-customer-profile.dto';
@@ -29,6 +30,14 @@ export class CustomerAuthController {
     @Headers('authorization') authorization?: string,
   ) {
     return this.customerAuthService.updateProfile(dto, authorization);
+  }
+
+  @Patch('password')
+  changePassword(
+    @Body() dto: ChangeCustomerPasswordDto,
+    @Headers('authorization') authorization?: string,
+  ) {
+    return this.customerAuthService.changePassword(dto, authorization);
   }
 
   @Get('orders')

@@ -30,3 +30,12 @@ export type UpdateCustomerProfilePayload = {
     phone: string;
     email: string;
 };
+
+export type ChangeCustomerPasswordPayload = {
+    currentPassword: string;
+    newPassword: string;
+};
+
+export type ChangeCustomerPasswordResponse = {
+    message: string;
+};
