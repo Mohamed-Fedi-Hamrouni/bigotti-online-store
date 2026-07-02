@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getAdminOrders, updateOrderStatus } from "@/lib/api";
-import type { AdminOrder, OrderStatus } from "@/types/order";
+import type { AdminOrder, OrderStatus, PaymentStatus } from "@/types/order";
 
 const ORDER_STATUS_OPTIONS: Array<{
     value: OrderStatus;
@@ -18,12 +18,25 @@ const ORDER_STATUS_OPTIONS: Array<{
     { value: "CANCELLED", label: "Annulée" },
 ];
 
+const PAYMENT_STATUS_OPTIONS: Array<{
+    value: PaymentStatus;
+    label: string;
+}> = [
+    { value: "UNPAID", label: "Non payé" },
+    { value: "PAID", label: "Payé" },
+    { value: "FAILED", label: "Échoué" },
+    { value: "REFUNDED", label: "Remboursé" },
+];
+
 const PAYMENT_STATUS_LABELS: Record<string, string> = {
     UNPAID: "Non payé",
     PAID: "Payé",
     FAILED: "Échoué",
     REFUNDED: "Remboursé",
 };
+
+type OrderStatusFilter = "ALL" | OrderStatus;
+type PaymentStatusFilter = "ALL" | PaymentStatus;
 
 function formatPrice(value: number | string | null | undefined) {
     const numericValue = Number(value);
@@ -50,6 +63,11 @@ export default function AdminOrdersPage() {
     const router = useRouter();
 
     const [orders, setOrders] = useState<AdminOrder[]>([]);
+    const [searchQuery, setSearchQuery] = useState("");
+    const [orderStatusFilter, setOrderStatusFilter] =
+        useState<OrderStatusFilter>("ALL");
+    const [paymentStatusFilter, setPaymentStatusFilter] =
+        useState<PaymentStatusFilter>("ALL");
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState("");
     const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
@@ -73,6 +91,46 @@ export default function AdminOrdersPage() {
             })
             .finally(() => setIsLoading(false));
     }, [router]);
+
+    const filteredOrders = useMemo(() => {
+        const normalizedSearch = searchQuery.trim().toLowerCase();
+
+        return orders.filter((order) => {
+            const matchesSearch =
+                !normalizedSearch ||
+                order.orderNumber.toLowerCase().includes(normalizedSearch) ||
+                order.customerName.toLowerCase().includes(normalizedSearch) ||
+                order.customerPhone.toLowerCase().includes(normalizedSearch) ||
+                String(order.customerEmail ?? "")
+                    .toLowerCase()
+                    .includes(normalizedSearch) ||
+                order.deliveryCity.toLowerCase().includes(normalizedSearch);
+
+            const matchesOrderStatus =
+                orderStatusFilter === "ALL" ||
+                order.orderStatus === orderStatusFilter;
+
+            const matchesPaymentStatus =
+                paymentStatusFilter === "ALL" ||
+                order.paymentStatus === paymentStatusFilter;
+
+            return matchesSearch && matchesOrderStatus && matchesPaymentStatus;
+        });
+    }, [orders, searchQuery, orderStatusFilter, paymentStatusFilter]);
+
+    const totalOrders = orders.length;
+    const pendingOrders = orders.filter(
+        (order) => order.orderStatus === "PENDING",
+    ).length;
+    const deliveredOrders = orders.filter(
+        (order) => order.orderStatus === "DELIVERED",
+    ).length;
+    const cancelledOrders = orders.filter(
+        (order) => order.orderStatus === "CANCELLED",
+    ).length;
+    const totalRevenue = orders
+        .filter((order) => order.orderStatus !== "CANCELLED")
+        .reduce((sum, order) => sum + Number(order.total), 0);
 
     async function handleStatusChange(
         orderId: string,
@@ -158,8 +216,7 @@ export default function AdminOrdersPage() {
                         </h1>
 
                         <p className="mt-2 text-neutral-600">
-                            Consultez les commandes, les articles et les
-                            statuts.
+                            Recherchez, filtrez et suivez les commandes.
                         </p>
                     </div>
 
@@ -180,6 +237,96 @@ export default function AdminOrdersPage() {
                     </div>
                 </div>
 
+                <div className="mb-8 grid gap-5 md:grid-cols-5">
+                    <div className="rounded-3xl bg-white p-6 shadow-sm">
+                        <p className="text-sm text-neutral-500">
+                            Total commandes
+                        </p>
+                        <p className="mt-2 text-3xl font-bold">{totalOrders}</p>
+                    </div>
+
+                    <div className="rounded-3xl bg-white p-6 shadow-sm">
+                        <p className="text-sm text-neutral-500">En attente</p>
+                        <p className="mt-2 text-3xl font-bold">
+                            {pendingOrders}
+                        </p>
+                    </div>
+
+                    <div className="rounded-3xl bg-white p-6 shadow-sm">
+                        <p className="text-sm text-neutral-500">Livrées</p>
+                        <p className="mt-2 text-3xl font-bold">
+                            {deliveredOrders}
+                        </p>
+                    </div>
+
+                    <div className="rounded-3xl bg-white p-6 shadow-sm">
+                        <p className="text-sm text-neutral-500">Annulées</p>
+                        <p className="mt-2 text-3xl font-bold">
+                            {cancelledOrders}
+                        </p>
+                    </div>
+
+                    <div className="rounded-3xl bg-white p-6 shadow-sm">
+                        <p className="text-sm text-neutral-500">
+                            CA hors annulation
+                        </p>
+                        <p className="mt-2 text-2xl font-bold">
+                            {formatPrice(totalRevenue)}
+                        </p>
+                    </div>
+                </div>
+
+                <div className="mb-8 rounded-[2rem] bg-white p-6 shadow-sm">
+                    <div className="grid gap-4 lg:grid-cols-[1fr_220px_220px]">
+                        <input
+                            value={searchQuery}
+                            onChange={(event) =>
+                                setSearchQuery(event.target.value)
+                            }
+                            placeholder="Rechercher numéro, client, téléphone, email, ville..."
+                            className="rounded-2xl border border-neutral-300 px-4 py-3 text-sm outline-none focus:border-black"
+                        />
+
+                        <select
+                            value={orderStatusFilter}
+                            onChange={(event) =>
+                                setOrderStatusFilter(
+                                    event.target.value as OrderStatusFilter,
+                                )
+                            }
+                            className="rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-black"
+                        >
+                            <option value="ALL">Tous les statuts</option>
+                            {ORDER_STATUS_OPTIONS.map((status) => (
+                                <option key={status.value} value={status.value}>
+                                    {status.label}
+                                </option>
+                            ))}
+                        </select>
+
+                        <select
+                            value={paymentStatusFilter}
+                            onChange={(event) =>
+                                setPaymentStatusFilter(
+                                    event.target.value as PaymentStatusFilter,
+                                )
+                            }
+                            className="rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-black"
+                        >
+                            <option value="ALL">Tous les paiements</option>
+                            {PAYMENT_STATUS_OPTIONS.map((status) => (
+                                <option key={status.value} value={status.value}>
+                                    {status.label}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <p className="mt-4 text-sm text-neutral-500">
+                        {filteredOrders.length} commande(s) affichée(s)
+                    </p>
+                </div>
+
                 {isLoading && (
                     <div className="rounded-3xl bg-white p-8 shadow-sm">
                         Chargement des commandes...
@@ -192,16 +339,16 @@ export default function AdminOrdersPage() {
                     </div>
                 )}
 
-                {!isLoading && !error && orders.length === 0 && (
+                {!isLoading && !error && filteredOrders.length === 0 && (
                     <div className="rounded-3xl bg-white p-8 text-center shadow-sm">
                         <h2 className="text-2xl font-bold">
-                            Aucune commande pour le moment.
+                            Aucune commande trouvée.
                         </h2>
                     </div>
                 )}
 
                 <div className="space-y-5">
-                    {orders.map((order) => (
+                    {filteredOrders.map((order) => (
                         <article
                             key={order.id}
                             className="rounded-[2rem] bg-white p-6 shadow-sm"

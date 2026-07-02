@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Search } from "lucide-react";
 import { getAdminProducts, updateProductStatus } from "@/lib/api";
 import type { Product, ProductStatus } from "@/types/product";
 
@@ -15,8 +16,25 @@ const PRODUCT_STATUS_OPTIONS: Array<{
     { value: "ARCHIVED", label: "Archivé" },
 ];
 
-function formatPrice(value: number) {
-    return `${value.toFixed(3)} TND`;
+type ProductStatusFilter = "ALL" | ProductStatus;
+type ProductStockFilter = "ALL" | "IN_STOCK" | "LOW_STOCK" | "OUT_OF_STOCK";
+type ProductPromoFilter = "ALL" | "ON_SALE" | "REGULAR";
+type ProductSortOption =
+    | "DEFAULT"
+    | "NAME_ASC"
+    | "PRICE_ASC"
+    | "PRICE_DESC"
+    | "STOCK_ASC"
+    | "STOCK_DESC";
+
+function formatPrice(value: number | string | null | undefined) {
+    const numericValue = Number(value);
+
+    if (!Number.isFinite(numericValue)) {
+        return "0.000 TND";
+    }
+
+    return `${numericValue.toFixed(3)} TND`;
 }
 
 function getStatusLabel(status: ProductStatus) {
@@ -38,10 +56,33 @@ function getStatusClassName(status: ProductStatus) {
     return "rounded-full bg-yellow-50 px-3 py-1 text-sm font-semibold text-yellow-700";
 }
 
+function getProductSearchContent(product: Product) {
+    return [
+        product.name,
+        product.reference,
+        product.category?.name,
+        product.variants
+            .map((variant) => `${variant.color} ${variant.size}`)
+            .join(" "),
+    ]
+        .join(" ")
+        .toLowerCase();
+}
+
+function getProductFinalPrice(product: Product) {
+    return Number(product.finalPrice ?? product.price);
+}
+
 export default function AdminProductsPage() {
     const router = useRouter();
 
     const [products, setProducts] = useState<Product[]>([]);
+    const [searchQuery, setSearchQuery] = useState("");
+    const [statusFilter, setStatusFilter] =
+        useState<ProductStatusFilter>("ALL");
+    const [stockFilter, setStockFilter] = useState<ProductStockFilter>("ALL");
+    const [promoFilter, setPromoFilter] = useState<ProductPromoFilter>("ALL");
+    const [sortOption, setSortOption] = useState<ProductSortOption>("DEFAULT");
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState("");
     const [updatingProductId, setUpdatingProductId] = useState<string | null>(
@@ -67,6 +108,73 @@ export default function AdminProductsPage() {
             })
             .finally(() => setIsLoading(false));
     }, [router]);
+
+    const filteredProducts = useMemo(() => {
+        const normalizedSearch = searchQuery.trim().toLowerCase();
+
+        const filtered = products.filter((product) => {
+            const matchesSearch =
+                !normalizedSearch ||
+                getProductSearchContent(product).includes(normalizedSearch);
+
+            const matchesStatus =
+                statusFilter === "ALL" || product.status === statusFilter;
+
+            const matchesPromo =
+                promoFilter === "ALL" ||
+                (promoFilter === "ON_SALE" && product.isOnSale) ||
+                (promoFilter === "REGULAR" && !product.isOnSale);
+
+            const matchesStock =
+                stockFilter === "ALL" ||
+                (stockFilter === "IN_STOCK" && product.totalStock > 5) ||
+                (stockFilter === "LOW_STOCK" &&
+                    product.totalStock > 0 &&
+                    product.totalStock <= 5) ||
+                (stockFilter === "OUT_OF_STOCK" && product.totalStock <= 0);
+
+            return (
+                matchesSearch && matchesStatus && matchesPromo && matchesStock
+            );
+        });
+
+        return [...filtered].sort((firstProduct, secondProduct) => {
+            if (sortOption === "NAME_ASC") {
+                return firstProduct.name.localeCompare(secondProduct.name);
+            }
+
+            if (sortOption === "PRICE_ASC") {
+                return (
+                    getProductFinalPrice(firstProduct) -
+                    getProductFinalPrice(secondProduct)
+                );
+            }
+
+            if (sortOption === "PRICE_DESC") {
+                return (
+                    getProductFinalPrice(secondProduct) -
+                    getProductFinalPrice(firstProduct)
+                );
+            }
+
+            if (sortOption === "STOCK_ASC") {
+                return firstProduct.totalStock - secondProduct.totalStock;
+            }
+
+            if (sortOption === "STOCK_DESC") {
+                return secondProduct.totalStock - firstProduct.totalStock;
+            }
+
+            return 0;
+        });
+    }, [
+        products,
+        searchQuery,
+        statusFilter,
+        stockFilter,
+        promoFilter,
+        sortOption,
+    ]);
 
     function logout() {
         window.localStorage.removeItem("bigotti-admin-token");
@@ -122,6 +230,18 @@ export default function AdminProductsPage() {
         (product) => product.status === "DRAFT",
     ).length;
 
+    const onSaleProducts = products.filter(
+        (product) => product.isOnSale,
+    ).length;
+
+    const lowStockProducts = products.filter(
+        (product) => product.totalStock > 0 && product.totalStock <= 5,
+    ).length;
+
+    const outOfStockProducts = products.filter(
+        (product) => product.totalStock <= 0,
+    ).length;
+
     return (
         <main className="min-h-screen bg-neutral-50 text-neutral-950">
             <header className="border-b border-neutral-200 bg-white">
@@ -143,6 +263,7 @@ export default function AdminProductsPage() {
                         </Link>
 
                         <button
+                            type="button"
                             onClick={logout}
                             className="text-sm font-medium text-neutral-600 hover:text-black"
                         >
@@ -162,7 +283,8 @@ export default function AdminProductsPage() {
                         <h1 className="mt-2 text-4xl font-bold">Produits</h1>
 
                         <p className="mt-3 text-neutral-600">
-                            Gérez les articles visibles dans la boutique.
+                            Gérez, filtrez et publiez les articles visibles dans
+                            la boutique.
                         </p>
                     </div>
 
@@ -183,11 +305,12 @@ export default function AdminProductsPage() {
                     </div>
                 </div>
 
-                <div className="mb-8 grid gap-5 md:grid-cols-4">
+                <div className="mb-8 grid gap-5 md:grid-cols-3 lg:grid-cols-6">
                     <div className="rounded-3xl bg-white p-6 shadow-sm">
                         <p className="text-sm text-neutral-500">
                             Total produits
                         </p>
+
                         <p className="mt-2 text-3xl font-bold">
                             {products.length}
                         </p>
@@ -195,6 +318,7 @@ export default function AdminProductsPage() {
 
                     <div className="rounded-3xl bg-white p-6 shadow-sm">
                         <p className="text-sm text-neutral-500">Publiés</p>
+
                         <p className="mt-2 text-3xl font-bold text-green-700">
                             {publishedProducts}
                         </p>
@@ -202,6 +326,7 @@ export default function AdminProductsPage() {
 
                     <div className="rounded-3xl bg-white p-6 shadow-sm">
                         <p className="text-sm text-neutral-500">Brouillons</p>
+
                         <p className="mt-2 text-3xl font-bold text-yellow-700">
                             {draftProducts}
                         </p>
@@ -209,10 +334,119 @@ export default function AdminProductsPage() {
 
                     <div className="rounded-3xl bg-white p-6 shadow-sm">
                         <p className="text-sm text-neutral-500">Archivés</p>
+
                         <p className="mt-2 text-3xl font-bold text-red-700">
                             {archivedProducts}
                         </p>
                     </div>
+
+                    <div className="rounded-3xl bg-white p-6 shadow-sm">
+                        <p className="text-sm text-neutral-500">Promos</p>
+
+                        <p className="mt-2 text-3xl font-bold">
+                            {onSaleProducts}
+                        </p>
+                    </div>
+
+                    <div className="rounded-3xl bg-white p-6 shadow-sm">
+                        <p className="text-sm text-neutral-500">
+                            Stock faible / zéro
+                        </p>
+
+                        <p className="mt-2 text-3xl font-bold">
+                            {lowStockProducts + outOfStockProducts}
+                        </p>
+                    </div>
+                </div>
+
+                <div className="mb-8 rounded-[2rem] bg-white p-6 shadow-sm">
+                    <div className="grid gap-4 lg:grid-cols-[1fr_170px_170px_170px_190px]">
+                        <div className="relative">
+                            <Search
+                                size={18}
+                                className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400"
+                            />
+
+                            <input
+                                value={searchQuery}
+                                onChange={(event) =>
+                                    setSearchQuery(event.target.value)
+                                }
+                                placeholder="Rechercher nom, référence, catégorie, couleur..."
+                                className="w-full rounded-2xl border border-neutral-300 py-3 pl-11 pr-4 text-sm outline-none focus:border-black"
+                            />
+                        </div>
+
+                        <select
+                            value={statusFilter}
+                            onChange={(event) =>
+                                setStatusFilter(
+                                    event.target.value as ProductStatusFilter,
+                                )
+                            }
+                            className="rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-black"
+                        >
+                            <option value="ALL">Tous statuts</option>
+
+                            {PRODUCT_STATUS_OPTIONS.map((status) => (
+                                <option key={status.value} value={status.value}>
+                                    {status.label}
+                                </option>
+                            ))}
+                        </select>
+
+                        <select
+                            value={stockFilter}
+                            onChange={(event) =>
+                                setStockFilter(
+                                    event.target.value as ProductStockFilter,
+                                )
+                            }
+                            className="rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-black"
+                        >
+                            <option value="ALL">Tous stocks</option>
+                            <option value="IN_STOCK">En stock</option>
+                            <option value="LOW_STOCK">Stock faible</option>
+                            <option value="OUT_OF_STOCK">Rupture</option>
+                        </select>
+
+                        <select
+                            value={promoFilter}
+                            onChange={(event) =>
+                                setPromoFilter(
+                                    event.target.value as ProductPromoFilter,
+                                )
+                            }
+                            className="rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-black"
+                        >
+                            <option value="ALL">Tous prix</option>
+                            <option value="ON_SALE">En promo</option>
+                            <option value="REGULAR">Prix normal</option>
+                        </select>
+
+                        <select
+                            value={sortOption}
+                            onChange={(event) =>
+                                setSortOption(
+                                    event.target.value as ProductSortOption,
+                                )
+                            }
+                            className="rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-black"
+                        >
+                            <option value="DEFAULT">Tri par défaut</option>
+                            <option value="NAME_ASC">Nom A-Z</option>
+                            <option value="PRICE_ASC">Prix croissant</option>
+                            <option value="PRICE_DESC">Prix décroissant</option>
+                            <option value="STOCK_ASC">Stock croissant</option>
+                            <option value="STOCK_DESC">
+                                Stock décroissant
+                            </option>
+                        </select>
+                    </div>
+
+                    <p className="mt-4 text-sm text-neutral-500">
+                        {filteredProducts.length} produit(s) affiché(s)
+                    </p>
                 </div>
 
                 {isLoading && (
@@ -227,16 +461,16 @@ export default function AdminProductsPage() {
                     </div>
                 )}
 
-                {!isLoading && !error && products.length === 0 && (
+                {!isLoading && !error && filteredProducts.length === 0 && (
                     <div className="rounded-3xl bg-white p-8 text-center shadow-sm">
                         <h2 className="text-2xl font-bold">
-                            Aucun produit pour le moment.
+                            Aucun produit trouvé.
                         </h2>
                     </div>
                 )}
 
                 <div className="grid gap-5">
-                    {products.map((product) => {
+                    {filteredProducts.map((product) => {
                         const mainImage =
                             product.images.find((image) => image.isMain) ??
                             product.images[0];
@@ -282,6 +516,19 @@ export default function AdminProductsPage() {
                                                 Promo
                                             </span>
                                         )}
+
+                                        {product.totalStock <= 0 && (
+                                            <span className="rounded-full bg-red-50 px-3 py-1 text-sm font-semibold text-red-700">
+                                                Rupture
+                                            </span>
+                                        )}
+
+                                        {product.totalStock > 0 &&
+                                            product.totalStock <= 5 && (
+                                                <span className="rounded-full bg-orange-50 px-3 py-1 text-sm font-semibold text-orange-700">
+                                                    Stock faible
+                                                </span>
+                                            )}
                                     </div>
 
                                     <p className="mt-2 text-sm text-neutral-500">
