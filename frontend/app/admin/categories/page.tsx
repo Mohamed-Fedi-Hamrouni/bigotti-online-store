@@ -204,6 +204,24 @@ export default function AdminCategoriesPage() {
             return;
         }
 
+        if (category.isActive) {
+            const confirmed = window.confirm(
+                `Confirmer la désactivation de la catégorie "${category.name}" ?\n\nLa catégorie ne sera pas supprimée. Elle ne sera plus visible côté client, mais restera disponible dans l’administration.`,
+            );
+
+            if (!confirmed) {
+                return;
+            }
+        } else {
+            const confirmed = window.confirm(
+                `Réactiver la catégorie "${category.name}" ?\n\nElle pourra de nouveau être utilisée côté boutique.`,
+            );
+
+            if (!confirmed) {
+                return;
+            }
+        }
+
         setActionLoadingId(category.id);
         setError("");
         setSuccess("");
@@ -245,7 +263,7 @@ export default function AdminCategoriesPage() {
                         <h1 className="mt-2 text-4xl font-black">Catégories</h1>
 
                         <p className="mt-2 text-neutral-600">
-                            Gérez les catégories utilisées dans la boutique.
+                            Gérez les catégories sans suppression définitive.
                         </p>
                     </div>
 
@@ -377,6 +395,7 @@ export default function AdminCategoriesPage() {
                             <p className="text-sm text-neutral-500">
                                 Total catégories
                             </p>
+
                             <p className="mt-2 text-3xl font-black">
                                 {categories.length}
                             </p>
@@ -384,6 +403,7 @@ export default function AdminCategoriesPage() {
 
                         <div className="rounded-[2rem] bg-white p-6 shadow-sm">
                             <p className="text-sm text-neutral-500">Actives</p>
+
                             <p className="mt-2 text-3xl font-black">
                                 {activeCategories}
                             </p>
@@ -393,6 +413,7 @@ export default function AdminCategoriesPage() {
                             <p className="text-sm text-neutral-500">
                                 Désactivées
                             </p>
+
                             <p className="mt-2 text-3xl font-black">
                                 {inactiveCategories}
                             </p>
@@ -450,78 +471,98 @@ export default function AdminCategoriesPage() {
                         )}
 
                         <div className="mt-6 space-y-4">
-                            {filteredCategories.map((category) => (
-                                <article
-                                    key={category.id}
-                                    className="flex flex-col justify-between gap-5 rounded-3xl border border-neutral-200 p-5 md:flex-row md:items-center"
-                                >
-                                    <div>
-                                        <div className="flex flex-wrap items-center gap-3">
-                                            <h3 className="text-xl font-black">
-                                                {category.name}
-                                            </h3>
+                            {filteredCategories.map((category) => {
+                                const isInactive = !category.isActive;
+                                const isUpdating =
+                                    actionLoadingId === category.id;
 
-                                            <span
-                                                className={
-                                                    category.isActive
-                                                        ? "rounded-full bg-green-50 px-3 py-1 text-xs font-bold text-green-700"
-                                                        : "rounded-full bg-red-50 px-3 py-1 text-xs font-bold text-red-700"
-                                                }
-                                            >
-                                                {category.isActive
-                                                    ? "Active"
-                                                    : "Désactivée"}
-                                            </span>
+                                return (
+                                    <article
+                                        key={category.id}
+                                        className={
+                                            isInactive
+                                                ? "flex flex-col justify-between gap-5 rounded-3xl border border-red-100 bg-white p-5 opacity-80 md:flex-row md:items-center"
+                                                : "flex flex-col justify-between gap-5 rounded-3xl border border-neutral-200 p-5 md:flex-row md:items-center"
+                                        }
+                                    >
+                                        <div>
+                                            <div className="flex flex-wrap items-center gap-3">
+                                                <h3 className="text-xl font-black">
+                                                    {category.name}
+                                                </h3>
+
+                                                <span
+                                                    className={
+                                                        category.isActive
+                                                            ? "rounded-full bg-green-50 px-3 py-1 text-xs font-bold text-green-700"
+                                                            : "rounded-full bg-red-50 px-3 py-1 text-xs font-bold text-red-700"
+                                                    }
+                                                >
+                                                    {category.isActive
+                                                        ? "Active"
+                                                        : "Désactivée"}
+                                                </span>
+                                            </div>
+
+                                            <p className="mt-2 text-sm text-neutral-500">
+                                                /{category.slug}
+                                            </p>
+
+                                            <p className="mt-2 text-neutral-600">
+                                                {category.description ??
+                                                    "Aucune description."}
+                                            </p>
+
+                                            {isInactive && (
+                                                <p className="mt-3 rounded-2xl bg-red-50 p-3 text-sm font-semibold text-red-700">
+                                                    Cette catégorie est
+                                                    désactivée. Elle n’est pas
+                                                    supprimée, mais elle n’est
+                                                    plus visible côté client.
+                                                </p>
+                                            )}
                                         </div>
 
-                                        <p className="mt-2 text-sm text-neutral-500">
-                                            /{category.slug}
-                                        </p>
+                                        <div className="flex flex-wrap gap-3">
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    startEdit(category)
+                                                }
+                                                className="inline-flex items-center gap-2 rounded-full border border-neutral-300 px-5 py-3 text-sm font-bold hover:border-black"
+                                            >
+                                                <Edit3 size={16} />
+                                                Modifier
+                                            </button>
 
-                                        <p className="mt-2 text-neutral-600">
-                                            {category.description ??
-                                                "Aucune description."}
-                                        </p>
-                                    </div>
+                                            <button
+                                                type="button"
+                                                disabled={isUpdating}
+                                                onClick={() =>
+                                                    handleToggleStatus(category)
+                                                }
+                                                className={
+                                                    category.isActive
+                                                        ? "inline-flex items-center gap-2 rounded-full border border-red-200 px-5 py-3 text-sm font-bold text-red-700 hover:border-red-600 disabled:opacity-50"
+                                                        : "inline-flex items-center gap-2 rounded-full border border-green-200 px-5 py-3 text-sm font-bold text-green-700 hover:border-green-600 disabled:opacity-50"
+                                                }
+                                            >
+                                                {category.isActive ? (
+                                                    <ShieldOff size={16} />
+                                                ) : (
+                                                    <ShieldCheck size={16} />
+                                                )}
 
-                                    <div className="flex flex-wrap gap-3">
-                                        <button
-                                            type="button"
-                                            onClick={() => startEdit(category)}
-                                            className="inline-flex items-center gap-2 rounded-full border border-neutral-300 px-5 py-3 text-sm font-bold hover:border-black"
-                                        >
-                                            <Edit3 size={16} />
-                                            Modifier
-                                        </button>
-
-                                        <button
-                                            type="button"
-                                            disabled={
-                                                actionLoadingId === category.id
-                                            }
-                                            onClick={() =>
-                                                handleToggleStatus(category)
-                                            }
-                                            className={
-                                                category.isActive
-                                                    ? "inline-flex items-center gap-2 rounded-full border border-red-200 px-5 py-3 text-sm font-bold text-red-700 hover:border-red-600 disabled:opacity-50"
-                                                    : "inline-flex items-center gap-2 rounded-full border border-green-200 px-5 py-3 text-sm font-bold text-green-700 hover:border-green-600 disabled:opacity-50"
-                                            }
-                                        >
-                                            {category.isActive ? (
-                                                <ShieldOff size={16} />
-                                            ) : (
-                                                <ShieldCheck size={16} />
-                                            )}
-                                            {actionLoadingId === category.id
-                                                ? "Mise à jour..."
-                                                : category.isActive
-                                                  ? "Désactiver"
-                                                  : "Activer"}
-                                        </button>
-                                    </div>
-                                </article>
-                            ))}
+                                                {isUpdating
+                                                    ? "Mise à jour..."
+                                                    : category.isActive
+                                                      ? "Désactiver"
+                                                      : "Réactiver"}
+                                            </button>
+                                        </div>
+                                    </article>
+                                );
+                            })}
                         </div>
                     </div>
                 </div>

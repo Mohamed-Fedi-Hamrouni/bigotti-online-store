@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Edit3, Plus, Search, ShieldCheck, ShieldOff, Tag } from "lucide-react";
 import {
@@ -64,9 +64,11 @@ function formatDate(value: string | null) {
 
 function getCampaignTiming(campaign: SaleCampaign) {
     const now = new Date().getTime();
+
     const startTime = campaign.startDate
         ? new Date(campaign.startDate).getTime()
         : null;
+
     const endTime = campaign.endDate
         ? new Date(campaign.endDate).getTime()
         : null;
@@ -206,6 +208,7 @@ export default function AdminPromotionsPage() {
 
     function startEdit(campaign: SaleCampaign) {
         setEditingId(campaign.id);
+
         setForm({
             name: campaign.name,
             slug: campaign.slug,
@@ -214,12 +217,14 @@ export default function AdminPromotionsPage() {
             startDate: toDateInputValue(campaign.startDate),
             endDate: toDateInputValue(campaign.endDate),
         });
+
         setError("");
         setSuccess("");
+
         window.scrollTo({ top: 0, behavior: "smooth" });
     }
 
-    async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    async function handleSubmit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
 
         const token = getAdminToken();
@@ -307,6 +312,24 @@ export default function AdminPromotionsPage() {
             return;
         }
 
+        if (campaign.isActive) {
+            const confirmed = window.confirm(
+                `Confirmer la désactivation de la promotion "${campaign.name}" ?\n\nLa promotion ne sera pas supprimée. Elle ne sera plus visible côté client, mais restera disponible dans l’administration.`,
+            );
+
+            if (!confirmed) {
+                return;
+            }
+        } else {
+            const confirmed = window.confirm(
+                `Réactiver la promotion "${campaign.name}" ?\n\nElle pourra de nouveau être utilisée côté boutique.`,
+            );
+
+            if (!confirmed) {
+                return;
+            }
+        }
+
         setActionLoadingId(campaign.id);
         setError("");
         setSuccess("");
@@ -348,7 +371,8 @@ export default function AdminPromotionsPage() {
                         <h1 className="mt-2 text-4xl font-black">Promotions</h1>
 
                         <p className="mt-2 text-neutral-600">
-                            Créez et gérez les campagnes de solde.
+                            Créez et gérez les campagnes de solde sans
+                            suppression définitive.
                         </p>
                     </div>
 
@@ -525,6 +549,7 @@ export default function AdminPromotionsPage() {
                             <p className="text-sm text-neutral-500">
                                 Total promotions
                             </p>
+
                             <p className="mt-2 text-3xl font-black">
                                 {campaigns.length}
                             </p>
@@ -532,6 +557,7 @@ export default function AdminPromotionsPage() {
 
                         <div className="rounded-[2rem] bg-white p-6 shadow-sm">
                             <p className="text-sm text-neutral-500">Actives</p>
+
                             <p className="mt-2 text-3xl font-black">
                                 {activeCampaigns}
                             </p>
@@ -541,6 +567,7 @@ export default function AdminPromotionsPage() {
                             <p className="text-sm text-neutral-500">
                                 Désactivées
                             </p>
+
                             <p className="mt-2 text-3xl font-black">
                                 {inactiveCampaigns}
                             </p>
@@ -548,6 +575,7 @@ export default function AdminPromotionsPage() {
 
                         <div className="rounded-[2rem] bg-white p-6 shadow-sm">
                             <p className="text-sm text-neutral-500">En cours</p>
+
                             <p className="mt-2 text-3xl font-black">
                                 {runningCampaigns}
                             </p>
@@ -557,6 +585,7 @@ export default function AdminPromotionsPage() {
                             <p className="text-sm text-neutral-500">
                                 Planifiées / expirées
                             </p>
+
                             <p className="mt-2 text-3xl font-black">
                                 {scheduledCampaigns + expiredCampaigns}
                             </p>
@@ -617,96 +646,118 @@ export default function AdminPromotionsPage() {
                         )}
 
                         <div className="mt-6 space-y-4">
-                            {filteredCampaigns.map((campaign) => (
-                                <article
-                                    key={campaign.id}
-                                    className="flex flex-col justify-between gap-5 rounded-3xl border border-neutral-200 p-5 md:flex-row md:items-center"
-                                >
-                                    <div>
-                                        <div className="flex flex-wrap items-center gap-3">
-                                            <h3 className="text-xl font-black">
-                                                {campaign.name}
-                                            </h3>
+                            {filteredCampaigns.map((campaign) => {
+                                const isInactive = !campaign.isActive;
+                                const isUpdating =
+                                    actionLoadingId === campaign.id;
 
-                                            <span
-                                                className={
-                                                    campaign.isActive
-                                                        ? "rounded-full bg-green-50 px-3 py-1 text-xs font-bold text-green-700"
-                                                        : "rounded-full bg-red-50 px-3 py-1 text-xs font-bold text-red-700"
-                                                }
-                                            >
-                                                {campaign.isActive
-                                                    ? "Active"
-                                                    : "Désactivée"}
-                                            </span>
+                                return (
+                                    <article
+                                        key={campaign.id}
+                                        className={
+                                            isInactive
+                                                ? "flex flex-col justify-between gap-5 rounded-3xl border border-red-100 bg-white p-5 opacity-80 md:flex-row md:items-center"
+                                                : "flex flex-col justify-between gap-5 rounded-3xl border border-neutral-200 p-5 md:flex-row md:items-center"
+                                        }
+                                    >
+                                        <div>
+                                            <div className="flex flex-wrap items-center gap-3">
+                                                <h3 className="text-xl font-black">
+                                                    {campaign.name}
+                                                </h3>
 
-                                            <span
-                                                className={getCampaignTimingClassName(
-                                                    campaign,
-                                                )}
-                                            >
-                                                {getCampaignTimingLabel(
-                                                    campaign,
-                                                )}
-                                            </span>
+                                                <span
+                                                    className={
+                                                        campaign.isActive
+                                                            ? "rounded-full bg-green-50 px-3 py-1 text-xs font-bold text-green-700"
+                                                            : "rounded-full bg-red-50 px-3 py-1 text-xs font-bold text-red-700"
+                                                    }
+                                                >
+                                                    {campaign.isActive
+                                                        ? "Active"
+                                                        : "Désactivée"}
+                                                </span>
+
+                                                <span
+                                                    className={getCampaignTimingClassName(
+                                                        campaign,
+                                                    )}
+                                                >
+                                                    {getCampaignTimingLabel(
+                                                        campaign,
+                                                    )}
+                                                </span>
+                                            </div>
+
+                                            <p className="mt-2 text-sm text-neutral-500">
+                                                /{campaign.slug}
+                                            </p>
+
+                                            <p className="mt-2 text-neutral-600">
+                                                {campaign.description ??
+                                                    "Aucune description."}
+                                            </p>
+
+                                            <p className="mt-2 inline-flex items-center gap-2 text-sm text-neutral-500">
+                                                <Tag size={15} />
+                                                Du{" "}
+                                                {formatDate(
+                                                    campaign.startDate,
+                                                )}{" "}
+                                                au{" "}
+                                                {formatDate(campaign.endDate)}
+                                            </p>
+
+                                            {isInactive && (
+                                                <p className="mt-3 rounded-2xl bg-red-50 p-3 text-sm font-semibold text-red-700">
+                                                    Cette promotion est
+                                                    désactivée. Elle n’est pas
+                                                    supprimée, mais elle n’est
+                                                    plus visible côté client.
+                                                </p>
+                                            )}
                                         </div>
 
-                                        <p className="mt-2 text-sm text-neutral-500">
-                                            /{campaign.slug}
-                                        </p>
+                                        <div className="flex flex-wrap gap-3">
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    startEdit(campaign)
+                                                }
+                                                className="inline-flex items-center gap-2 rounded-full border border-neutral-300 px-5 py-3 text-sm font-bold hover:border-black"
+                                            >
+                                                <Edit3 size={16} />
+                                                Modifier
+                                            </button>
 
-                                        <p className="mt-2 text-neutral-600">
-                                            {campaign.description ??
-                                                "Aucune description."}
-                                        </p>
+                                            <button
+                                                type="button"
+                                                disabled={isUpdating}
+                                                onClick={() =>
+                                                    handleToggleStatus(campaign)
+                                                }
+                                                className={
+                                                    campaign.isActive
+                                                        ? "inline-flex items-center gap-2 rounded-full border border-red-200 px-5 py-3 text-sm font-bold text-red-700 hover:border-red-600 disabled:opacity-50"
+                                                        : "inline-flex items-center gap-2 rounded-full border border-green-200 px-5 py-3 text-sm font-bold text-green-700 hover:border-green-600 disabled:opacity-50"
+                                                }
+                                            >
+                                                {campaign.isActive ? (
+                                                    <ShieldOff size={16} />
+                                                ) : (
+                                                    <ShieldCheck size={16} />
+                                                )}
 
-                                        <p className="mt-2 inline-flex items-center gap-2 text-sm text-neutral-500">
-                                            <Tag size={15} />
-                                            Du {formatDate(
-                                                campaign.startDate,
-                                            )}{" "}
-                                            au {formatDate(campaign.endDate)}
-                                        </p>
-                                    </div>
-
-                                    <div className="flex flex-wrap gap-3">
-                                        <button
-                                            type="button"
-                                            onClick={() => startEdit(campaign)}
-                                            className="inline-flex items-center gap-2 rounded-full border border-neutral-300 px-5 py-3 text-sm font-bold hover:border-black"
-                                        >
-                                            <Edit3 size={16} />
-                                            Modifier
-                                        </button>
-
-                                        <button
-                                            type="button"
-                                            disabled={
-                                                actionLoadingId === campaign.id
-                                            }
-                                            onClick={() =>
-                                                handleToggleStatus(campaign)
-                                            }
-                                            className={
-                                                campaign.isActive
-                                                    ? "inline-flex items-center gap-2 rounded-full border border-red-200 px-5 py-3 text-sm font-bold text-red-700 hover:border-red-600 disabled:opacity-50"
-                                                    : "inline-flex items-center gap-2 rounded-full border border-green-200 px-5 py-3 text-sm font-bold text-green-700 hover:border-green-600 disabled:opacity-50"
-                                            }
-                                        >
-                                            {campaign.isActive ? (
-                                                <ShieldOff size={16} />
-                                            ) : (
-                                                <ShieldCheck size={16} />
-                                            )}
-                                            {actionLoadingId === campaign.id
-                                                ? "Mise à jour..."
-                                                : campaign.isActive
-                                                  ? "Désactiver"
-                                                  : "Activer"}
-                                        </button>
-                                    </div>
-                                </article>
-                            ))}
+                                                {isUpdating
+                                                    ? "Mise à jour..."
+                                                    : campaign.isActive
+                                                      ? "Désactiver"
+                                                      : "Réactiver"}
+                                            </button>
+                                        </div>
+                                    </article>
+                                );
+                            })}
                         </div>
                     </div>
                 </div>
