@@ -31,10 +31,17 @@ export default function AdminHomePage() {
         user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
 
     const canManageOrders =
-        user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
+        user?.role === "ADMIN" ||
+        user?.role === "SUPER_ADMIN" ||
+        user?.role === "MANAGER";
 
     const canViewDashboard =
         user?.role === "MANAGER" || user?.role === "SUPER_ADMIN";
+
+    const canViewCustomers =
+        user?.role === "ADMIN" ||
+        user?.role === "SUPER_ADMIN" ||
+        user?.role === "MANAGER";
 
     return (
         <main className="min-h-screen bg-neutral-50 text-neutral-950">
@@ -49,6 +56,7 @@ export default function AdminHomePage() {
                     </Link>
 
                     <button
+                        type="button"
                         onClick={logout}
                         className="text-sm font-medium text-neutral-600 hover:text-black"
                     >
@@ -68,13 +76,14 @@ export default function AdminHomePage() {
 
                 <p className="mt-3 text-neutral-600">Rôle : {user?.role}</p>
 
-                <div className="mt-10 grid gap-6 md:grid-cols-3">
+                <div className="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-4">
                     {canManageOrders && (
                         <Link
                             href="/admin/commandes"
                             className="rounded-3xl bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
                         >
                             <h2 className="text-2xl font-bold">Commandes</h2>
+
                             <p className="mt-3 text-neutral-500">
                                 Voir les commandes clients et changer les
                                 statuts.
@@ -88,9 +97,24 @@ export default function AdminHomePage() {
                             className="rounded-3xl bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
                         >
                             <h2 className="text-2xl font-bold">Produits</h2>
+
                             <p className="mt-3 text-neutral-500">
                                 Voir les produits et ajouter de nouveaux
                                 articles.
+                            </p>
+                        </Link>
+                    )}
+
+                    {canViewCustomers && (
+                        <Link
+                            href="/admin/clients"
+                            className="rounded-3xl bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
+                        >
+                            <h2 className="text-2xl font-bold">Clients</h2>
+
+                            <p className="mt-3 text-neutral-500">
+                                Voir les clients, leurs commandes, leur statut
+                                et le total dépensé.
                             </p>
                         </Link>
                     )}
@@ -101,6 +125,7 @@ export default function AdminHomePage() {
                             className="rounded-3xl bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
                         >
                             <h2 className="text-2xl font-bold">Dashboard</h2>
+
                             <p className="mt-3 text-neutral-500">
                                 Suivre les ventes, les commandes et les produits
                                 à faible stock.
