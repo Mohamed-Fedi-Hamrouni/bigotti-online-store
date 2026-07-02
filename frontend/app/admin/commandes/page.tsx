@@ -59,6 +59,22 @@ function getOrderStatusLabel(status: OrderStatus) {
     );
 }
 
+function getOrderStatusClassName(status: OrderStatus) {
+    if (status === "CANCELLED") {
+        return "rounded-full bg-red-50 px-3 py-1 text-sm font-semibold text-red-700";
+    }
+
+    if (status === "DELIVERED") {
+        return "rounded-full bg-green-50 px-3 py-1 text-sm font-semibold text-green-700";
+    }
+
+    if (status === "PENDING") {
+        return "rounded-full bg-yellow-50 px-3 py-1 text-sm font-semibold text-yellow-700";
+    }
+
+    return "rounded-full bg-neutral-100 px-3 py-1 text-sm font-semibold text-neutral-700";
+}
+
 export default function AdminOrdersPage() {
     const router = useRouter();
 
@@ -119,23 +135,53 @@ export default function AdminOrdersPage() {
     }, [orders, searchQuery, orderStatusFilter, paymentStatusFilter]);
 
     const totalOrders = orders.length;
+
     const pendingOrders = orders.filter(
         (order) => order.orderStatus === "PENDING",
     ).length;
+
     const deliveredOrders = orders.filter(
         (order) => order.orderStatus === "DELIVERED",
     ).length;
+
     const cancelledOrders = orders.filter(
         (order) => order.orderStatus === "CANCELLED",
     ).length;
+
     const totalRevenue = orders
         .filter((order) => order.orderStatus !== "CANCELLED")
         .reduce((sum, order) => sum + Number(order.total), 0);
 
     async function handleStatusChange(
-        orderId: string,
+        order: AdminOrder,
         orderStatus: OrderStatus,
     ) {
+        if (order.orderStatus === orderStatus) {
+            return;
+        }
+
+        if (orderStatus === "CANCELLED") {
+            const confirmed = window.confirm(
+                `Confirmer l’annulation de la commande ${order.orderNumber} ?\n\nLa commande ne sera pas supprimée. Elle passera au statut Annulée et restera conservée dans l’historique admin, les statistiques et la fiche client.`,
+            );
+
+            if (!confirmed) {
+                return;
+            }
+        }
+
+        if (order.orderStatus === "CANCELLED" && orderStatus !== "CANCELLED") {
+            const confirmed = window.confirm(
+                `Réactiver la commande ${order.orderNumber} avec le statut "${getOrderStatusLabel(
+                    orderStatus,
+                )}" ?`,
+            );
+
+            if (!confirmed) {
+                return;
+            }
+        }
+
         const token = window.localStorage.getItem("bigotti-admin-token");
 
         if (!token) {
@@ -144,16 +190,17 @@ export default function AdminOrdersPage() {
         }
 
         try {
-            setUpdatingOrderId(orderId);
+            setUpdatingOrderId(order.id);
+
             const updatedOrder = await updateOrderStatus(
                 token,
-                orderId,
+                order.id,
                 orderStatus,
             );
 
             setOrders((currentOrders) =>
-                currentOrders.map((order) =>
-                    order.id === orderId ? updatedOrder : order,
+                currentOrders.map((currentOrder) =>
+                    currentOrder.id === order.id ? updatedOrder : currentOrder,
                 ),
             );
         } catch (err) {
@@ -216,7 +263,8 @@ export default function AdminOrdersPage() {
                         </h1>
 
                         <p className="mt-2 text-neutral-600">
-                            Recherchez, filtrez et suivez les commandes.
+                            Recherchez, filtrez et annulez les commandes sans
+                            suppression définitive.
                         </p>
                     </div>
 
@@ -242,11 +290,13 @@ export default function AdminOrdersPage() {
                         <p className="text-sm text-neutral-500">
                             Total commandes
                         </p>
+
                         <p className="mt-2 text-3xl font-bold">{totalOrders}</p>
                     </div>
 
                     <div className="rounded-3xl bg-white p-6 shadow-sm">
                         <p className="text-sm text-neutral-500">En attente</p>
+
                         <p className="mt-2 text-3xl font-bold">
                             {pendingOrders}
                         </p>
@@ -254,6 +304,7 @@ export default function AdminOrdersPage() {
 
                     <div className="rounded-3xl bg-white p-6 shadow-sm">
                         <p className="text-sm text-neutral-500">Livrées</p>
+
                         <p className="mt-2 text-3xl font-bold">
                             {deliveredOrders}
                         </p>
@@ -261,7 +312,8 @@ export default function AdminOrdersPage() {
 
                     <div className="rounded-3xl bg-white p-6 shadow-sm">
                         <p className="text-sm text-neutral-500">Annulées</p>
-                        <p className="mt-2 text-3xl font-bold">
+
+                        <p className="mt-2 text-3xl font-bold text-red-700">
                             {cancelledOrders}
                         </p>
                     </div>
@@ -270,6 +322,7 @@ export default function AdminOrdersPage() {
                         <p className="text-sm text-neutral-500">
                             CA hors annulation
                         </p>
+
                         <p className="mt-2 text-2xl font-bold">
                             {formatPrice(totalRevenue)}
                         </p>
@@ -297,6 +350,7 @@ export default function AdminOrdersPage() {
                             className="rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-black"
                         >
                             <option value="ALL">Tous les statuts</option>
+
                             {ORDER_STATUS_OPTIONS.map((status) => (
                                 <option key={status.value} value={status.value}>
                                     {status.label}
@@ -314,6 +368,7 @@ export default function AdminOrdersPage() {
                             className="rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-black"
                         >
                             <option value="ALL">Tous les paiements</option>
+
                             {PAYMENT_STATUS_OPTIONS.map((status) => (
                                 <option key={status.value} value={status.value}>
                                     {status.label}
@@ -348,148 +403,196 @@ export default function AdminOrdersPage() {
                 )}
 
                 <div className="space-y-5">
-                    {filteredOrders.map((order) => (
-                        <article
-                            key={order.id}
-                            className="rounded-[2rem] bg-white p-6 shadow-sm"
-                        >
-                            <div className="flex flex-col justify-between gap-5 border-b border-neutral-200 pb-5 lg:flex-row lg:items-start">
-                                <div>
-                                    <div className="flex flex-wrap items-center gap-3">
-                                        <h2 className="text-2xl font-bold">
-                                            {order.orderNumber}
-                                        </h2>
+                    {filteredOrders.map((order) => {
+                        const isCancelled = order.orderStatus === "CANCELLED";
+                        const isUpdating = updatingOrderId === order.id;
 
-                                        <span className="rounded-full bg-neutral-100 px-3 py-1 text-sm font-semibold text-neutral-700">
-                                            {getOrderStatusLabel(
-                                                order.orderStatus,
-                                            )}
-                                        </span>
+                        return (
+                            <article
+                                key={order.id}
+                                className={
+                                    isCancelled
+                                        ? "rounded-[2rem] border border-red-100 bg-white p-6 opacity-80 shadow-sm"
+                                        : "rounded-[2rem] bg-white p-6 shadow-sm"
+                                }
+                            >
+                                <div className="flex flex-col justify-between gap-5 border-b border-neutral-200 pb-5 lg:flex-row lg:items-start">
+                                    <div>
+                                        <div className="flex flex-wrap items-center gap-3">
+                                            <h2 className="text-2xl font-bold">
+                                                {order.orderNumber}
+                                            </h2>
 
-                                        <span className="rounded-full bg-neutral-100 px-3 py-1 text-sm font-semibold text-neutral-700">
-                                            {
-                                                PAYMENT_STATUS_LABELS[
-                                                    order.paymentStatus
-                                                ]
-                                            }
-                                        </span>
+                                            <span
+                                                className={getOrderStatusClassName(
+                                                    order.orderStatus,
+                                                )}
+                                            >
+                                                {getOrderStatusLabel(
+                                                    order.orderStatus,
+                                                )}
+                                            </span>
+
+                                            <span className="rounded-full bg-neutral-100 px-3 py-1 text-sm font-semibold text-neutral-700">
+                                                {
+                                                    PAYMENT_STATUS_LABELS[
+                                                        order.paymentStatus
+                                                    ]
+                                                }
+                                            </span>
+                                        </div>
+
+                                        <p className="mt-3 text-neutral-600">
+                                            Client :{" "}
+                                            <span className="font-semibold text-neutral-950">
+                                                {order.customerName}
+                                            </span>{" "}
+                                            — {order.customerPhone}
+                                        </p>
+
+                                        <p className="mt-1 text-neutral-600">
+                                            Adresse : {order.deliveryAddress},{" "}
+                                            {order.deliveryCity}
+                                        </p>
+
+                                        <p className="mt-1 text-sm text-neutral-500">
+                                            Date : {formatDate(order.createdAt)}
+                                        </p>
+
+                                        {isCancelled && (
+                                            <p className="mt-4 rounded-2xl bg-red-50 p-3 text-sm font-semibold text-red-700">
+                                                Cette commande est annulée. Elle
+                                                n’est pas supprimée : elle reste
+                                                conservée dans l’historique
+                                                admin et dans la fiche client.
+                                            </p>
+                                        )}
                                     </div>
 
-                                    <p className="mt-3 text-neutral-600">
-                                        Client :{" "}
-                                        <span className="font-semibold text-neutral-950">
-                                            {order.customerName}
-                                        </span>{" "}
-                                        — {order.customerPhone}
-                                    </p>
-
-                                    <p className="mt-1 text-neutral-600">
-                                        Adresse : {order.deliveryAddress},{" "}
-                                        {order.deliveryCity}
-                                    </p>
-
-                                    <p className="mt-1 text-sm text-neutral-500">
-                                        Date : {formatDate(order.createdAt)}
-                                    </p>
-                                </div>
-
-                                <div className="text-left lg:text-right">
-                                    <p className="text-sm text-neutral-500">
-                                        Total
-                                    </p>
-
-                                    <p className="text-2xl font-bold">
-                                        {formatPrice(order.total)}
-                                    </p>
-
-                                    <p className="mt-2 text-sm text-neutral-500">
-                                        {order.paymentMethod ===
-                                        "CASH_ON_DELIVERY"
-                                            ? "Paiement à la livraison"
-                                            : "Paiement carte"}
-                                    </p>
-
-                                    <Link
-                                        href={`/admin/commandes/${order.id}`}
-                                        className="mt-4 inline-flex rounded-full bg-black px-5 py-3 text-sm font-bold text-white"
-                                    >
-                                        Détail
-                                    </Link>
-                                </div>
-                            </div>
-
-                            <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_260px]">
-                                <div className="space-y-3">
-                                    {order.items.map((item) => (
-                                        <div
-                                            key={item.id}
-                                            className="rounded-2xl bg-neutral-50 p-4"
-                                        >
-                                            <p className="font-bold">
-                                                {item.productName}
-                                            </p>
-
-                                            <p className="mt-1 text-sm text-neutral-500">
-                                                Réf. {item.productReference} —{" "}
-                                                {item.color} / Taille{" "}
-                                                {item.size}
-                                            </p>
-
-                                            <p className="mt-2 text-sm">
-                                                Quantité : {item.quantity} ×{" "}
-                                                {formatPrice(item.unitPrice)}
-                                            </p>
-                                        </div>
-                                    ))}
-                                </div>
-
-                                <div>
-                                    <label className="text-sm font-semibold">
-                                        Statut commande
-                                    </label>
-
-                                    <select
-                                        value={order.orderStatus}
-                                        disabled={updatingOrderId === order.id}
-                                        onChange={(event) =>
-                                            handleStatusChange(
-                                                order.id,
-                                                event.target
-                                                    .value as OrderStatus,
-                                            )
-                                        }
-                                        className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-black"
-                                    >
-                                        {ORDER_STATUS_OPTIONS.map((status) => (
-                                            <option
-                                                key={status.value}
-                                                value={status.value}
-                                            >
-                                                {status.label}
-                                            </option>
-                                        ))}
-                                    </select>
-
-                                    {updatingOrderId === order.id && (
-                                        <p className="mt-2 text-sm text-neutral-500">
-                                            Mise à jour...
+                                    <div className="text-left lg:text-right">
+                                        <p className="text-sm text-neutral-500">
+                                            Total
                                         </p>
-                                    )}
 
-                                    <Link
-                                        href={`/suivi-commande?orderNumber=${encodeURIComponent(
-                                            order.orderNumber,
-                                        )}&phone=${encodeURIComponent(
-                                            order.customerPhone,
-                                        )}`}
-                                        className="mt-4 inline-flex w-full justify-center rounded-full border border-neutral-300 px-5 py-3 text-sm font-bold hover:border-black"
-                                    >
-                                        Suivi client
-                                    </Link>
+                                        <p
+                                            className={
+                                                isCancelled
+                                                    ? "text-2xl font-bold text-neutral-400 line-through"
+                                                    : "text-2xl font-bold"
+                                            }
+                                        >
+                                            {formatPrice(order.total)}
+                                        </p>
+
+                                        <p className="mt-2 text-sm text-neutral-500">
+                                            {order.paymentMethod ===
+                                            "CASH_ON_DELIVERY"
+                                                ? "Paiement à la livraison"
+                                                : "Paiement carte"}
+                                        </p>
+
+                                        <Link
+                                            href={`/admin/commandes/${order.id}`}
+                                            className="mt-4 inline-flex rounded-full bg-black px-5 py-3 text-sm font-bold text-white"
+                                        >
+                                            Détail
+                                        </Link>
+                                    </div>
                                 </div>
-                            </div>
-                        </article>
-                    ))}
+
+                                <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_260px]">
+                                    <div className="space-y-3">
+                                        {order.items.map((item) => (
+                                            <div
+                                                key={item.id}
+                                                className="rounded-2xl bg-neutral-50 p-4"
+                                            >
+                                                <p className="font-bold">
+                                                    {item.productName}
+                                                </p>
+
+                                                <p className="mt-1 text-sm text-neutral-500">
+                                                    Réf. {item.productReference}{" "}
+                                                    — {item.color} / Taille{" "}
+                                                    {item.size}
+                                                </p>
+
+                                                <p className="mt-2 text-sm">
+                                                    Quantité : {item.quantity} ×{" "}
+                                                    {formatPrice(
+                                                        item.unitPrice,
+                                                    )}
+                                                </p>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    <div>
+                                        <label className="text-sm font-semibold">
+                                            Statut commande
+                                        </label>
+
+                                        <select
+                                            value={order.orderStatus}
+                                            disabled={isUpdating}
+                                            onChange={(event) =>
+                                                handleStatusChange(
+                                                    order,
+                                                    event.target
+                                                        .value as OrderStatus,
+                                                )
+                                            }
+                                            className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-black"
+                                        >
+                                            {ORDER_STATUS_OPTIONS.map(
+                                                (status) => (
+                                                    <option
+                                                        key={status.value}
+                                                        value={status.value}
+                                                    >
+                                                        {status.label}
+                                                    </option>
+                                                ),
+                                            )}
+                                        </select>
+
+                                        {isUpdating && (
+                                            <p className="mt-2 text-sm text-neutral-500">
+                                                Mise à jour...
+                                            </p>
+                                        )}
+
+                                        {!isCancelled && (
+                                            <button
+                                                type="button"
+                                                disabled={isUpdating}
+                                                onClick={() =>
+                                                    handleStatusChange(
+                                                        order,
+                                                        "CANCELLED",
+                                                    )
+                                                }
+                                                className="mt-4 inline-flex w-full justify-center rounded-full border border-red-200 px-5 py-3 text-sm font-bold text-red-700 hover:border-red-600 disabled:opacity-50"
+                                            >
+                                                Annuler la commande
+                                            </button>
+                                        )}
+
+                                        <Link
+                                            href={`/suivi-commande?orderNumber=${encodeURIComponent(
+                                                order.orderNumber,
+                                            )}&phone=${encodeURIComponent(
+                                                order.customerPhone,
+                                            )}`}
+                                            className="mt-4 inline-flex w-full justify-center rounded-full border border-neutral-300 px-5 py-3 text-sm font-bold hover:border-black"
+                                        >
+                                            Suivi client
+                                        </Link>
+                                    </div>
+                                </div>
+                            </article>
+                        );
+                    })}
                 </div>
             </section>
         </main>

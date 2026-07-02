@@ -56,6 +56,7 @@ async function fetchAdminOrder(token: string, orderId: string) {
 
     if (!response.ok) {
         const errorPayload = await response.json().catch(() => null);
+
         throw new Error(
             errorPayload?.message ??
                 "Erreur lors du chargement de la commande.",
@@ -84,6 +85,22 @@ function getOrderStatusLabel(status: OrderStatus) {
         ORDER_STATUS_OPTIONS.find((option) => option.value === status)?.label ??
         status
     );
+}
+
+function getOrderStatusClassName(status: OrderStatus) {
+    if (status === "CANCELLED") {
+        return "mt-3 inline-flex rounded-full bg-red-50 px-4 py-2 text-sm font-bold text-red-700";
+    }
+
+    if (status === "DELIVERED") {
+        return "mt-3 inline-flex rounded-full bg-green-50 px-4 py-2 text-sm font-bold text-green-700";
+    }
+
+    if (status === "PENDING") {
+        return "mt-3 inline-flex rounded-full bg-yellow-50 px-4 py-2 text-sm font-bold text-yellow-700";
+    }
+
+    return "mt-3 inline-flex rounded-full bg-neutral-100 px-4 py-2 text-sm font-bold text-neutral-700";
 }
 
 function getPaymentMethodLabel(method: string) {
@@ -132,6 +149,32 @@ export default function AdminOrderDetailPage() {
             return;
         }
 
+        if (order.orderStatus === orderStatus) {
+            return;
+        }
+
+        if (orderStatus === "CANCELLED") {
+            const confirmed = window.confirm(
+                `Confirmer l’annulation de la commande ${order.orderNumber} ?\n\nLa commande ne sera pas supprimée. Elle passera au statut Annulée et restera conservée dans l’historique admin, les statistiques et la fiche client.`,
+            );
+
+            if (!confirmed) {
+                return;
+            }
+        }
+
+        if (order.orderStatus === "CANCELLED" && orderStatus !== "CANCELLED") {
+            const confirmed = window.confirm(
+                `Réactiver la commande ${order.orderNumber} avec le statut "${getOrderStatusLabel(
+                    orderStatus,
+                )}" ?`,
+            );
+
+            if (!confirmed) {
+                return;
+            }
+        }
+
         const token = getAdminToken();
 
         if (!token) {
@@ -159,6 +202,8 @@ export default function AdminOrderDetailPage() {
             setIsUpdating(false);
         }
     }
+
+    const isCancelled = order?.orderStatus === "CANCELLED";
 
     return (
         <main className="min-h-screen bg-neutral-50 text-neutral-950">
@@ -215,7 +260,13 @@ export default function AdminOrderDetailPage() {
 
                 {!isLoading && order && (
                     <div className="space-y-6">
-                        <div className="rounded-[2rem] bg-white p-8 shadow-sm">
+                        <div
+                            className={
+                                isCancelled
+                                    ? "rounded-[2rem] border border-red-100 bg-white p-8 opacity-90 shadow-sm"
+                                    : "rounded-[2rem] bg-white p-8 shadow-sm"
+                            }
+                        >
                             <div className="flex flex-col justify-between gap-5 md:flex-row md:items-start">
                                 <div>
                                     <p className="text-sm uppercase tracking-[0.25em] text-neutral-500">
@@ -229,6 +280,24 @@ export default function AdminOrderDetailPage() {
                                     <p className="mt-3 text-neutral-600">
                                         Créée le {formatDate(order.createdAt)}
                                     </p>
+
+                                    <span
+                                        className={getOrderStatusClassName(
+                                            order.orderStatus,
+                                        )}
+                                    >
+                                        {getOrderStatusLabel(order.orderStatus)}
+                                    </span>
+
+                                    {isCancelled && (
+                                        <p className="mt-4 rounded-2xl bg-red-50 p-4 text-sm font-semibold text-red-700">
+                                            Cette commande est annulée. Elle
+                                            n’est pas supprimée : elle reste
+                                            conservée dans l’historique admin,
+                                            dans la fiche client et dans le
+                                            suivi de commande.
+                                        </p>
+                                    )}
                                 </div>
 
                                 <div className="text-left md:text-right">
@@ -236,7 +305,13 @@ export default function AdminOrderDetailPage() {
                                         Total
                                     </p>
 
-                                    <p className="mt-1 text-4xl font-black">
+                                    <p
+                                        className={
+                                            isCancelled
+                                                ? "mt-1 text-4xl font-black text-neutral-400 line-through"
+                                                : "mt-1 text-4xl font-black"
+                                        }
+                                    >
                                         {formatPrice(order.total)}
                                     </p>
 
@@ -402,7 +477,11 @@ export default function AdminOrderDetailPage() {
                                         Statut
                                     </h3>
 
-                                    <p className="mt-3 rounded-full bg-neutral-100 px-4 py-2 text-sm font-bold text-neutral-700">
+                                    <p
+                                        className={getOrderStatusClassName(
+                                            order.orderStatus,
+                                        )}
+                                    >
                                         {getOrderStatusLabel(order.orderStatus)}
                                     </p>
 
@@ -434,6 +513,26 @@ export default function AdminOrderDetailPage() {
                                     {isUpdating && (
                                         <p className="mt-2 text-sm text-neutral-500">
                                             Mise à jour...
+                                        </p>
+                                    )}
+
+                                    {!isCancelled && (
+                                        <button
+                                            type="button"
+                                            disabled={isUpdating}
+                                            onClick={() =>
+                                                handleStatusChange("CANCELLED")
+                                            }
+                                            className="mt-4 inline-flex w-full justify-center rounded-full border border-red-200 px-5 py-3 text-sm font-bold text-red-700 hover:border-red-600 disabled:opacity-50"
+                                        >
+                                            Annuler la commande
+                                        </button>
+                                    )}
+
+                                    {isCancelled && (
+                                        <p className="mt-4 rounded-2xl bg-red-50 p-4 text-sm font-semibold text-red-700">
+                                            Annulation enregistrée. La commande
+                                            reste consultable et traçable.
                                         </p>
                                     )}
                                 </div>
@@ -494,12 +593,30 @@ export default function AdminOrderDetailPage() {
                                             </p>
                                         </div>
 
-                                        <div className="rounded-2xl bg-black p-5 text-white">
-                                            <p className="text-sm text-neutral-300">
+                                        <div
+                                            className={
+                                                isCancelled
+                                                    ? "rounded-2xl bg-neutral-200 p-5 text-neutral-500"
+                                                    : "rounded-2xl bg-black p-5 text-white"
+                                            }
+                                        >
+                                            <p
+                                                className={
+                                                    isCancelled
+                                                        ? "text-sm text-neutral-500"
+                                                        : "text-sm text-neutral-300"
+                                                }
+                                            >
                                                 Total
                                             </p>
 
-                                            <p className="mt-1 text-2xl font-black">
+                                            <p
+                                                className={
+                                                    isCancelled
+                                                        ? "mt-1 text-2xl font-black line-through"
+                                                        : "mt-1 text-2xl font-black"
+                                                }
+                                            >
                                                 {formatPrice(order.total)}
                                             </p>
                                         </div>
