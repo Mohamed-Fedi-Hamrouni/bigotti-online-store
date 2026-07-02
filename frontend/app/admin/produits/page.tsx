@@ -283,8 +283,8 @@ export default function AdminProductsPage() {
                         <h1 className="mt-2 text-4xl font-bold">Produits</h1>
 
                         <p className="mt-3 text-neutral-600">
-                            Gérez, filtrez et publiez les articles visibles dans
-                            la boutique.
+                            Gérez, filtrez et modifiez les articles visibles
+                            dans la boutique.
                         </p>
                     </div>
 
@@ -612,6 +612,13 @@ export default function AdminProductsPage() {
                                             </p>
                                         )}
                                     </div>
+
+                                    <Link
+                                        href={`/admin/produits/${product.id}/modifier`}
+                                        className="inline-flex rounded-full bg-black px-5 py-2 text-sm font-bold text-white"
+                                    >
+                                        Modifier
+                                    </Link>
 
                                     {product.status === "PUBLISHED" ? (
                                         <Link

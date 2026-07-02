@@ -14,6 +14,7 @@ import type {
     Product,
     ProductStatus,
     SaleCampaign,
+    UpdateProductPayload,
 } from "@/types/product";
 
 import type {
@@ -75,6 +76,7 @@ export async function createOrder(
         body: JSON.stringify(payload),
     });
 }
+
 export async function login(payload: { email: string; password: string }) {
     return fetchJson<LoginResponse>("/auth/login", {
         method: "POST",
@@ -112,12 +114,34 @@ export async function getAdminProducts(token: string) {
     });
 }
 
+export async function getAdminProduct(token: string, productId: string) {
+    return fetchJson<Product>(`/products/admin/${productId}`, {
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+    });
+}
+
 export async function createProduct(
     token: string,
     payload: CreateProductPayload,
 ) {
     return fetchJson<Product>("/products", {
         method: "POST",
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+    });
+}
+
+export async function updateProduct(
+    token: string,
+    productId: string,
+    payload: UpdateProductPayload,
+) {
+    return fetchJson<Product>(`/products/${productId}`, {
+        method: "PATCH",
         headers: {
             Authorization: `Bearer ${token}`,
         },
