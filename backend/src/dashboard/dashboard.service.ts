@@ -13,14 +13,24 @@ export class DashboardService {
       latestOrders,
       productsCount,
       publishedProductsCount,
+      draftProductsCount,
+      archivedProductsCount,
+      customersCount,
+      activeCustomersCount,
+      inactiveCustomersCount,
+      lowStockVariantsCount,
+      outOfStockVariantsCount,
     ] = await Promise.all([
-      this.prisma.order.findMany({
-        include: {
-          items: true,
-        },
-      }),
+      this.prisma.order.findMany(),
 
       this.prisma.orderItem.findMany({
+        where: {
+          order: {
+            orderStatus: {
+              not: 'CANCELLED',
+            },
+          },
+        },
         include: {
           product: {
             include: {
@@ -33,9 +43,14 @@ export class DashboardService {
       this.prisma.productVariant.findMany({
         where: {
           stockQuantity: {
-            lte: 3,
+            lte: 5,
           },
           isActive: true,
+          product: {
+            status: {
+              not: 'ARCHIVED',
+            },
+          },
         },
         include: {
           product: {
@@ -47,7 +62,7 @@ export class DashboardService {
         orderBy: {
           stockQuantity: 'asc',
         },
-        take: 10,
+        take: 12,
       }),
 
       this.prisma.order.findMany({
@@ -59,7 +74,7 @@ export class DashboardService {
         orderBy: {
           createdAt: 'desc',
         },
-        take: 5,
+        take: 6,
       }),
 
       this.prisma.product.count(),
@@ -69,12 +84,69 @@ export class DashboardService {
           status: 'PUBLISHED',
         },
       }),
+
+      this.prisma.product.count({
+        where: {
+          status: 'DRAFT',
+        },
+      }),
+
+      this.prisma.product.count({
+        where: {
+          status: 'ARCHIVED',
+        },
+      }),
+
+      this.prisma.customer.count(),
+
+      this.prisma.customer.count({
+        where: {
+          isActive: true,
+        },
+      }),
+
+      this.prisma.customer.count({
+        where: {
+          isActive: false,
+        },
+      }),
+
+      this.prisma.productVariant.count({
+        where: {
+          stockQuantity: {
+            gt: 0,
+            lte: 5,
+          },
+          isActive: true,
+          product: {
+            status: {
+              not: 'ARCHIVED',
+            },
+          },
+        },
+      }),
+
+      this.prisma.productVariant.count({
+        where: {
+          stockQuantity: {
+            lte: 0,
+          },
+          isActive: true,
+          product: {
+            status: {
+              not: 'ARCHIVED',
+            },
+          },
+        },
+      }),
     ]);
 
+    const activeOrders = orders.filter(
+      (order) => order.orderStatus !== 'CANCELLED',
+    );
+
     const totalRevenue = this.toMoney(
-      orders
-        .filter((order) => order.orderStatus !== 'CANCELLED')
-        .reduce((sum, order) => sum + Number(order.total), 0),
+      activeOrders.reduce((sum, order) => sum + Number(order.total), 0),
     );
 
     const pendingOrdersCount = orders.filter(
@@ -85,8 +157,20 @@ export class DashboardService {
       (order) => order.orderStatus === 'CONFIRMED',
     ).length;
 
+    const preparingOrdersCount = orders.filter(
+      (order) => order.orderStatus === 'PREPARING',
+    ).length;
+
+    const shippedOrdersCount = orders.filter(
+      (order) => order.orderStatus === 'SHIPPED',
+    ).length;
+
     const deliveredOrdersCount = orders.filter(
       (order) => order.orderStatus === 'DELIVERED',
+    ).length;
+
+    const cancelledOrdersCount = orders.filter(
+      (order) => order.orderStatus === 'CANCELLED',
     ).length;
 
     const unpaidOrdersCount = orders.filter(
@@ -103,11 +187,21 @@ export class DashboardService {
         ordersCount: orders.length,
         pendingOrdersCount,
         confirmedOrdersCount,
+        preparingOrdersCount,
+        shippedOrdersCount,
         deliveredOrdersCount,
+        cancelledOrdersCount,
         paidOrdersCount,
         unpaidOrdersCount,
         productsCount,
         publishedProductsCount,
+        draftProductsCount,
+        archivedProductsCount,
+        customersCount,
+        activeCustomersCount,
+        inactiveCustomersCount,
+        lowStockVariantsCount,
+        outOfStockVariantsCount,
       },
       bestSellers: this.getBestSellers(orderItems),
       salesByCategory: this.getSalesByCategory(orderItems),
@@ -139,17 +233,26 @@ export class DashboardService {
 
   private getBestSellers(
     orderItems: Array<{
+      productId: string | null;
       productReference: string;
       productName: string;
       quantity: number;
       totalPrice: unknown;
+      product: {
+        id: string;
+        category?: {
+          name: string;
+        } | null;
+      } | null;
     }>,
   ) {
     const map = new Map<
       string,
       {
+        productId: string;
         productReference: string;
         productName: string;
+        categoryName: string;
         quantitySold: number;
         revenue: number;
       }
@@ -163,8 +266,10 @@ export class DashboardService {
         existing.revenue += Number(item.totalPrice);
       } else {
         map.set(item.productReference, {
+          productId: item.productId ?? item.product?.id ?? 'unknown-product',
           productReference: item.productReference,
           productName: item.productName,
+          categoryName: item.product?.category?.name ?? 'Sans catégorie',
           quantitySold: item.quantity,
           revenue: Number(item.totalPrice),
         });
@@ -177,7 +282,7 @@ export class DashboardService {
         revenue: this.toMoney(item.revenue),
       }))
       .sort((a, b) => b.quantitySold - a.quantitySold)
-      .slice(0, 5);
+      .slice(0, 6);
   }
 
   private getSalesByCategory(
