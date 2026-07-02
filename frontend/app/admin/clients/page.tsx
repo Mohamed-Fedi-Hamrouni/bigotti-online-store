@@ -222,6 +222,24 @@ export default function AdminCustomersPage() {
             return;
         }
 
+        if (customer.isActive) {
+            const confirmed = window.confirm(
+                `Confirmer la désactivation du client "${customer.fullName}" ?\n\nLe client ne sera pas supprimé. Son compte sera désactivé, mais son historique de commandes restera conservé dans l’administration.`,
+            );
+
+            if (!confirmed) {
+                return;
+            }
+        } else {
+            const confirmed = window.confirm(
+                `Réactiver le client "${customer.fullName}" ?\n\nLe client pourra de nouveau utiliser son compte.`,
+            );
+
+            if (!confirmed) {
+                return;
+            }
+        }
+
         setError("");
         setActionLoadingId(customer.id);
 
@@ -262,7 +280,8 @@ export default function AdminCustomersPage() {
                         <h1 className="mt-2 text-4xl font-black">Clients</h1>
 
                         <p className="mt-2 text-neutral-600">
-                            Consultez, filtrez et gérez les clients.
+                            Consultez, filtrez et désactivez les clients sans
+                            supprimer leur historique.
                         </p>
                     </div>
 
@@ -423,179 +442,202 @@ export default function AdminCustomersPage() {
 
                     {!isLoading && filteredCustomers.length > 0 && (
                         <div className="mt-6 space-y-5">
-                            {filteredCustomers.map((customer) => (
-                                <article
-                                    key={customer.id}
-                                    className="rounded-[2rem] border border-neutral-200 p-6"
-                                >
-                                    <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-start">
-                                        <div>
-                                            <div className="flex flex-wrap items-center gap-3">
-                                                <h3 className="text-2xl font-black">
-                                                    {customer.fullName}
-                                                </h3>
+                            {filteredCustomers.map((customer) => {
+                                const isInactive = !customer.isActive;
+                                const isUpdating =
+                                    actionLoadingId === customer.id;
 
-                                                <span
-                                                    className={
-                                                        customer.isActive
-                                                            ? "rounded-full bg-green-50 px-3 py-1 text-xs font-bold text-green-700"
-                                                            : "rounded-full bg-red-50 px-3 py-1 text-xs font-bold text-red-700"
-                                                    }
-                                                >
-                                                    {customer.isActive
-                                                        ? "Actif"
-                                                        : "Désactivé"}
-                                                </span>
-                                            </div>
+                                return (
+                                    <article
+                                        key={customer.id}
+                                        className={
+                                            isInactive
+                                                ? "rounded-[2rem] border border-red-100 bg-white p-6 opacity-80"
+                                                : "rounded-[2rem] border border-neutral-200 p-6"
+                                        }
+                                    >
+                                        <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-start">
+                                            <div>
+                                                <div className="flex flex-wrap items-center gap-3">
+                                                    <h3 className="text-2xl font-black">
+                                                        {customer.fullName}
+                                                    </h3>
 
-                                            <div className="mt-4 flex flex-wrap gap-4 text-sm text-neutral-600">
-                                                <span className="inline-flex items-center gap-2">
-                                                    <Phone size={16} />
-                                                    {customer.phone}
-                                                </span>
-
-                                                <span className="inline-flex items-center gap-2">
-                                                    <Mail size={16} />
-                                                    {customer.email ??
-                                                        "Email non renseigné"}
-                                                </span>
-                                            </div>
-
-                                            <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                                                <div className="rounded-2xl bg-neutral-50 p-4">
-                                                    <p className="text-xs text-neutral-500">
-                                                        Commandes
-                                                    </p>
-
-                                                    <p className="mt-1 text-xl font-black">
-                                                        {customer.ordersCount}
-                                                    </p>
+                                                    <span
+                                                        className={
+                                                            customer.isActive
+                                                                ? "rounded-full bg-green-50 px-3 py-1 text-xs font-bold text-green-700"
+                                                                : "rounded-full bg-red-50 px-3 py-1 text-xs font-bold text-red-700"
+                                                        }
+                                                    >
+                                                        {customer.isActive
+                                                            ? "Actif"
+                                                            : "Désactivé"}
+                                                    </span>
                                                 </div>
 
-                                                <div className="rounded-2xl bg-neutral-50 p-4">
-                                                    <p className="text-xs text-neutral-500">
-                                                        Total dépensé
-                                                    </p>
+                                                <div className="mt-4 flex flex-wrap gap-4 text-sm text-neutral-600">
+                                                    <span className="inline-flex items-center gap-2">
+                                                        <Phone size={16} />
+                                                        {customer.phone}
+                                                    </span>
 
-                                                    <p className="mt-1 text-xl font-black">
-                                                        {formatPrice(
-                                                            customer.totalSpent,
-                                                        )}
-                                                    </p>
+                                                    <span className="inline-flex items-center gap-2">
+                                                        <Mail size={16} />
+                                                        {customer.email ??
+                                                            "Email non renseigné"}
+                                                    </span>
                                                 </div>
 
-                                                <div className="rounded-2xl bg-neutral-50 p-4">
-                                                    <p className="text-xs text-neutral-500">
-                                                        Dernière commande
+                                                {isInactive && (
+                                                    <p className="mt-4 rounded-2xl bg-red-50 p-3 text-sm font-semibold text-red-700">
+                                                        Ce client est désactivé.
+                                                        Il n’est pas supprimé :
+                                                        son historique de
+                                                        commandes reste
+                                                        conservé.
                                                     </p>
-
-                                                    <p className="mt-1 text-xl font-black">
-                                                        {formatDate(
-                                                            customer.lastOrderAt,
-                                                        )}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="flex flex-col gap-3">
-                                            <Link
-                                                href={`/admin/clients/${customer.id}`}
-                                                className="inline-flex items-center justify-center rounded-full bg-black px-5 py-3 text-sm font-bold text-white"
-                                            >
-                                                Détail
-                                            </Link>
-
-                                            <button
-                                                type="button"
-                                                disabled={
-                                                    actionLoadingId ===
-                                                    customer.id
-                                                }
-                                                onClick={() =>
-                                                    handleToggleStatus(customer)
-                                                }
-                                                className={
-                                                    customer.isActive
-                                                        ? "inline-flex items-center justify-center gap-2 rounded-full border border-red-200 px-5 py-3 text-sm font-bold text-red-700 transition hover:border-red-600 disabled:opacity-50"
-                                                        : "inline-flex items-center justify-center gap-2 rounded-full border border-green-200 px-5 py-3 text-sm font-bold text-green-700 transition hover:border-green-600 disabled:opacity-50"
-                                                }
-                                            >
-                                                {customer.isActive ? (
-                                                    <ShieldOff size={18} />
-                                                ) : (
-                                                    <ShieldCheck size={18} />
                                                 )}
 
-                                                {actionLoadingId === customer.id
-                                                    ? "Mise à jour..."
-                                                    : customer.isActive
-                                                      ? "Désactiver"
-                                                      : "Activer"}
-                                            </button>
-                                        </div>
-                                    </div>
+                                                <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                                                    <div className="rounded-2xl bg-neutral-50 p-4">
+                                                        <p className="text-xs text-neutral-500">
+                                                            Commandes
+                                                        </p>
 
-                                    {customer.orders.length > 0 && (
-                                        <div className="mt-6 border-t border-neutral-200 pt-5">
-                                            <p className="text-sm font-bold uppercase tracking-[0.2em] text-neutral-500">
-                                                Dernières commandes
-                                            </p>
+                                                        <p className="mt-1 text-xl font-black">
+                                                            {
+                                                                customer.ordersCount
+                                                            }
+                                                        </p>
+                                                    </div>
 
-                                            <div className="mt-4 space-y-3">
-                                                {customer.orders
-                                                    .slice(0, 3)
-                                                    .map((order) => (
-                                                        <div
-                                                            key={order.id}
-                                                            className="flex flex-col justify-between gap-3 rounded-2xl bg-neutral-50 p-4 md:flex-row md:items-center"
-                                                        >
-                                                            <div>
-                                                                <p className="font-black">
-                                                                    {
-                                                                        order.orderNumber
-                                                                    }
-                                                                </p>
+                                                    <div className="rounded-2xl bg-neutral-50 p-4">
+                                                        <p className="text-xs text-neutral-500">
+                                                            Total dépensé
+                                                        </p>
 
-                                                                <p className="mt-1 text-sm text-neutral-500">
-                                                                    {getOrderStatusLabel(
-                                                                        order.orderStatus,
-                                                                    )}{" "}
-                                                                    —{" "}
-                                                                    {
-                                                                        order
-                                                                            .items
-                                                                            .length
-                                                                    }{" "}
-                                                                    article(s)
-                                                                </p>
-                                                            </div>
+                                                        <p className="mt-1 text-xl font-black">
+                                                            {formatPrice(
+                                                                customer.totalSpent,
+                                                            )}
+                                                        </p>
+                                                    </div>
 
-                                                            <div className="text-left md:text-right">
-                                                                <p className="font-black">
-                                                                    {formatPrice(
-                                                                        order.total,
-                                                                    )}
-                                                                </p>
+                                                    <div className="rounded-2xl bg-neutral-50 p-4">
+                                                        <p className="text-xs text-neutral-500">
+                                                            Dernière commande
+                                                        </p>
 
-                                                                <Link
-                                                                    href={`/suivi-commande?orderNumber=${encodeURIComponent(
-                                                                        order.orderNumber,
-                                                                    )}&phone=${encodeURIComponent(
-                                                                        order.customerPhone,
-                                                                    )}`}
-                                                                    className="mt-2 inline-flex text-sm font-bold underline"
-                                                                >
-                                                                    Suivre
-                                                                </Link>
-                                                            </div>
-                                                        </div>
-                                                    ))}
+                                                        <p className="mt-1 text-xl font-black">
+                                                            {formatDate(
+                                                                customer.lastOrderAt,
+                                                            )}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex flex-col gap-3">
+                                                <Link
+                                                    href={`/admin/clients/${customer.id}`}
+                                                    className="inline-flex items-center justify-center rounded-full bg-black px-5 py-3 text-sm font-bold text-white"
+                                                >
+                                                    Détail
+                                                </Link>
+
+                                                <button
+                                                    type="button"
+                                                    disabled={isUpdating}
+                                                    onClick={() =>
+                                                        handleToggleStatus(
+                                                            customer,
+                                                        )
+                                                    }
+                                                    className={
+                                                        customer.isActive
+                                                            ? "inline-flex items-center justify-center gap-2 rounded-full border border-red-200 px-5 py-3 text-sm font-bold text-red-700 transition hover:border-red-600 disabled:opacity-50"
+                                                            : "inline-flex items-center justify-center gap-2 rounded-full border border-green-200 px-5 py-3 text-sm font-bold text-green-700 transition hover:border-green-600 disabled:opacity-50"
+                                                    }
+                                                >
+                                                    {customer.isActive ? (
+                                                        <ShieldOff size={18} />
+                                                    ) : (
+                                                        <ShieldCheck
+                                                            size={18}
+                                                        />
+                                                    )}
+
+                                                    {isUpdating
+                                                        ? "Mise à jour..."
+                                                        : customer.isActive
+                                                          ? "Désactiver"
+                                                          : "Réactiver"}
+                                                </button>
                                             </div>
                                         </div>
-                                    )}
-                                </article>
-                            ))}
+
+                                        {customer.orders.length > 0 && (
+                                            <div className="mt-6 border-t border-neutral-200 pt-5">
+                                                <p className="text-sm font-bold uppercase tracking-[0.2em] text-neutral-500">
+                                                    Dernières commandes
+                                                </p>
+
+                                                <div className="mt-4 space-y-3">
+                                                    {customer.orders
+                                                        .slice(0, 3)
+                                                        .map((order) => (
+                                                            <div
+                                                                key={order.id}
+                                                                className="flex flex-col justify-between gap-3 rounded-2xl bg-neutral-50 p-4 md:flex-row md:items-center"
+                                                            >
+                                                                <div>
+                                                                    <p className="font-black">
+                                                                        {
+                                                                            order.orderNumber
+                                                                        }
+                                                                    </p>
+
+                                                                    <p className="mt-1 text-sm text-neutral-500">
+                                                                        {getOrderStatusLabel(
+                                                                            order.orderStatus,
+                                                                        )}{" "}
+                                                                        —{" "}
+                                                                        {
+                                                                            order
+                                                                                .items
+                                                                                .length
+                                                                        }{" "}
+                                                                        article(s)
+                                                                    </p>
+                                                                </div>
+
+                                                                <div className="text-left md:text-right">
+                                                                    <p className="font-black">
+                                                                        {formatPrice(
+                                                                            order.total,
+                                                                        )}
+                                                                    </p>
+
+                                                                    <Link
+                                                                        href={`/suivi-commande?orderNumber=${encodeURIComponent(
+                                                                            order.orderNumber,
+                                                                        )}&phone=${encodeURIComponent(
+                                                                            order.customerPhone,
+                                                                        )}`}
+                                                                        className="mt-2 inline-flex text-sm font-bold underline"
+                                                                    >
+                                                                        Suivre
+                                                                    </Link>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </article>
+                                );
+                            })}
                         </div>
                     )}
                 </div>
