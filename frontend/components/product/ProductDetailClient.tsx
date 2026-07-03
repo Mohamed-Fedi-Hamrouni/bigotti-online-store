@@ -14,10 +14,12 @@ import {
 } from "lucide-react";
 import { useCart } from "@/components/cart/CartProvider";
 import { useFavorites } from "@/components/favorites/FavoritesProvider";
+import { ProductCard } from "@/components/ProductCard";
 import type { Product, ProductImage, ProductVariant } from "@/types/product";
 
 type ProductDetailClientProps = {
     product: Product;
+    similarProducts: Product[];
 };
 
 type AccordionKey = "description" | "details" | "delivery";
@@ -32,8 +34,65 @@ function formatPrice(value: number | string | null | undefined) {
     return `${numericValue.toFixed(3)} TND`;
 }
 
+function normalizeColor(value: string | null | undefined) {
+    return (value ?? "")
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+}
+
+function normalizeHex(value: string | null | undefined) {
+    return (value ?? "").trim().toUpperCase();
+}
+
+function isValidHex(value: string | null | undefined) {
+    return /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(value ?? "");
+}
+
 function getMainImage(images: ProductImage[]) {
     return images.find((image) => image.isMain) ?? images[0] ?? null;
+}
+
+function getColorHexForColor(variants: ProductVariant[], color: string) {
+    return (
+        variants.find(
+            (variant) =>
+                variant.color === color &&
+                variant.stockQuantity > 0 &&
+                variant.colorHex,
+        )?.colorHex ?? null
+    );
+}
+
+function getImageForColor(
+    images: ProductImage[],
+    color: string,
+    colorHex?: string | null,
+) {
+    const normalizedHex = normalizeHex(colorHex);
+
+    if (normalizedHex) {
+        const imageByHex = images.find(
+            (image) => normalizeHex(image.colorHex) === normalizedHex,
+        );
+
+        if (imageByHex) {
+            return imageByHex;
+        }
+    }
+
+    const normalizedColor = normalizeColor(color);
+
+    if (!normalizedColor) {
+        return null;
+    }
+
+    return (
+        images.find(
+            (image) => normalizeColor(image.color) === normalizedColor,
+        ) ?? null
+    );
 }
 
 function getAvailableColors(variants: ProductVariant[]) {
@@ -66,15 +125,64 @@ function getStockForColor(variants: ProductVariant[], color: string) {
         .reduce((sum, variant) => sum + variant.stockQuantity, 0);
 }
 
-export function ProductDetailClient({ product }: ProductDetailClientProps) {
+function getColorButtonStyle(colorHex: string | null | undefined) {
+    if (!isValidHex(colorHex)) {
+        return {
+            background:
+                "linear-gradient(135deg, #f5f5f5 0%, #d4d4d4 45%, #a3a3a3 100%)",
+        };
+    }
+
+    return {
+        backgroundColor: colorHex ?? undefined,
+    };
+}
+
+function getMatchingColorFromImage(
+    image: ProductImage,
+    availableColors: string[],
+    variants: ProductVariant[],
+) {
+    if (image.colorHex) {
+        const matchingByHex = availableColors.find((color) => {
+            const colorHex = getColorHexForColor(variants, color);
+
+            return normalizeHex(colorHex) === normalizeHex(image.colorHex);
+        });
+
+        if (matchingByHex) {
+            return matchingByHex;
+        }
+    }
+
+    if (image.color) {
+        const matchingByName = availableColors.find(
+            (color) => normalizeColor(color) === normalizeColor(image.color),
+        );
+
+        if (matchingByName) {
+            return matchingByName;
+        }
+    }
+
+    return null;
+}
+
+export function ProductDetailClient({
+    product,
+    similarProducts,
+}: ProductDetailClientProps) {
     const { addToCart, itemsCount, subtotal, deliveryFee, total } = useCart();
     const { isFavorite, toggleFavorite } = useFavorites();
 
-    const productImages = product.images.length > 0 ? product.images : [];
-    const firstImage = getMainImage(productImages);
+    const productImages = useMemo(
+        () => (product.images.length > 0 ? product.images : []),
+        [product.images],
+    );
 
-    const [selectedImage, setSelectedImage] = useState<ProductImage | null>(
-        firstImage,
+    const firstImage = useMemo(
+        () => getMainImage(productImages),
+        [productImages],
     );
 
     const availableColors = useMemo(
@@ -85,6 +193,22 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
     const [selectedColor, setSelectedColor] = useState(
         availableColors[0] ?? "",
     );
+
+    const selectedColorHex = useMemo(
+        () => getColorHexForColor(product.variants, selectedColor),
+        [product.variants, selectedColor],
+    );
+
+    const [selectedImage, setSelectedImage] = useState<ProductImage | null>(
+        null,
+    );
+
+    const colorImage = useMemo(
+        () => getImageForColor(productImages, selectedColor, selectedColorHex),
+        [productImages, selectedColor, selectedColorHex],
+    );
+
+    const displayedImage = selectedImage ?? colorImage ?? firstImage;
 
     const availableSizes = useMemo(
         () => getAvailableSizes(product.variants, selectedColor),
@@ -114,16 +238,37 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
         useState<AccordionKey>("description");
 
     const isProductFavorite = isFavorite(product.id);
+    const hasDiscount = product.discountPercentage > 0;
 
-    const popupImage = selectedImage ?? firstImage;
+    const popupImage = displayedImage;
     const popupUnitPrice = Number(product.finalPrice);
     const popupLineTotal = popupUnitPrice * lastAddedQuantity;
 
     function handleColorChange(color: string) {
+        const colorHex = getColorHexForColor(product.variants, color);
+
         setSelectedColor(color);
         setSelectedSize("");
         setQuantity(1);
         setMessage("");
+        setSelectedImage(getImageForColor(productImages, color, colorHex));
+    }
+
+    function handleThumbnailClick(image: ProductImage) {
+        setSelectedImage(image);
+
+        const matchingColor = getMatchingColorFromImage(
+            image,
+            availableColors,
+            product.variants,
+        );
+
+        if (matchingColor) {
+            setSelectedColor(matchingColor);
+            setSelectedSize("");
+            setQuantity(1);
+            setMessage("");
+        }
     }
 
     function handleSizeChange(size: string) {
@@ -173,11 +318,15 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
                         <Link href="/" className="hover:text-black">
                             Accueil
                         </Link>
+
                         <span className="mx-2">/</span>
+
                         <Link href="/boutique" className="hover:text-black">
                             Boutique
                         </Link>
+
                         <span className="mx-2">/</span>
+
                         <Link
                             href={`/boutique?category=${encodeURIComponent(
                                 product.category.slug,
@@ -186,18 +335,20 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
                         >
                             {product.category.name}
                         </Link>
+
                         <span className="mx-2">/</span>
+
                         <span className="text-black">{product.name}</span>
                     </div>
 
                     <div className="grid gap-12 lg:grid-cols-[1.55fr_0.85fr]">
                         <div className="space-y-5">
                             <div className="overflow-hidden bg-neutral-50">
-                                {selectedImage ? (
+                                {displayedImage ? (
                                     <img
-                                        src={selectedImage.url}
+                                        src={displayedImage.url}
                                         alt={
-                                            selectedImage.altText ??
+                                            displayedImage.altText ??
                                             product.name
                                         }
                                         className="h-[680px] w-full object-contain"
@@ -213,14 +364,14 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
                                 <div className="grid grid-cols-4 gap-4">
                                     {productImages.map((image) => {
                                         const isSelected =
-                                            selectedImage?.id === image.id;
+                                            displayedImage?.id === image.id;
 
                                         return (
                                             <button
                                                 key={image.id}
                                                 type="button"
                                                 onClick={() =>
-                                                    setSelectedImage(image)
+                                                    handleThumbnailClick(image)
                                                 }
                                                 className={
                                                     isSelected
@@ -236,6 +387,12 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
                                                     }
                                                     className="aspect-square w-full object-cover"
                                                 />
+
+                                                {image.color && (
+                                                    <span className="block truncate bg-white px-2 py-2 text-xs font-bold text-neutral-700">
+                                                        {image.color}
+                                                    </span>
+                                                )}
                                             </button>
                                         );
                                     })}
@@ -252,12 +409,11 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
                                         </span>
                                     )}
 
-                                    {product.isOnSale &&
-                                        product.discountPercentage > 0 && (
-                                            <span className="rounded-full bg-black px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-white">
-                                                -{product.discountPercentage}%
-                                            </span>
-                                        )}
+                                    {hasDiscount && (
+                                        <span className="rounded-full bg-black px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-white">
+                                            -{product.discountPercentage}%
+                                        </span>
+                                    )}
 
                                     {product.totalStock <= 0 && (
                                         <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-neutral-600">
@@ -285,8 +441,7 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
                                 )}
 
                                 <div className="mt-6">
-                                    {product.isOnSale &&
-                                    product.discountPercentage > 0 ? (
+                                    {hasDiscount ? (
                                         <div>
                                             <p className="text-sm font-medium text-neutral-400 line-through">
                                                 {formatPrice(product.price)}
@@ -305,7 +460,7 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
                                     )}
                                 </div>
 
-                                {product.isOnSale && (
+                                {hasDiscount && (
                                     <div className="mt-8 bg-black px-5 py-4 text-sm font-bold text-white">
                                         Offre spéciale disponible sur ce
                                         produit.
@@ -370,6 +525,11 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
                                                         product.variants,
                                                         color,
                                                     );
+                                                const colorHex =
+                                                    getColorHexForColor(
+                                                        product.variants,
+                                                        color,
+                                                    );
 
                                                 return (
                                                     <button
@@ -382,16 +542,28 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
                                                         }
                                                         className={
                                                             isSelected
-                                                                ? "border border-black bg-black px-4 py-3 text-sm font-black text-white"
-                                                                : "border border-neutral-300 bg-white px-4 py-3 text-sm font-bold text-black transition hover:border-black"
+                                                                ? "flex items-center gap-2 border border-black bg-black px-4 py-3 text-sm font-black text-white"
+                                                                : "flex items-center gap-2 border border-neutral-300 bg-white px-4 py-3 text-sm font-bold text-black transition hover:border-black"
                                                         }
                                                     >
-                                                        {color}
+                                                        <span
+                                                            style={getColorButtonStyle(
+                                                                colorHex,
+                                                            )}
+                                                            className={
+                                                                isSelected
+                                                                    ? "h-4 w-4 rounded border border-white/60"
+                                                                    : "h-4 w-4 rounded border border-black/20"
+                                                            }
+                                                        />
+
+                                                        <span>{color}</span>
+
                                                         <span
                                                             className={
                                                                 isSelected
-                                                                    ? "ml-2 text-xs text-neutral-300"
-                                                                    : "ml-2 text-xs text-neutral-500"
+                                                                    ? "text-xs text-neutral-300"
+                                                                    : "text-xs text-neutral-500"
                                                             }
                                                         >
                                                             ({colorStock})
@@ -534,14 +706,17 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
                                                     Référence :{" "}
                                                     {product.reference}
                                                 </p>
+
                                                 <p>
                                                     Catégorie :{" "}
                                                     {product.category.name}
                                                 </p>
+
                                                 <p>
                                                     Stock total :{" "}
                                                     {product.totalStock}
                                                 </p>
+
                                                 {product.collection && (
                                                     <p>
                                                         Collection :{" "}
@@ -584,6 +759,7 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
                                                     Livraison à domicile en
                                                     Tunisie.
                                                 </p>
+
                                                 <p>
                                                     Paiement à la livraison
                                                     disponible. Les détails de
@@ -598,6 +774,48 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
                             </div>
                         </aside>
                     </div>
+
+                    {similarProducts.length > 0 && (
+                        <section className="mt-20 border-t border-neutral-200 pt-14">
+                            <div className="mb-10 flex flex-col justify-between gap-4 md:flex-row md:items-end">
+                                <div>
+                                    <p className="text-sm uppercase tracking-[0.35em] text-neutral-500">
+                                        Sélection
+                                    </p>
+
+                                    <h2 className="mt-3 text-4xl font-black uppercase tracking-tight md:text-5xl">
+                                        Dans le même style{" "}
+                                        <span className="text-neutral-400">
+                                            ×
+                                        </span>
+                                    </h2>
+
+                                    <p className="mt-4 max-w-2xl text-neutral-600">
+                                        Découvrez d’autres articles dans la
+                                        catégorie {product.category.name}.
+                                    </p>
+                                </div>
+
+                                <Link
+                                    href={`/boutique?category=${encodeURIComponent(
+                                        product.category.slug,
+                                    )}`}
+                                    className="text-sm font-black uppercase tracking-[0.2em] text-neutral-500 transition hover:text-black"
+                                >
+                                    Voir toute la catégorie
+                                </Link>
+                            </div>
+
+                            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+                                {similarProducts.map((similarProduct) => (
+                                    <ProductCard
+                                        key={similarProduct.id}
+                                        product={similarProduct}
+                                    />
+                                ))}
+                            </div>
+                        </section>
+                    )}
                 </div>
             </section>
 

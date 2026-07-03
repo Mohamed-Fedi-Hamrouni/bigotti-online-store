@@ -63,12 +63,15 @@ type EditableImage = {
     url: string;
     storagePath: string | null;
     altText: string;
+    color: string;
+    colorHex: string;
     isMain: boolean;
     position: number;
 };
 
 type EditableVariant = {
     color: string;
+    colorHex: string;
     size: string;
     stockQuantity: string;
     sku: string;
@@ -173,11 +176,25 @@ function getStatusClassName(status: ProductStatus) {
     return "rounded-full bg-yellow-50 px-3 py-1 text-xs font-bold text-yellow-700";
 }
 
+function normalizeHex(value: string) {
+    return value.trim().toUpperCase();
+}
+
+function isValidHex(value: string) {
+    return /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(value.trim());
+}
+
+function getSafeColorInputValue(value: string) {
+    return isValidHex(value) ? normalizeHex(value) : "#111111";
+}
+
 function createEmptyImage(position: number): EditableImage {
     return {
         url: "",
         storagePath: null,
         altText: "",
+        color: "",
+        colorHex: "#111111",
         isMain: position === 0,
         position,
     };
@@ -186,6 +203,7 @@ function createEmptyImage(position: number): EditableImage {
 function createEmptyVariant(): EditableVariant {
     return {
         color: "",
+        colorHex: "#111111",
         size: "",
         stockQuantity: "0",
         sku: "",
@@ -218,6 +236,8 @@ function productToFormState(product: Product): ProductFormState {
                       url: image.url,
                       storagePath: image.storagePath,
                       altText: image.altText ?? product.name,
+                      color: image.color ?? "",
+                      colorHex: image.colorHex ?? "#111111",
                       isMain: image.isMain,
                       position: image.position ?? index,
                   }))
@@ -226,6 +246,7 @@ function productToFormState(product: Product): ProductFormState {
             product.variants.length > 0
                 ? product.variants.map((variant) => ({
                       color: variant.color,
+                      colorHex: variant.colorHex ?? "#111111",
                       size: variant.size,
                       stockQuantity: String(variant.stockQuantity),
                       sku: variant.sku ?? "",
@@ -276,6 +297,10 @@ function buildUpdatePayload(params: {
                 url: image.url.trim(),
                 storagePath: image.storagePath,
                 altText: image.altText.trim() || form.name.trim(),
+                color: image.color.trim() || null,
+                colorHex: isValidHex(image.colorHex)
+                    ? normalizeHex(image.colorHex)
+                    : null,
                 isMain: image.isMain,
                 position: index,
             }));
@@ -299,6 +324,9 @@ function buildUpdatePayload(params: {
             )
             .map((variant) => ({
                 color: variant.color.trim(),
+                colorHex: isValidHex(variant.colorHex)
+                    ? normalizeHex(variant.colorHex)
+                    : null,
                 size: variant.size.trim().toUpperCase(),
                 stockQuantity: Number(variant.stockQuantity),
                 sku: variant.sku.trim() || undefined,
@@ -663,6 +691,31 @@ export default function EditProductPage() {
             }
         }
 
+        if (imagesTouched && payload.images) {
+            const linkedImageColors = payload.images
+                .map((image) => image.color?.trim())
+                .filter(Boolean);
+
+            const duplicateColor = linkedImageColors.find(
+                (color, index) => linkedImageColors.indexOf(color) !== index,
+            );
+
+            if (duplicateColor) {
+                return `La couleur "${duplicateColor}" est liée à plusieurs images. Gardez une seule image par couleur.`;
+            }
+
+            if (
+                payload.images.some(
+                    (image) =>
+                        image.colorHex !== null &&
+                        image.colorHex !== undefined &&
+                        !isValidHex(image.colorHex),
+                )
+            ) {
+                return "Chaque image liée à une couleur doit avoir un code couleur HEX valide. Exemple : #111111.";
+            }
+        }
+
         if (variantsTouched) {
             if (!payload.variants || payload.variants.length === 0) {
                 return "Ajoutez au moins une variante couleur/taille.";
@@ -676,6 +729,17 @@ export default function EditProductPage() {
                 )
             ) {
                 return "Le stock des variantes doit être supérieur ou égal à 0.";
+            }
+
+            if (
+                payload.variants.some(
+                    (variant) =>
+                        variant.colorHex !== null &&
+                        variant.colorHex !== undefined &&
+                        !isValidHex(variant.colorHex),
+                )
+            ) {
+                return "Chaque variante doit avoir un code couleur HEX valide. Exemple : #111111.";
             }
         }
 
@@ -795,6 +859,7 @@ export default function EditProductPage() {
                 params.id,
                 payload,
             );
+
             setForm(productToFormState(updatedProduct));
             setOriginalStatus(updatedProduct.status);
             setImagesTouched(false);
@@ -833,8 +898,8 @@ export default function EditProductPage() {
                         </h1>
 
                         <p className="mt-3 text-neutral-600">
-                            Modifiez les informations, images, variantes et
-                            publication sans supprimer le produit.
+                            Modifiez les informations, images par couleur,
+                            variantes, stock et publication.
                         </p>
                     </div>
 
@@ -1268,11 +1333,13 @@ export default function EditProductPage() {
 
                                         <div>
                                             <h2 className="text-2xl font-black">
-                                                Images
+                                                Images par couleur
                                             </h2>
 
                                             <p className="mt-1 text-sm text-neutral-500">
-                                                La première image principale est
+                                                Associez une image à une couleur
+                                                exacte : Noir, Bleu, Beige...
+                                                L’image principale reste
                                                 utilisée dans les cartes
                                                 produit.
                                             </p>
@@ -1293,7 +1360,8 @@ export default function EditProductPage() {
                                     <div className="mt-5 flex gap-3 rounded-2xl bg-yellow-50 p-4 text-sm font-semibold text-yellow-800">
                                         <AlertTriangle size={18} />
                                         Les images seront remplacées lors de la
-                                        sauvegarde.
+                                        sauvegarde. Vérifiez bien les couleurs
+                                        liées aux images.
                                     </div>
                                 )}
 
@@ -1333,18 +1401,73 @@ export default function EditProductPage() {
                                                     className="w-full rounded-2xl border border-neutral-300 px-4 py-3 text-sm outline-none focus:border-black"
                                                 />
 
-                                                <input
-                                                    value={image.altText}
-                                                    onChange={(event) =>
-                                                        updateImage(index, {
-                                                            altText:
-                                                                event.target
+                                                <div className="grid gap-3 md:grid-cols-2">
+                                                    <input
+                                                        value={image.altText}
+                                                        onChange={(event) =>
+                                                            updateImage(index, {
+                                                                altText:
+                                                                    event.target
+                                                                        .value,
+                                                            })
+                                                        }
+                                                        placeholder="Texte alternatif"
+                                                        className="w-full rounded-2xl border border-neutral-300 px-4 py-3 text-sm outline-none focus:border-black"
+                                                    />
+
+                                                    <input
+                                                        value={image.color}
+                                                        onChange={(event) =>
+                                                            updateImage(index, {
+                                                                color: event
+                                                                    .target
                                                                     .value,
-                                                        })
-                                                    }
-                                                    placeholder="Texte alternatif"
-                                                    className="w-full rounded-2xl border border-neutral-300 px-4 py-3 text-sm outline-none focus:border-black"
-                                                />
+                                                            })
+                                                        }
+                                                        placeholder="Couleur liée à l’image : Noir, Bleu..."
+                                                        className="w-full rounded-2xl border border-neutral-300 px-4 py-3 text-sm outline-none focus:border-black"
+                                                    />
+                                                </div>
+
+                                                <div className="grid gap-3 md:grid-cols-[80px_1fr]">
+                                                    <input
+                                                        type="color"
+                                                        value={getSafeColorInputValue(
+                                                            image.colorHex,
+                                                        )}
+                                                        onChange={(event) =>
+                                                            updateImage(index, {
+                                                                colorHex:
+                                                                    event.target
+                                                                        .value,
+                                                            })
+                                                        }
+                                                        className="h-12 w-full cursor-pointer rounded-2xl border border-neutral-300 bg-white p-1"
+                                                        aria-label="Sélecteur couleur image"
+                                                    />
+
+                                                    <input
+                                                        value={image.colorHex}
+                                                        onChange={(event) =>
+                                                            updateImage(index, {
+                                                                colorHex:
+                                                                    event.target
+                                                                        .value,
+                                                            })
+                                                        }
+                                                        placeholder="#111111"
+                                                        className="w-full rounded-2xl border border-neutral-300 px-4 py-3 text-sm uppercase outline-none focus:border-black"
+                                                    />
+                                                </div>
+
+                                                <p className="text-xs text-neutral-500">
+                                                    Le nom de couleur doit
+                                                    correspondre aux variantes.
+                                                    Le code HEX sert à afficher
+                                                    la pastille couleur exacte
+                                                    dans la boutique. Exemple :
+                                                    Bleu marine / #0B1F5E.
+                                                </p>
 
                                                 <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-neutral-300 px-4 py-2 text-sm font-bold hover:border-black">
                                                     <ImagePlus size={16} />
@@ -1408,9 +1531,9 @@ export default function EditProductPage() {
                                             </h2>
 
                                             <p className="mt-1 text-sm text-neutral-500">
-                                                Évitez de supprimer des
-                                                variantes utilisées par
-                                                d’anciennes commandes.
+                                                Les couleurs ici doivent
+                                                correspondre aux couleurs des
+                                                images associées.
                                             </p>
                                         </div>
                                     </div>
@@ -1438,7 +1561,7 @@ export default function EditProductPage() {
                                     {form.variants.map((variant, index) => (
                                         <div
                                             key={`${variant.color}-${variant.size}-${index}`}
-                                            className="grid gap-4 rounded-3xl bg-neutral-50 p-5 md:grid-cols-[1fr_120px_120px_1fr_auto]"
+                                            className="grid gap-4 rounded-3xl bg-neutral-50 p-5 md:grid-cols-[1fr_90px_120px_120px_1fr_auto]"
                                         >
                                             <input
                                                 value={variant.color}
@@ -1450,6 +1573,21 @@ export default function EditProductPage() {
                                                 }
                                                 placeholder="Couleur"
                                                 className="rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
+                                            />
+
+                                            <input
+                                                type="color"
+                                                value={getSafeColorInputValue(
+                                                    variant.colorHex,
+                                                )}
+                                                onChange={(event) =>
+                                                    updateVariant(index, {
+                                                        colorHex:
+                                                            event.target.value,
+                                                    })
+                                                }
+                                                className="h-12 w-full cursor-pointer rounded-2xl border border-neutral-300 bg-white p-1"
+                                                aria-label="Sélecteur couleur variante"
                                             />
 
                                             <input
@@ -1502,6 +1640,94 @@ export default function EditProductPage() {
                                     ))}
                                 </div>
                             </section>
+
+                            <section className="rounded-[2rem] bg-white p-8 shadow-sm">
+                                <h2 className="text-2xl font-black">
+                                    Mise en avant
+                                </h2>
+
+                                <div className="mt-6 grid gap-4 md:grid-cols-2">
+                                    <label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-neutral-300 p-4">
+                                        <input
+                                            type="checkbox"
+                                            checked={form.isFeatured}
+                                            onChange={(event) =>
+                                                updateField(
+                                                    "isFeatured",
+                                                    event.target.checked,
+                                                )
+                                            }
+                                        />
+
+                                        <span className="font-bold">
+                                            Produit mis en avant
+                                        </span>
+                                    </label>
+
+                                    <label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-neutral-300 p-4">
+                                        <input
+                                            type="checkbox"
+                                            checked={form.isNewArrival}
+                                            onChange={(event) =>
+                                                updateField(
+                                                    "isNewArrival",
+                                                    event.target.checked,
+                                                )
+                                            }
+                                        />
+
+                                        <span className="font-bold">
+                                            Nouveauté
+                                        </span>
+                                    </label>
+                                </div>
+                            </section>
+
+                            <section className="rounded-[2rem] bg-white p-8 shadow-sm">
+                                <h2 className="text-2xl font-black">
+                                    Publication
+                                </h2>
+
+                                <div className="mt-6">
+                                    <label className="text-sm font-bold">
+                                        Statut
+                                    </label>
+
+                                    <select
+                                        value={form.status}
+                                        onChange={(event) =>
+                                            updateField(
+                                                "status",
+                                                event.target
+                                                    .value as ProductStatus,
+                                            )
+                                        }
+                                        className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 outline-none focus:border-black"
+                                    >
+                                        {PRODUCT_STATUS_OPTIONS.map(
+                                            (option) => (
+                                                <option
+                                                    key={option.value}
+                                                    value={option.value}
+                                                >
+                                                    {option.label}
+                                                </option>
+                                            ),
+                                        )}
+                                    </select>
+                                </div>
+                            </section>
+
+                            <button
+                                type="submit"
+                                disabled={isSaving}
+                                className="flex w-full items-center justify-center gap-2 rounded-full bg-black px-6 py-4 text-sm font-black text-white transition hover:bg-neutral-800 disabled:bg-neutral-300"
+                            >
+                                <Save size={18} />
+                                {isSaving
+                                    ? "Sauvegarde en cours..."
+                                    : "Sauvegarder les modifications"}
+                            </button>
                         </div>
 
                         <aside className="h-fit space-y-6 lg:sticky lg:top-6">
@@ -1563,168 +1789,143 @@ export default function EditProductPage() {
                                             "REFERENCE"}
                                     </p>
 
-                                    <p className="mt-2 text-neutral-600">
+                                    <p className="mt-4 text-sm text-neutral-500">
+                                        Catégorie
+                                    </p>
+
+                                    <p className="mt-1 font-bold">
                                         {selectedCategory?.name ??
-                                            "Catégorie non sélectionnée"}
+                                            "Non sélectionnée"}
                                     </p>
 
-                                    <p className="mt-4 text-sm text-neutral-600">
-                                        {form.shortDescription ||
-                                            "Description courte du produit."}
-                                    </p>
+                                    {selectedCollection && (
+                                        <>
+                                            <p className="mt-4 text-sm text-neutral-500">
+                                                Collection
+                                            </p>
 
-                                    <div className="mt-5">
-                                        {form.isOnSale &&
-                                        Number(form.price) > 0 ? (
-                                            <>
-                                                <p className="text-sm text-neutral-400 line-through">
+                                            <p className="mt-1 font-bold">
+                                                {selectedCollection.name}
+                                            </p>
+                                        </>
+                                    )}
+
+                                    {selectedCampaign && (
+                                        <>
+                                            <p className="mt-4 text-sm text-neutral-500">
+                                                Campagne
+                                            </p>
+
+                                            <p className="mt-1 font-bold">
+                                                {selectedCampaign.name}
+                                            </p>
+                                        </>
+                                    )}
+
+                                    <div className="mt-5 rounded-3xl bg-neutral-50 p-5">
+                                        {form.isOnSale ? (
+                                            <div>
+                                                <p className="text-sm text-neutral-500 line-through">
                                                     {formatPrice(form.price)}
                                                 </p>
 
-                                                <p className="text-3xl font-black">
+                                                <p className="mt-1 text-3xl font-black">
                                                     {formatPrice(finalPrice)}
                                                 </p>
-                                            </>
+                                            </div>
                                         ) : (
                                             <p className="text-3xl font-black">
                                                 {formatPrice(form.price)}
                                             </p>
                                         )}
-                                    </div>
 
-                                    <div className="mt-6 rounded-2xl bg-neutral-50 p-4">
-                                        <p className="text-sm font-bold">
-                                            Stock total
-                                        </p>
-
-                                        <p className="mt-1 text-2xl font-black">
-                                            {totalStock}
+                                        <p className="mt-3 text-sm font-bold text-neutral-600">
+                                            Stock total : {totalStock}
                                         </p>
                                     </div>
-                                </div>
-                            </section>
 
-                            <section className="rounded-[2rem] bg-white p-6 shadow-sm">
-                                <h2 className="text-2xl font-black">
-                                    Publication
-                                </h2>
+                                    <div className="mt-5 rounded-3xl bg-neutral-50 p-5">
+                                        <p className="text-sm font-black">
+                                            Images
+                                        </p>
 
-                                <label className="mt-6 block text-sm font-bold">
-                                    Statut
-                                </label>
+                                        <p className="mt-2 text-sm text-neutral-600">
+                                            {
+                                                form.images.filter((image) =>
+                                                    image.url.trim(),
+                                                ).length
+                                            }{" "}
+                                            image(s)
+                                        </p>
 
-                                <select
-                                    value={form.status}
-                                    onChange={(event) =>
-                                        updateField(
-                                            "status",
-                                            event.target.value as ProductStatus,
-                                        )
-                                    }
-                                    className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 outline-none focus:border-black"
-                                >
-                                    {PRODUCT_STATUS_OPTIONS.map((status) => (
-                                        <option
-                                            key={status.value}
-                                            value={status.value}
-                                        >
-                                            {status.label}
-                                        </option>
-                                    ))}
-                                </select>
-
-                                {form.status === "ARCHIVED" && (
-                                    <p className="mt-4 rounded-2xl bg-red-50 p-4 text-sm font-semibold text-red-700">
-                                        Produit archivé : il n’est pas supprimé,
-                                        mais il n’est plus visible côté client.
-                                    </p>
-                                )}
-
-                                <div className="mt-6 space-y-4">
-                                    <label className="flex items-center justify-between gap-4 rounded-2xl bg-neutral-50 p-4 text-sm font-bold">
-                                        Produit en avant
-                                        <input
-                                            type="checkbox"
-                                            checked={form.isFeatured}
-                                            onChange={(event) =>
-                                                updateField(
-                                                    "isFeatured",
-                                                    event.target.checked,
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                            {form.images
+                                                .filter((image) =>
+                                                    image.url.trim(),
                                                 )
-                                            }
-                                        />
-                                    </label>
+                                                .map((image, index) => (
+                                                    <span
+                                                        key={`${image.url}-${index}`}
+                                                        className="rounded-full bg-white px-3 py-1 text-xs font-bold text-neutral-700"
+                                                    >
+                                                        {image.color.trim()
+                                                            ? image.color
+                                                            : "Sans couleur"}
+                                                        {image.isMain
+                                                            ? " • principale"
+                                                            : ""}
+                                                    </span>
+                                                ))}
+                                        </div>
+                                    </div>
 
-                                    <label className="flex items-center justify-between gap-4 rounded-2xl bg-neutral-50 p-4 text-sm font-bold">
-                                        Nouveauté
-                                        <input
-                                            type="checkbox"
-                                            checked={form.isNewArrival}
-                                            onChange={(event) =>
-                                                updateField(
-                                                    "isNewArrival",
-                                                    event.target.checked,
-                                                )
-                                            }
-                                        />
-                                    </label>
+                                    <div className="mt-5 rounded-3xl bg-neutral-50 p-5">
+                                        <p className="text-sm font-black">
+                                            Variantes
+                                        </p>
+
+                                        <p className="mt-2 text-sm text-neutral-600">
+                                            {form.variants.length} variante(s)
+                                        </p>
+
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                            {Array.from(
+                                                new Set(
+                                                    form.variants
+                                                        .map((variant) =>
+                                                            variant.color.trim(),
+                                                        )
+                                                        .filter(Boolean),
+                                                ),
+                                            ).map((color) => (
+                                                <span
+                                                    key={color}
+                                                    className="rounded-full bg-white px-3 py-1 text-xs font-bold text-neutral-700"
+                                                >
+                                                    {color}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
                                 </div>
                             </section>
 
-                            <section className="rounded-[2rem] bg-white p-6 shadow-sm">
-                                <h2 className="text-2xl font-black">
-                                    Checklist
-                                </h2>
+                            <section className="rounded-[2rem] bg-white p-6 text-sm text-neutral-600 shadow-sm">
+                                <p className="font-black text-neutral-950">
+                                    Rappel important
+                                </p>
 
-                                <div className="mt-4 space-y-2 text-sm">
-                                    <p>
-                                        {form.reference.trim() ? "✅" : "⬜"}{" "}
-                                        Référence
-                                    </p>
+                                <p className="mt-3 leading-6">
+                                    Pour que le changement d’image fonctionne
+                                    côté client, la couleur de l’image doit être
+                                    identique à la couleur des variantes.
+                                </p>
 
-                                    <p>{form.name.trim() ? "✅" : "⬜"} Nom</p>
-
-                                    <p>
-                                        {form.categoryId ? "✅" : "⬜"}{" "}
-                                        Catégorie
-                                    </p>
-
-                                    <p>
-                                        {Number(form.price) > 0 ? "✅" : "⬜"}{" "}
-                                        Prix
-                                    </p>
-
-                                    <p>
-                                        {form.images.some((image) =>
-                                            image.url.trim(),
-                                        )
-                                            ? "✅"
-                                            : "⬜"}{" "}
-                                        Image
-                                    </p>
-
-                                    <p>{totalStock > 0 ? "✅" : "⬜"} Stock</p>
+                                <div className="mt-4 rounded-2xl bg-neutral-50 p-4">
+                                    <p>Variante : Bleu / 40 / stock 5</p>
+                                    <p>Image : couleur Bleu</p>
                                 </div>
                             </section>
-
-                            <button
-                                type="submit"
-                                disabled={isSaving}
-                                className="flex w-full items-center justify-center gap-2 rounded-full bg-black px-6 py-4 text-sm font-black text-white transition hover:bg-neutral-800 disabled:opacity-60"
-                            >
-                                <Save size={18} />
-
-                                {isSaving ? "Sauvegarde..." : "Sauvegarder"}
-                            </button>
-
-                            {form.status === "PUBLISHED" && (
-                                <Link
-                                    href={`/produit/${form.slug}`}
-                                    className="flex w-full justify-center rounded-full border border-neutral-300 px-6 py-4 text-sm font-black hover:border-black"
-                                >
-                                    Voir côté boutique
-                                </Link>
-                            )}
                         </aside>
                     </form>
                 )}

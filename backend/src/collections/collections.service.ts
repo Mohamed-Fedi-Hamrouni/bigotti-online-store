@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -25,6 +26,20 @@ export class CollectionsService {
       throw new ConflictException('Une collection avec ce slug existe déjà.');
     }
 
+    this.validateCollectionDates({
+      startDate: createCollectionDto.startDate,
+      endDate: createCollectionDto.endDate,
+    });
+
+    this.validateCollectionPromo({
+      promoIsActive: createCollectionDto.promoIsActive ?? false,
+      promoPercentage: createCollectionDto.promoPercentage ?? null,
+      promoStartDate: createCollectionDto.promoStartDate ?? null,
+      promoEndDate: createCollectionDto.promoEndDate ?? null,
+    });
+
+    const promoIsActive = createCollectionDto.promoIsActive ?? false;
+
     return this.prisma.collection.create({
       data: {
         name: createCollectionDto.name.trim(),
@@ -38,6 +53,18 @@ export class CollectionsService {
         endDate: createCollectionDto.endDate
           ? new Date(createCollectionDto.endDate)
           : null,
+        promoIsActive,
+        promoPercentage: promoIsActive
+          ? (createCollectionDto.promoPercentage ?? null)
+          : null,
+        promoStartDate:
+          promoIsActive && createCollectionDto.promoStartDate
+            ? new Date(createCollectionDto.promoStartDate)
+            : null,
+        promoEndDate:
+          promoIsActive && createCollectionDto.promoEndDate
+            ? new Date(createCollectionDto.promoEndDate)
+            : null,
       },
     });
   }
@@ -79,7 +106,7 @@ export class CollectionsService {
   }
 
   async update(id: string, updateCollectionDto: UpdateCollectionDto) {
-    await this.findOne(id);
+    const currentCollection = await this.findOne(id);
 
     const data: {
       name?: string;
@@ -89,7 +116,53 @@ export class CollectionsService {
       isFeatured?: boolean;
       startDate?: Date | null;
       endDate?: Date | null;
+      promoIsActive?: boolean;
+      promoPercentage?: number | null;
+      promoStartDate?: Date | null;
+      promoEndDate?: Date | null;
     } = {};
+
+    const effectiveStartDate =
+      updateCollectionDto.startDate !== undefined
+        ? updateCollectionDto.startDate
+        : (currentCollection.startDate?.toISOString() ?? null);
+
+    const effectiveEndDate =
+      updateCollectionDto.endDate !== undefined
+        ? updateCollectionDto.endDate
+        : (currentCollection.endDate?.toISOString() ?? null);
+
+    this.validateCollectionDates({
+      startDate: effectiveStartDate,
+      endDate: effectiveEndDate,
+    });
+
+    const effectivePromoIsActive =
+      updateCollectionDto.promoIsActive ?? currentCollection.promoIsActive;
+
+    const effectivePromoPercentage =
+      updateCollectionDto.promoPercentage !== undefined
+        ? updateCollectionDto.promoPercentage
+        : currentCollection.promoPercentage !== null
+          ? Number(currentCollection.promoPercentage)
+          : null;
+
+    const effectivePromoStartDate =
+      updateCollectionDto.promoStartDate !== undefined
+        ? updateCollectionDto.promoStartDate
+        : (currentCollection.promoStartDate?.toISOString() ?? null);
+
+    const effectivePromoEndDate =
+      updateCollectionDto.promoEndDate !== undefined
+        ? updateCollectionDto.promoEndDate
+        : (currentCollection.promoEndDate?.toISOString() ?? null);
+
+    this.validateCollectionPromo({
+      promoIsActive: effectivePromoIsActive,
+      promoPercentage: effectivePromoPercentage,
+      promoStartDate: effectivePromoStartDate,
+      promoEndDate: effectivePromoEndDate,
+    });
 
     if (updateCollectionDto.name !== undefined) {
       data.name = updateCollectionDto.name.trim();
@@ -133,6 +206,41 @@ export class CollectionsService {
         : null;
     }
 
+    if (updateCollectionDto.promoIsActive !== undefined) {
+      data.promoIsActive = updateCollectionDto.promoIsActive;
+
+      if (!updateCollectionDto.promoIsActive) {
+        data.promoPercentage = null;
+        data.promoStartDate = null;
+        data.promoEndDate = null;
+      }
+    }
+
+    if (
+      effectivePromoIsActive &&
+      updateCollectionDto.promoPercentage !== undefined
+    ) {
+      data.promoPercentage = updateCollectionDto.promoPercentage;
+    }
+
+    if (
+      effectivePromoIsActive &&
+      updateCollectionDto.promoStartDate !== undefined
+    ) {
+      data.promoStartDate = updateCollectionDto.promoStartDate
+        ? new Date(updateCollectionDto.promoStartDate)
+        : null;
+    }
+
+    if (
+      effectivePromoIsActive &&
+      updateCollectionDto.promoEndDate !== undefined
+    ) {
+      data.promoEndDate = updateCollectionDto.promoEndDate
+        ? new Date(updateCollectionDto.promoEndDate)
+        : null;
+    }
+
     return this.prisma.collection.update({
       where: { id },
       data,
@@ -151,6 +259,60 @@ export class CollectionsService {
         isActive: updateCollectionStatusDto.isActive,
       },
     });
+  }
+
+  private validateCollectionDates(params: {
+    startDate?: string | null;
+    endDate?: string | null;
+  }) {
+    if (
+      params.startDate &&
+      params.endDate &&
+      new Date(params.startDate).getTime() > new Date(params.endDate).getTime()
+    ) {
+      throw new BadRequestException(
+        'La date de début de collection doit être avant la date de fin.',
+      );
+    }
+  }
+
+  private validateCollectionPromo(params: {
+    promoIsActive: boolean;
+    promoPercentage?: number | null;
+    promoStartDate?: string | null;
+    promoEndDate?: string | null;
+  }) {
+    if (!params.promoIsActive) {
+      return;
+    }
+
+    if (
+      params.promoPercentage === undefined ||
+      params.promoPercentage === null ||
+      !Number.isFinite(Number(params.promoPercentage)) ||
+      Number(params.promoPercentage) <= 0
+    ) {
+      throw new BadRequestException(
+        'Le pourcentage de promotion collection doit être supérieur à 0.',
+      );
+    }
+
+    if (Number(params.promoPercentage) > 100) {
+      throw new BadRequestException(
+        'La promotion collection ne peut pas dépasser 100%.',
+      );
+    }
+
+    if (
+      params.promoStartDate &&
+      params.promoEndDate &&
+      new Date(params.promoStartDate).getTime() >
+        new Date(params.promoEndDate).getTime()
+    ) {
+      throw new BadRequestException(
+        'La date de début de promotion doit être avant la date de fin.',
+      );
+    }
   }
 
   private generateSlug(value: string) {

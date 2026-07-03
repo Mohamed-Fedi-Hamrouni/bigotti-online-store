@@ -21,6 +21,10 @@ export type Collection = {
     isFeatured: boolean;
     startDate: string | null;
     endDate: string | null;
+    promoIsActive: boolean;
+    promoPercentage: number | null;
+    promoStartDate: string | null;
+    promoEndDate: string | null;
     createdAt?: string;
     updatedAt?: string;
 };
@@ -43,6 +47,7 @@ export type ProductImage = {
     url: string;
     storagePath: string | null;
     altText: string | null;
+    color: string | null;
     isMain: boolean;
     position: number;
     createdAt: string;
@@ -95,6 +100,7 @@ export type CreateProductImagePayload = {
     url: string;
     storagePath?: string | null;
     altText?: string;
+    color?: string | null;
     isMain?: boolean;
     position?: number;
 };
@@ -171,6 +177,10 @@ export type CreateCollectionPayload = {
     isFeatured?: boolean;
     startDate?: string | null;
     endDate?: string | null;
+    promoIsActive?: boolean;
+    promoPercentage?: number | null;
+    promoStartDate?: string | null;
+    promoEndDate?: string | null;
 };
 
 export type UpdateCollectionPayload = {
@@ -181,6 +191,10 @@ export type UpdateCollectionPayload = {
     isFeatured?: boolean;
     startDate?: string | null;
     endDate?: string | null;
+    promoIsActive?: boolean;
+    promoPercentage?: number | null;
+    promoStartDate?: string | null;
+    promoEndDate?: string | null;
 };
 
 export type CreateSaleCampaignPayload = {

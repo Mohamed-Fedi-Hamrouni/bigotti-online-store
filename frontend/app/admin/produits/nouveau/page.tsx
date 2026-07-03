@@ -48,7 +48,10 @@ type ProductSize = string;
 
 type ColorStockVariant = {
     color: string;
+    colorHex: string;
     stockBySize: Record<ProductSize, string>;
+    imageFile: File | null;
+    imagePreviewUrl: string;
 };
 
 type ProductFormState = {
@@ -142,10 +145,14 @@ function createEmptyStockBySize(sizeMode: SizeMode) {
 function createColorVariant(
     sizeMode: SizeMode,
     color = "Noir",
+    colorHex = "#111111",
 ): ColorStockVariant {
     return {
         color,
+        colorHex,
         stockBySize: createEmptyStockBySize(sizeMode),
+        imageFile: null,
+        imagePreviewUrl: "",
     };
 }
 
@@ -199,6 +206,43 @@ function getAdminToken() {
     return window.localStorage.getItem("bigotti-admin-token");
 }
 
+function getColorStockTotal(
+    colorVariant: ColorStockVariant,
+    availableSizes: ProductSize[],
+) {
+    return availableSizes.reduce(
+        (sum, size) => sum + Number(colorVariant.stockBySize[size] || 0),
+        0,
+    );
+}
+
+function validateImageFile(file: File) {
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+    const maxSize = 5 * 1024 * 1024;
+
+    if (!allowedTypes.includes(file.type)) {
+        return "Format image invalide. Utilisez JPG, PNG ou WEBP.";
+    }
+
+    if (file.size > maxSize) {
+        return "L’image dépasse 5 MB.";
+    }
+
+    return "";
+}
+
+function normalizeHex(value: string) {
+    return value.trim().toUpperCase();
+}
+
+function isValidHex(value: string) {
+    return /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(value.trim());
+}
+
+function getSafeColorInputValue(value: string) {
+    return isValidHex(value) ? normalizeHex(value) : "#111111";
+}
+
 export default function NewProductPage() {
     const router = useRouter();
 
@@ -211,11 +255,6 @@ export default function NewProductPage() {
         createColorVariant("CLOTHING", "Noir"),
     ]);
     const [isSlugTouched, setIsSlugTouched] = useState(false);
-
-    const [selectedImageFile, setSelectedImageFile] = useState<File | null>(
-        null,
-    );
-    const [imagePreviewUrl, setImagePreviewUrl] = useState("");
 
     const [createdProduct, setCreatedProduct] = useState<Product | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -252,11 +291,13 @@ export default function NewProductPage() {
 
     useEffect(() => {
         return () => {
-            if (imagePreviewUrl) {
-                URL.revokeObjectURL(imagePreviewUrl);
-            }
+            colorVariants.forEach((colorVariant) => {
+                if (colorVariant.imagePreviewUrl) {
+                    URL.revokeObjectURL(colorVariant.imagePreviewUrl);
+                }
+            });
         };
-    }, [imagePreviewUrl]);
+    }, [colorVariants]);
 
     const activeCategories = useMemo(
         () => categories.filter((category) => category.isActive),
@@ -282,12 +323,7 @@ export default function NewProductPage() {
         () =>
             colorVariants.reduce(
                 (total, colorVariant) =>
-                    total +
-                    availableSizes.reduce(
-                        (sum, size) =>
-                            sum + Number(colorVariant.stockBySize[size] || 0),
-                        0,
-                    ),
+                    total + getColorStockTotal(colorVariant, availableSizes),
                 0,
             ),
         [availableSizes, colorVariants],
@@ -298,6 +334,19 @@ export default function NewProductPage() {
     const selectedCategory = activeCategories.find(
         (category) => category.id === form.categoryId,
     );
+
+    const mainPreviewImage = useMemo(() => {
+        return (
+            colorVariants.find(
+                (colorVariant) =>
+                    getColorStockTotal(colorVariant, availableSizes) > 0 &&
+                    colorVariant.imagePreviewUrl,
+            )?.imagePreviewUrl ??
+            colorVariants.find((colorVariant) => colorVariant.imagePreviewUrl)
+                ?.imagePreviewUrl ??
+            ""
+        );
+    }, [availableSizes, colorVariants]);
 
     function logout() {
         window.localStorage.removeItem("bigotti-admin-token");
@@ -336,12 +385,18 @@ export default function NewProductPage() {
         const confirmed =
             totalStock === 0 ||
             window.confirm(
-                "Changer le type de tailles va réinitialiser le stock saisi. Continuer ?",
+                "Changer le type de tailles va réinitialiser le stock saisi et les images par couleur. Continuer ?",
             );
 
         if (!confirmed) {
             return;
         }
+
+        colorVariants.forEach((colorVariant) => {
+            if (colorVariant.imagePreviewUrl) {
+                URL.revokeObjectURL(colorVariant.imagePreviewUrl);
+            }
+        });
 
         setForm((currentForm) => ({
             ...currentForm,
@@ -358,6 +413,19 @@ export default function NewProductPage() {
                     ? {
                           ...variant,
                           color,
+                      }
+                    : variant,
+            ),
+        );
+    }
+
+    function updateColorVariantHex(index: number, colorHex: string) {
+        setColorVariants((currentVariants) =>
+            currentVariants.map((variant, currentIndex) =>
+                currentIndex === index
+                    ? {
+                          ...variant,
+                          colorHex,
                       }
                     : variant,
             ),
@@ -384,6 +452,59 @@ export default function NewProductPage() {
         );
     }
 
+    function handleColorImageChange(
+        colorIndex: number,
+        event: ChangeEvent<HTMLInputElement>,
+    ) {
+        const file = event.target.files?.[0] ?? null;
+
+        setError("");
+
+        setColorVariants((currentVariants) =>
+            currentVariants.map((variant, currentIndex) => {
+                if (currentIndex !== colorIndex) {
+                    return variant;
+                }
+
+                if (variant.imagePreviewUrl) {
+                    URL.revokeObjectURL(variant.imagePreviewUrl);
+                }
+
+                return {
+                    ...variant,
+                    imageFile: null,
+                    imagePreviewUrl: "",
+                };
+            }),
+        );
+
+        if (!file) {
+            return;
+        }
+
+        const validationError = validateImageFile(file);
+
+        if (validationError) {
+            event.target.value = "";
+            setError(validationError);
+            return;
+        }
+
+        const previewUrl = URL.createObjectURL(file);
+
+        setColorVariants((currentVariants) =>
+            currentVariants.map((variant, currentIndex) =>
+                currentIndex === colorIndex
+                    ? {
+                          ...variant,
+                          imageFile: file,
+                          imagePreviewUrl: previewUrl,
+                      }
+                    : variant,
+            ),
+        );
+    }
+
     function addColorVariant() {
         setColorVariants((currentVariants) => [
             ...currentVariants,
@@ -393,6 +514,12 @@ export default function NewProductPage() {
 
     function removeColorVariant(index: number) {
         setColorVariants((currentVariants) => {
+            const variantToRemove = currentVariants[index];
+
+            if (variantToRemove?.imagePreviewUrl) {
+                URL.revokeObjectURL(variantToRemove.imagePreviewUrl);
+            }
+
             const remainingVariants = currentVariants.filter(
                 (_, currentIndex) => currentIndex !== index,
             );
@@ -401,42 +528,6 @@ export default function NewProductPage() {
                 ? remainingVariants
                 : [createColorVariant(form.sizeMode, "Noir")];
         });
-    }
-
-    function handleImageChange(event: ChangeEvent<HTMLInputElement>) {
-        const file = event.target.files?.[0] ?? null;
-
-        setError("");
-
-        if (imagePreviewUrl) {
-            URL.revokeObjectURL(imagePreviewUrl);
-            setImagePreviewUrl("");
-        }
-
-        if (!file) {
-            setSelectedImageFile(null);
-            return;
-        }
-
-        const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
-        const maxSize = 5 * 1024 * 1024;
-
-        if (!allowedTypes.includes(file.type)) {
-            event.target.value = "";
-            setSelectedImageFile(null);
-            setError("Format image invalide. Utilisez JPG, PNG ou WEBP.");
-            return;
-        }
-
-        if (file.size > maxSize) {
-            event.target.value = "";
-            setSelectedImageFile(null);
-            setError("L’image dépasse 5 MB.");
-            return;
-        }
-
-        setSelectedImageFile(file);
-        setImagePreviewUrl(URL.createObjectURL(file));
     }
 
     function buildVariants() {
@@ -459,6 +550,7 @@ export default function NewProductPage() {
 
                     return {
                         color,
+                        colorHex: normalizeHex(colorVariant.colorHex),
                         size,
                         stockQuantity,
                         sku: `${reference}-${skuColor}-${size}`,
@@ -494,25 +586,47 @@ export default function NewProductPage() {
             return "Le prix doit être supérieur à 0.";
         }
 
-        if (!selectedImageFile) {
-            return "Ajoutez une image principale pour éviter un produit incomplet.";
-        }
+        const activeColorVariants = colorVariants.filter(
+            (colorVariant) =>
+                getColorStockTotal(colorVariant, availableSizes) > 0,
+        );
 
         if (
-            colorVariants.some(
-                (colorVariant) =>
-                    !colorVariant.color.trim() &&
-                    availableSizes.some(
-                        (size) =>
-                            Number(colorVariant.stockBySize[size] || 0) > 0,
-                    ),
+            activeColorVariants.some(
+                (colorVariant) => !colorVariant.color.trim(),
             )
         ) {
             return "Chaque couleur qui contient du stock doit avoir un nom.";
         }
 
+        if (
+            activeColorVariants.some(
+                (colorVariant) => !isValidHex(colorVariant.colorHex),
+            )
+        ) {
+            return "Chaque couleur qui contient du stock doit avoir un code couleur hexadécimal valide. Exemple : #111111.";
+        }
+
+        const colorNames = activeColorVariants.map((colorVariant) =>
+            colorVariant.color.trim().toLowerCase(),
+        );
+
+        const duplicateColor = colorNames.find(
+            (color, index) => colorNames.indexOf(color) !== index,
+        );
+
+        if (duplicateColor) {
+            return "Chaque couleur doit être unique. Vous avez saisi la même couleur plusieurs fois.";
+        }
+
         if (variants.length === 0) {
             return "Ajoutez au moins une couleur avec une taille en stock supérieur à 0.";
+        }
+
+        if (
+            activeColorVariants.some((colorVariant) => !colorVariant.imageFile)
+        ) {
+            return "Ajoutez une image pour chaque couleur qui contient du stock.";
         }
 
         if (form.isOnSale) {
@@ -536,16 +650,15 @@ export default function NewProductPage() {
     }
 
     function resetForm() {
+        colorVariants.forEach((colorVariant) => {
+            if (colorVariant.imagePreviewUrl) {
+                URL.revokeObjectURL(colorVariant.imagePreviewUrl);
+            }
+        });
+
         setForm(emptyForm);
         setColorVariants([createColorVariant("CLOTHING", "Noir")]);
         setIsSlugTouched(false);
-        setSelectedImageFile(null);
-
-        if (imagePreviewUrl) {
-            URL.revokeObjectURL(imagePreviewUrl);
-        }
-
-        setImagePreviewUrl("");
         setCreatedProduct(null);
         setError("");
     }
@@ -572,12 +685,34 @@ export default function NewProductPage() {
         const productName = form.name.trim();
         const variants = buildVariants();
 
+        const activeColorVariants = colorVariants.filter(
+            (colorVariant) =>
+                colorVariant.color.trim() &&
+                getColorStockTotal(colorVariant, availableSizes) > 0,
+        );
+
         try {
             setIsSubmitting(true);
 
-            const uploadedImage = await uploadProductImage(
-                token,
-                selectedImageFile as File,
+            const uploadedImages = await Promise.all(
+                activeColorVariants.map(async (colorVariant, index) => {
+                    const uploadedImage = await uploadProductImage(
+                        token,
+                        colorVariant.imageFile as File,
+                    );
+
+                    const color = colorVariant.color.trim();
+
+                    return {
+                        url: uploadedImage.url,
+                        storagePath: uploadedImage.storagePath,
+                        altText: `${productName} - ${color}`,
+                        color,
+                        colorHex: normalizeHex(colorVariant.colorHex),
+                        isMain: index === 0,
+                        position: index,
+                    };
+                }),
             );
 
             const payload: CreateProductPayload = {
@@ -592,15 +727,7 @@ export default function NewProductPage() {
                 isFeatured: form.isFeatured,
                 isNewArrival: form.isNewArrival,
                 isOnSale: form.isOnSale,
-                images: [
-                    {
-                        url: uploadedImage.url,
-                        storagePath: uploadedImage.storagePath,
-                        altText: productName,
-                        isMain: true,
-                        position: 1,
-                    },
-                ],
+                images: uploadedImages,
                 variants,
             };
 
@@ -650,7 +777,7 @@ export default function NewProductPage() {
                         </h1>
 
                         <p className="mt-4 text-neutral-600">
-                            Le produit a été créé avec son image, ses couleurs,
+                            Le produit a été créé avec ses images par couleur,
                             ses tailles et son stock.
                         </p>
 
@@ -751,8 +878,8 @@ export default function NewProductPage() {
                         </h1>
 
                         <p className="mt-3 text-neutral-600">
-                            Créez un article complet avec image, prix, statut,
-                            couleurs, tailles et stock par variante.
+                            Créez un article complet avec prix, statut, stock et
+                            une image différente pour chaque couleur.
                         </p>
                     </div>
 
@@ -822,7 +949,7 @@ export default function NewProductPage() {
                                                     event.target.value,
                                                 )
                                             }
-                                            placeholder="Chemise Oxford Bleu Ciel"
+                                            placeholder="Mocassin Sport"
                                             className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
                                         />
                                     </div>
@@ -839,7 +966,7 @@ export default function NewProductPage() {
                                                     event.target.value,
                                                 )
                                             }
-                                            placeholder="chemise-oxford-bleu-ciel"
+                                            placeholder="mocassin-sport"
                                             className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
                                         />
                                     </div>
@@ -866,6 +993,9 @@ export default function NewProductPage() {
                                             <option value="PUBLISHED">
                                                 Publié
                                             </option>
+                                            <option value="ARCHIVED">
+                                                Archivé
+                                            </option>
                                         </select>
                                     </div>
 
@@ -882,7 +1012,7 @@ export default function NewProductPage() {
                                                     event.target.value,
                                                 )
                                             }
-                                            placeholder="Chemise élégante pour homme."
+                                            placeholder="Mocassin élégant pour homme."
                                             className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
                                         />
                                     </div>
@@ -1118,60 +1248,21 @@ export default function NewProductPage() {
                             </section>
 
                             <section className="rounded-[2rem] bg-white p-8 shadow-sm">
-                                <div className="flex items-center gap-3">
-                                    <Upload size={28} />
-
-                                    <h2 className="text-2xl font-black">
-                                        Image principale
-                                    </h2>
-                                </div>
-
-                                <div className="mt-6">
-                                    <label className="flex cursor-pointer flex-col items-center justify-center rounded-[2rem] border border-dashed border-neutral-300 bg-neutral-50 p-8 text-center transition hover:border-black">
-                                        <ImagePlus size={34} />
-
-                                        <span className="mt-3 text-sm font-bold">
-                                            Cliquez pour importer une image
-                                        </span>
-
-                                        <span className="mt-1 text-xs text-neutral-500">
-                                            JPG, PNG, WEBP — maximum 5 MB
-                                        </span>
-
-                                        <input
-                                            type="file"
-                                            accept="image/jpeg,image/png,image/webp"
-                                            onChange={handleImageChange}
-                                            className="hidden"
-                                        />
-                                    </label>
-
-                                    {imagePreviewUrl && (
-                                        <div className="mt-5 overflow-hidden rounded-[2rem] bg-neutral-100">
-                                            <img
-                                                src={imagePreviewUrl}
-                                                alt="Aperçu produit"
-                                                className="h-96 w-full object-cover"
-                                            />
-                                        </div>
-                                    )}
-                                </div>
-                            </section>
-
-                            <section className="rounded-[2rem] bg-white p-8 shadow-sm">
                                 <div className="flex flex-col justify-between gap-5 md:flex-row md:items-start">
                                     <div className="flex items-center gap-3">
                                         <PackageCheck size={28} />
 
                                         <div>
                                             <h2 className="text-2xl font-black">
-                                                Couleurs, tailles et stock
+                                                Couleurs, images, tailles et
+                                                stock
                                             </h2>
 
                                             <p className="mt-1 text-sm text-neutral-500">
-                                                Choisissez le type de tailles,
-                                                puis ajoutez les couleurs et le
-                                                stock de chaque taille.
+                                                Ajoutez une couleur, son image,
+                                                puis le stock de chaque taille.
+                                                Une image sera enregistrée pour
+                                                chaque couleur.
                                             </p>
                                         </div>
                                     </div>
@@ -1286,8 +1377,8 @@ export default function NewProductPage() {
                                                 key={colorIndex}
                                                 className="rounded-[2rem] border border-neutral-200 bg-white p-5"
                                             >
-                                                <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
-                                                    <div className="flex-1">
+                                                <div className="grid gap-5 lg:grid-cols-[1fr_260px_auto]">
+                                                    <div>
                                                         <label className="text-sm font-bold">
                                                             Couleur{" "}
                                                             {colorIndex + 1}
@@ -1307,20 +1398,123 @@ export default function NewProductPage() {
                                                             placeholder="Noir, Beige, Bleu..."
                                                             className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
                                                         />
+
+                                                        <div className="mt-3 grid gap-3 md:grid-cols-[80px_1fr]">
+                                                            <input
+                                                                type="color"
+                                                                value={getSafeColorInputValue(
+                                                                    colorVariant.colorHex,
+                                                                )}
+                                                                onChange={(
+                                                                    event,
+                                                                ) =>
+                                                                    updateColorVariantHex(
+                                                                        colorIndex,
+                                                                        event
+                                                                            .target
+                                                                            .value,
+                                                                    )
+                                                                }
+                                                                className="h-12 w-full cursor-pointer rounded-2xl border border-neutral-300 bg-white p-1"
+                                                                aria-label="Sélecteur de couleur"
+                                                            />
+
+                                                            <input
+                                                                value={
+                                                                    colorVariant.colorHex
+                                                                }
+                                                                onChange={(
+                                                                    event,
+                                                                ) =>
+                                                                    updateColorVariantHex(
+                                                                        colorIndex,
+                                                                        event
+                                                                            .target
+                                                                            .value,
+                                                                    )
+                                                                }
+                                                                placeholder="#111111"
+                                                                className="w-full rounded-2xl border border-neutral-300 px-4 py-3 text-sm uppercase outline-none focus:border-black"
+                                                            />
+                                                        </div>
+
+                                                        <p className="mt-2 text-xs text-neutral-500">
+                                                            Le nom sera affiché
+                                                            au client. Le code
+                                                            HEX sert à afficher
+                                                            la pastille couleur
+                                                            exacte dans la
+                                                            boutique. Exemple :
+                                                            Bleu marine /
+                                                            #0B1F5E.
+                                                        </p>
                                                     </div>
 
-                                                    <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                            removeColorVariant(
-                                                                colorIndex,
-                                                            )
-                                                        }
-                                                        className="inline-flex items-center justify-center gap-2 rounded-full border border-red-200 px-4 py-3 text-sm font-bold text-red-700 hover:border-red-600"
-                                                    >
-                                                        <Trash2 size={17} />
-                                                        Supprimer
-                                                    </button>
+                                                    <div>
+                                                        <label className="text-sm font-bold">
+                                                            Image couleur *
+                                                        </label>
+
+                                                        <label className="mt-2 flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-neutral-300 bg-neutral-50 p-4 text-center transition hover:border-black">
+                                                            {colorVariant.imagePreviewUrl ? (
+                                                                <img
+                                                                    src={
+                                                                        colorVariant.imagePreviewUrl
+                                                                    }
+                                                                    alt={`Aperçu ${colorVariant.color}`}
+                                                                    className="h-32 w-full rounded-xl object-cover"
+                                                                />
+                                                            ) : (
+                                                                <>
+                                                                    <ImagePlus
+                                                                        size={
+                                                                            28
+                                                                        }
+                                                                    />
+
+                                                                    <span className="mt-2 text-xs font-bold">
+                                                                        Image de
+                                                                        cette
+                                                                        couleur
+                                                                    </span>
+                                                                </>
+                                                            )}
+
+                                                            <input
+                                                                type="file"
+                                                                accept="image/jpeg,image/png,image/webp"
+                                                                onChange={(
+                                                                    event,
+                                                                ) =>
+                                                                    handleColorImageChange(
+                                                                        colorIndex,
+                                                                        event,
+                                                                    )
+                                                                }
+                                                                className="hidden"
+                                                            />
+                                                        </label>
+
+                                                        <p className="mt-2 text-xs text-neutral-500">
+                                                            JPG, PNG, WEBP — max
+                                                            5 MB.
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="flex items-start lg:justify-end">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                removeColorVariant(
+                                                                    colorIndex,
+                                                                )
+                                                            }
+                                                            className="inline-flex items-center justify-center gap-2 rounded-full border border-red-200 px-4 py-3 text-sm font-bold text-red-700 hover:border-red-600"
+                                                        >
+                                                            <Trash2 size={17} />
+                                                            Supprimer
+                                                        </button>
+                                                    </div>
                                                 </div>
 
                                                 <div className="mt-5 grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
@@ -1416,7 +1610,7 @@ export default function NewProductPage() {
                             >
                                 <Save size={18} />
                                 {isSubmitting
-                                    ? "Upload et création en cours..."
+                                    ? "Upload des images et création..."
                                     : "Créer le produit"}
                             </button>
                         </div>
@@ -1427,9 +1621,9 @@ export default function NewProductPage() {
                             </p>
 
                             <div className="mt-5 overflow-hidden rounded-[2rem] bg-neutral-100">
-                                {imagePreviewUrl ? (
+                                {mainPreviewImage ? (
                                     <img
-                                        src={imagePreviewUrl}
+                                        src={mainPreviewImage}
                                         alt="Aperçu produit"
                                         className="h-80 w-full object-cover"
                                     />
@@ -1445,7 +1639,9 @@ export default function NewProductPage() {
                                     <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-bold text-neutral-700">
                                         {form.status === "PUBLISHED"
                                             ? "Publié"
-                                            : "Brouillon"}
+                                            : form.status === "ARCHIVED"
+                                              ? "Archivé"
+                                              : "Brouillon"}
                                     </span>
 
                                     {form.isNewArrival && (
@@ -1477,121 +1673,89 @@ export default function NewProductPage() {
                                         "REFERENCE"}
                                 </p>
 
-                                <p className="mt-2 text-neutral-600">
+                                <p className="mt-4 text-sm text-neutral-500">
+                                    Catégorie
+                                </p>
+
+                                <p className="mt-1 font-bold">
                                     {selectedCategory?.name ??
-                                        "Catégorie non sélectionnée"}
+                                        "Non sélectionnée"}
                                 </p>
 
-                                <p className="mt-4 text-sm text-neutral-600">
-                                    {form.shortDescription ||
-                                        "Description courte du produit."}
-                                </p>
-
-                                <div className="mt-5">
-                                    {form.isOnSale && Number(form.price) > 0 ? (
-                                        <>
-                                            <p className="text-sm text-neutral-400 line-through">
+                                <div className="mt-5 rounded-3xl bg-neutral-50 p-5">
+                                    {form.isOnSale ? (
+                                        <div>
+                                            <p className="text-sm text-neutral-500 line-through">
                                                 {formatPrice(form.price)}
                                             </p>
 
-                                            <p className="text-3xl font-black">
+                                            <p className="mt-1 text-3xl font-black">
                                                 {formatPrice(finalPrice)}
                                             </p>
-                                        </>
+                                        </div>
                                     ) : (
                                         <p className="text-3xl font-black">
                                             {formatPrice(form.price)}
                                         </p>
                                     )}
+
+                                    <p className="mt-3 text-sm font-bold text-neutral-600">
+                                        Stock total : {totalStock}
+                                    </p>
+
+                                    <p className="mt-2 text-sm text-neutral-500">
+                                        Type de tailles :{" "}
+                                        {getSizeModeLabel(form.sizeMode)}
+                                    </p>
                                 </div>
 
-                                <div className="mt-6 rounded-2xl bg-neutral-50 p-4">
-                                    <p className="text-sm font-bold">
-                                        Stock total
+                                <div className="mt-5 rounded-3xl bg-neutral-50 p-5">
+                                    <p className="text-sm font-black">
+                                        Images par couleur
                                     </p>
 
-                                    <p className="mt-1 text-2xl font-black">
-                                        {totalStock}
-                                    </p>
-
-                                    <p className="mt-2 text-xs font-semibold text-neutral-500">
-                                        Type : {getSizeModeLabel(form.sizeMode)}
-                                    </p>
-
-                                    <div className="mt-4 space-y-3">
-                                        {colorVariants.map(
-                                            (colorVariant, colorIndex) => (
+                                    <div className="mt-3 space-y-2">
+                                        {colorVariants
+                                            .filter(
+                                                (colorVariant) =>
+                                                    colorVariant.color.trim() ||
+                                                    colorVariant.imagePreviewUrl,
+                                            )
+                                            .map((colorVariant, index) => (
                                                 <div
-                                                    key={colorIndex}
-                                                    className="rounded-2xl bg-white p-3"
+                                                    key={`${colorVariant.color}-${index}`}
+                                                    className="flex items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3 text-sm"
                                                 >
-                                                    <p className="text-xs font-black uppercase tracking-[0.16em] text-neutral-500">
-                                                        {colorVariant.color ||
-                                                            "Couleur non définie"}
-                                                    </p>
+                                                    <span className="flex items-center gap-2 font-bold">
+                                                        <span
+                                                            className="h-4 w-4 rounded border border-black/10"
+                                                            style={{
+                                                                backgroundColor:
+                                                                    getSafeColorInputValue(
+                                                                        colorVariant.colorHex,
+                                                                    ),
+                                                            }}
+                                                        />
 
-                                                    <div className="mt-2 flex flex-wrap gap-2">
-                                                        {availableSizes.map(
-                                                            (size) => (
-                                                                <span
-                                                                    key={size}
-                                                                    className="rounded-full bg-neutral-50 px-3 py-1 text-xs font-bold text-neutral-700"
-                                                                >
-                                                                    {size}:{" "}
-                                                                    {Number(
-                                                                        colorVariant
-                                                                            .stockBySize[
-                                                                            size
-                                                                        ] || 0,
-                                                                    )}
-                                                                </span>
-                                                            ),
-                                                        )}
-                                                    </div>
+                                                        {colorVariant.color.trim() ||
+                                                            `Couleur ${
+                                                                index + 1
+                                                            }`}
+                                                    </span>
+
+                                                    <span
+                                                        className={
+                                                            colorVariant.imagePreviewUrl
+                                                                ? "text-green-700"
+                                                                : "text-neutral-400"
+                                                        }
+                                                    >
+                                                        {colorVariant.imagePreviewUrl
+                                                            ? "Image OK"
+                                                            : "Sans image"}
+                                                    </span>
                                                 </div>
-                                            ),
-                                        )}
-                                    </div>
-                                </div>
-
-                                <div className="mt-5 rounded-2xl bg-neutral-50 p-4">
-                                    <p className="text-sm font-bold">
-                                        Checklist création
-                                    </p>
-
-                                    <div className="mt-3 space-y-2 text-sm">
-                                        <p>
-                                            {form.reference.trim()
-                                                ? "✅"
-                                                : "⬜"}{" "}
-                                            Référence
-                                        </p>
-
-                                        <p>
-                                            {form.name.trim() ? "✅" : "⬜"} Nom
-                                            produit
-                                        </p>
-
-                                        <p>
-                                            {form.categoryId ? "✅" : "⬜"}{" "}
-                                            Catégorie
-                                        </p>
-
-                                        <p>
-                                            {Number(form.price) > 0
-                                                ? "✅"
-                                                : "⬜"}{" "}
-                                            Prix
-                                        </p>
-
-                                        <p>
-                                            {selectedImageFile ? "✅" : "⬜"}{" "}
-                                            Image
-                                        </p>
-
-                                        <p>
-                                            {totalStock > 0 ? "✅" : "⬜"} Stock
-                                        </p>
+                                            ))}
                                     </div>
                                 </div>
                             </div>

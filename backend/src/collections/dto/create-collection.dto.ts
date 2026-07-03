@@ -1,8 +1,12 @@
+import { Type } from 'class-transformer';
 import {
   IsBoolean,
   IsDateString,
+  IsNumber,
   IsOptional,
   IsString,
+  Max,
+  Min,
   MinLength,
 } from 'class-validator';
 
@@ -34,4 +38,23 @@ export class CreateCollectionDto {
   @IsOptional()
   @IsDateString()
   endDate?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  promoIsActive?: boolean;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  promoPercentage?: number;
+
+  @IsOptional()
+  @IsDateString()
+  promoStartDate?: string;
+
+  @IsOptional()
+  @IsDateString()
+  promoEndDate?: string;
 }

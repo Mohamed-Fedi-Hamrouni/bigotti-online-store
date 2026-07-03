@@ -29,6 +29,10 @@ type CollectionFormState = {
     isFeatured: boolean;
     startDate: string;
     endDate: string;
+    promoIsActive: boolean;
+    promoPercentage: string;
+    promoStartDate: string;
+    promoEndDate: string;
 };
 
 const emptyForm: CollectionFormState = {
@@ -39,6 +43,10 @@ const emptyForm: CollectionFormState = {
     isFeatured: false,
     startDate: "",
     endDate: "",
+    promoIsActive: false,
+    promoPercentage: "",
+    promoStartDate: "",
+    promoEndDate: "",
 };
 
 function getAdminToken() {
@@ -63,6 +71,27 @@ function formatDate(value: string | null) {
     }
 
     return new Date(value).toLocaleDateString("fr-FR");
+}
+
+function isCollectionPromoCurrentlyActive(collection: Collection) {
+    if (!collection.promoIsActive || !collection.promoPercentage) {
+        return false;
+    }
+
+    const now = new Date();
+
+    if (
+        collection.promoStartDate &&
+        new Date(collection.promoStartDate) > now
+    ) {
+        return false;
+    }
+
+    if (collection.promoEndDate && new Date(collection.promoEndDate) < now) {
+        return false;
+    }
+
+    return true;
 }
 
 export default function AdminCollectionsPage() {
@@ -159,10 +188,55 @@ export default function AdminCollectionsPage() {
             isFeatured: collection.isFeatured,
             startDate: toDateInputValue(collection.startDate),
             endDate: toDateInputValue(collection.endDate),
+            promoIsActive: collection.promoIsActive,
+            promoPercentage:
+                collection.promoPercentage !== null
+                    ? String(collection.promoPercentage)
+                    : "",
+            promoStartDate: toDateInputValue(collection.promoStartDate),
+            promoEndDate: toDateInputValue(collection.promoEndDate),
         });
         setError("");
         setSuccess("");
         window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    function validateForm() {
+        if (!form.name.trim()) {
+            return "Le nom de la collection est obligatoire.";
+        }
+
+        if (
+            form.startDate &&
+            form.endDate &&
+            new Date(form.startDate).getTime() >
+                new Date(form.endDate).getTime()
+        ) {
+            return "La date de début doit être avant la date de fin.";
+        }
+
+        if (form.promoIsActive) {
+            const promoPercentage = Number(form.promoPercentage);
+
+            if (
+                !Number.isFinite(promoPercentage) ||
+                promoPercentage <= 0 ||
+                promoPercentage > 100
+            ) {
+                return "Le pourcentage promo doit être entre 1 et 100.";
+            }
+
+            if (
+                form.promoStartDate &&
+                form.promoEndDate &&
+                new Date(form.promoStartDate).getTime() >
+                    new Date(form.promoEndDate).getTime()
+            ) {
+                return "La date de début promo doit être avant la date de fin promo.";
+            }
+        }
+
+        return "";
     }
 
     async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -175,8 +249,11 @@ export default function AdminCollectionsPage() {
             return;
         }
 
-        if (!form.name.trim()) {
-            setError("Le nom de la collection est obligatoire.");
+        const validationError = validateForm();
+
+        if (validationError) {
+            setError(validationError);
+            setSuccess("");
             return;
         }
 
@@ -192,6 +269,18 @@ export default function AdminCollectionsPage() {
             isFeatured: form.isFeatured,
             startDate: form.startDate || null,
             endDate: form.endDate || null,
+            promoIsActive: form.promoIsActive,
+            promoPercentage: form.promoIsActive
+                ? Number(form.promoPercentage)
+                : null,
+            promoStartDate:
+                form.promoIsActive && form.promoStartDate
+                    ? form.promoStartDate
+                    : null,
+            promoEndDate:
+                form.promoIsActive && form.promoEndDate
+                    ? form.promoEndDate
+                    : null,
         };
 
         try {
@@ -307,7 +396,8 @@ export default function AdminCollectionsPage() {
                         </h1>
 
                         <p className="mt-2 text-neutral-600">
-                            Gérez les collections sans suppression définitive.
+                            Gérez les collections, leur visibilité et les
+                            promotions automatiques.
                         </p>
                     </div>
 
@@ -426,6 +516,93 @@ export default function AdminCollectionsPage() {
                                 />
                             </div>
                         </div>
+
+                        <section className="rounded-3xl bg-neutral-50 p-5">
+                            <label className="flex items-center justify-between text-sm font-bold">
+                                Promotion collection
+                                <input
+                                    type="checkbox"
+                                    checked={form.promoIsActive}
+                                    onChange={(event) =>
+                                        updateFormField(
+                                            "promoIsActive",
+                                            event.target.checked,
+                                        )
+                                    }
+                                />
+                            </label>
+
+                            {form.promoIsActive && (
+                                <div className="mt-5 space-y-4">
+                                    <div>
+                                        <label className="text-sm font-bold">
+                                            Pourcentage promo *
+                                        </label>
+
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            max="100"
+                                            step="1"
+                                            value={form.promoPercentage}
+                                            onChange={(event) =>
+                                                updateFormField(
+                                                    "promoPercentage",
+                                                    event.target.value,
+                                                )
+                                            }
+                                            placeholder="Ex: 20"
+                                            className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
+                                        />
+                                    </div>
+
+                                    <div className="grid gap-4 md:grid-cols-2">
+                                        <div>
+                                            <label className="text-sm font-bold">
+                                                Début promo
+                                            </label>
+
+                                            <input
+                                                type="date"
+                                                value={form.promoStartDate}
+                                                onChange={(event) =>
+                                                    updateFormField(
+                                                        "promoStartDate",
+                                                        event.target.value,
+                                                    )
+                                                }
+                                                className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="text-sm font-bold">
+                                                Fin promo
+                                            </label>
+
+                                            <input
+                                                type="date"
+                                                value={form.promoEndDate}
+                                                onChange={(event) =>
+                                                    updateFormField(
+                                                        "promoEndDate",
+                                                        event.target.value,
+                                                    )
+                                                }
+                                                className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <p className="rounded-2xl bg-yellow-50 p-4 text-xs font-semibold text-yellow-800">
+                                        Cette promotion sera appliquée
+                                        automatiquement à tous les produits liés
+                                        à cette collection, sauf si le produit
+                                        possède déjà sa propre promotion.
+                                    </p>
+                                </div>
+                            )}
+                        </section>
 
                         <label className="flex items-center justify-between rounded-2xl bg-neutral-50 p-4 text-sm font-bold">
                             Active
@@ -588,6 +765,10 @@ export default function AdminCollectionsPage() {
                                 const isInactive = !collection.isActive;
                                 const isUpdating =
                                     actionLoadingId === collection.id;
+                                const hasActivePromo =
+                                    isCollectionPromoCurrentlyActive(
+                                        collection,
+                                    );
 
                                 return (
                                     <article
@@ -622,6 +803,23 @@ export default function AdminCollectionsPage() {
                                                         En avant
                                                     </span>
                                                 )}
+
+                                                {collection.promoIsActive &&
+                                                    collection.promoPercentage && (
+                                                        <span
+                                                            className={
+                                                                hasActivePromo
+                                                                    ? "rounded-full bg-yellow-50 px-3 py-1 text-xs font-bold text-yellow-800"
+                                                                    : "rounded-full bg-neutral-100 px-3 py-1 text-xs font-bold text-neutral-600"
+                                                            }
+                                                        >
+                                                            Promo -
+                                                            {
+                                                                collection.promoPercentage
+                                                            }
+                                                            %
+                                                        </span>
+                                                    )}
                                             </div>
 
                                             <p className="mt-2 text-sm text-neutral-500">
@@ -641,6 +839,25 @@ export default function AdminCollectionsPage() {
                                                 au{" "}
                                                 {formatDate(collection.endDate)}
                                             </p>
+
+                                            {collection.promoIsActive &&
+                                                collection.promoPercentage && (
+                                                    <p className="mt-3 rounded-2xl bg-yellow-50 p-3 text-sm font-semibold text-yellow-800">
+                                                        Promotion collection : -
+                                                        {
+                                                            collection.promoPercentage
+                                                        }
+                                                        % du{" "}
+                                                        {formatDate(
+                                                            collection.promoStartDate,
+                                                        )}{" "}
+                                                        au{" "}
+                                                        {formatDate(
+                                                            collection.promoEndDate,
+                                                        )}
+                                                        .
+                                                    </p>
+                                                )}
 
                                             {isInactive && (
                                                 <p className="mt-3 rounded-2xl bg-red-50 p-3 text-sm font-semibold text-red-700">

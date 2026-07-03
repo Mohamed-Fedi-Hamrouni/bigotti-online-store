@@ -84,6 +84,10 @@ model Collection {
   products    Product[]
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
+    promoIsActive  Boolean   @default(false) @map("promo_is_active")
+  promoPercentage Decimal?  @map("promo_percentage") @db.Decimal(5, 2)
+  promoStartDate DateTime?  @map("promo_start_date")
+  promoEndDate   DateTime?  @map("promo_end_date")
 
   @@map("collections")
 }
@@ -150,6 +154,7 @@ model ProductVariant {
   productId String @map("product_id")
 
   color         String
+  colorHex      String? @map("color_hex")
   size          String
   stockQuantity Int     @default(0) @map("stock_quantity")
   sku           String? @unique
@@ -173,6 +178,8 @@ model ProductImage {
   url         String
   storagePath String? @map("storage_path")
   altText     String? @map("alt_text")
+  color       String?
+  colorHex    String? @map("color_hex")
   isMain      Boolean @default(false) @map("is_main")
   position    Int     @default(0)
 
@@ -181,16 +188,17 @@ model ProductImage {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([productId])
+  @@index([productId, color])
   @@map("product_images")
 }
 
 model Customer {
-  id       String  @id @default(uuid())
-  fullName String  @map("full_name")
-  phone    String
-  email    String?
+  id           String  @id @default(uuid())
+  fullName     String  @map("full_name")
+  phone        String
+  email        String?
   passwordHash String?
-isActive     Boolean @default(true)
+  isActive     Boolean @default(true)
 
   orders Order[]
 

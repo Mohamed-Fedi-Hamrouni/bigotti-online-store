@@ -37,6 +37,7 @@ export class ProductsService {
         slug,
         shortDescription: createProductDto.shortDescription?.trim() || null,
         description: createProductDto.description?.trim() || null,
+
         price: createProductDto.price,
         discountType: createProductDto.discountType ?? null,
         discountValue: createProductDto.discountValue ?? null,
@@ -46,6 +47,7 @@ export class ProductsService {
         discountEndDate: createProductDto.discountEndDate
           ? new Date(createProductDto.discountEndDate)
           : null,
+
         status: createProductDto.status ?? 'DRAFT',
         isFeatured: createProductDto.isFeatured ?? false,
         isNewArrival: createProductDto.isNewArrival ?? false,
@@ -78,6 +80,8 @@ export class ProductsService {
             url: image.url.trim(),
             storagePath: image.storagePath?.trim() || null,
             altText: image.altText?.trim() || createProductDto.name.trim(),
+            color: image.color?.trim() || null,
+            colorHex: this.normalizeHex(image.colorHex),
             isMain: image.isMain ?? index === 0,
             position: image.position ?? index,
           })),
@@ -86,10 +90,11 @@ export class ProductsService {
         variants: {
           create: createProductDto.variants.map((variant) => ({
             color: variant.color.trim(),
+            colorHex: this.normalizeHex(variant.colorHex),
             size: variant.size.trim(),
             stockQuantity: variant.stockQuantity,
             sku: variant.sku?.trim() || null,
-            isActive: true,
+            isActive: variant.isActive ?? true,
           })),
         },
       } as any,
@@ -292,6 +297,8 @@ export class ProductsService {
           storagePath: image.storagePath?.trim() || null,
           altText:
             image.altText?.trim() || updateProductDto.name?.trim() || null,
+          color: image.color?.trim() || null,
+          colorHex: this.normalizeHex(image.colorHex),
           isMain: image.isMain ?? index === 0,
           position: image.position ?? index,
         })),
@@ -303,10 +310,11 @@ export class ProductsService {
         deleteMany: {},
         create: updateProductDto.variants.map((variant) => ({
           color: variant.color.trim(),
+          colorHex: this.normalizeHex(variant.colorHex),
           size: variant.size.trim(),
           stockQuantity: variant.stockQuantity,
           sku: variant.sku?.trim() || null,
-          isActive: true,
+          isActive: variant.isActive ?? true,
         })),
       };
     }
@@ -367,8 +375,8 @@ export class ProductsService {
 
   private async ensureRelationsExist(params: {
     categoryId?: string;
-    collectionId?: string;
-    saleCampaignId?: string;
+    collectionId?: string | null;
+    saleCampaignId?: string | null;
   }) {
     if (params.categoryId) {
       const category = await this.prisma.category.findUnique({
@@ -431,6 +439,26 @@ export class ProductsService {
         'La remise en pourcentage ne peut pas dépasser 100%.',
       );
     }
+
+    if (
+      product.discountType === 'PERCENTAGE' &&
+      product.discountValue !== undefined &&
+      product.discountValue !== null &&
+      product.discountValue < 0
+    ) {
+      throw new BadRequestException(
+        'La remise en pourcentage doit être positive.',
+      );
+    }
+
+    if (
+      product.discountType === 'FIXED_AMOUNT' &&
+      product.discountValue !== undefined &&
+      product.discountValue !== null &&
+      product.discountValue < 0
+    ) {
+      throw new BadRequestException('La remise fixe doit être positive.');
+    }
   }
 
   private calculateFinalPrice(product: {
@@ -440,31 +468,28 @@ export class ProductsService {
     discountValue: unknown | null;
     discountStartDate: Date | null;
     discountEndDate: Date | null;
+    collection?: {
+      promoIsActive: boolean;
+      promoPercentage: unknown | null;
+      promoStartDate: Date | null;
+      promoEndDate: Date | null;
+    } | null;
   }) {
     const price = Number(product.price);
 
-    if (!product.isOnSale || !product.discountType || !product.discountValue) {
-      return this.toMoney(price);
+    const productPromoPrice = this.calculateProductPromoPrice(product, price);
+
+    if (productPromoPrice !== null) {
+      return this.toMoney(productPromoPrice);
     }
 
-    const now = new Date();
+    const collectionPromoPrice = this.calculateCollectionPromoPrice(
+      product.collection,
+      price,
+    );
 
-    if (product.discountStartDate && product.discountStartDate > now) {
-      return this.toMoney(price);
-    }
-
-    if (product.discountEndDate && product.discountEndDate < now) {
-      return this.toMoney(price);
-    }
-
-    const discountValue = Number(product.discountValue);
-
-    if (product.discountType === 'PERCENTAGE') {
-      return this.toMoney(Math.max(0, price - (price * discountValue) / 100));
-    }
-
-    if (product.discountType === 'FIXED_AMOUNT') {
-      return this.toMoney(Math.max(0, price - discountValue));
+    if (collectionPromoPrice !== null) {
+      return this.toMoney(collectionPromoPrice);
     }
 
     return this.toMoney(price);
@@ -475,14 +500,105 @@ export class ProductsService {
     isOnSale: boolean;
     discountType: string | null;
     discountValue: unknown | null;
+    discountStartDate: Date | null;
+    discountEndDate: Date | null;
+    collection?: {
+      promoIsActive: boolean;
+      promoPercentage: unknown | null;
+      promoStartDate: Date | null;
+      promoEndDate: Date | null;
+    } | null;
   }) {
     const price = Number(product.price);
 
+    const productPromoPercentage = this.calculateProductPromoPercentage(
+      product,
+      price,
+    );
+
+    if (productPromoPercentage > 0) {
+      return productPromoPercentage;
+    }
+
+    const collectionPromoPercentage = this.calculateCollectionPromoPercentage(
+      product.collection,
+    );
+
+    if (collectionPromoPercentage > 0) {
+      return collectionPromoPercentage;
+    }
+
+    return 0;
+  }
+
+  private calculateProductPromoPrice(
+    product: {
+      isOnSale: boolean;
+      discountType: string | null;
+      discountValue: unknown | null;
+      discountStartDate: Date | null;
+      discountEndDate: Date | null;
+    },
+    price: number,
+  ) {
+    if (!product.isOnSale || !product.discountType || !product.discountValue) {
+      return null;
+    }
+
+    if (
+      !this.isDateRangeActive(
+        product.discountStartDate,
+        product.discountEndDate,
+      )
+    ) {
+      return null;
+    }
+
+    const discountValue = Number(product.discountValue);
+
+    if (!Number.isFinite(discountValue) || discountValue <= 0) {
+      return null;
+    }
+
+    if (product.discountType === 'PERCENTAGE') {
+      return Math.max(0, price - (price * discountValue) / 100);
+    }
+
+    if (product.discountType === 'FIXED_AMOUNT') {
+      return Math.max(0, price - discountValue);
+    }
+
+    return null;
+  }
+
+  private calculateProductPromoPercentage(
+    product: {
+      isOnSale: boolean;
+      discountType: string | null;
+      discountValue: unknown | null;
+      discountStartDate: Date | null;
+      discountEndDate: Date | null;
+    },
+    price: number,
+  ) {
     if (!product.isOnSale || !product.discountType || !product.discountValue) {
       return 0;
     }
 
+    if (
+      !this.isDateRangeActive(
+        product.discountStartDate,
+        product.discountEndDate,
+      )
+    ) {
+      return 0;
+    }
+
     const discountValue = Number(product.discountValue);
+
+    if (!Number.isFinite(discountValue) || discountValue <= 0) {
+      return 0;
+    }
 
     if (product.discountType === 'PERCENTAGE') {
       return Math.round(discountValue);
@@ -495,6 +611,87 @@ export class ProductsService {
     return 0;
   }
 
+  private calculateCollectionPromoPrice(
+    collection:
+      | {
+          promoIsActive: boolean;
+          promoPercentage: unknown | null;
+          promoStartDate: Date | null;
+          promoEndDate: Date | null;
+        }
+      | null
+      | undefined,
+    price: number,
+  ) {
+    if (!collection?.promoIsActive || !collection.promoPercentage) {
+      return null;
+    }
+
+    if (
+      !this.isDateRangeActive(
+        collection.promoStartDate,
+        collection.promoEndDate,
+      )
+    ) {
+      return null;
+    }
+
+    const promoPercentage = Number(collection.promoPercentage);
+
+    if (!Number.isFinite(promoPercentage) || promoPercentage <= 0) {
+      return null;
+    }
+
+    return Math.max(0, price - (price * promoPercentage) / 100);
+  }
+
+  private calculateCollectionPromoPercentage(
+    collection:
+      | {
+          promoIsActive: boolean;
+          promoPercentage: unknown | null;
+          promoStartDate: Date | null;
+          promoEndDate: Date | null;
+        }
+      | null
+      | undefined,
+  ) {
+    if (!collection?.promoIsActive || !collection.promoPercentage) {
+      return 0;
+    }
+
+    if (
+      !this.isDateRangeActive(
+        collection.promoStartDate,
+        collection.promoEndDate,
+      )
+    ) {
+      return 0;
+    }
+
+    const promoPercentage = Number(collection.promoPercentage);
+
+    if (!Number.isFinite(promoPercentage) || promoPercentage <= 0) {
+      return 0;
+    }
+
+    return Math.round(promoPercentage);
+  }
+
+  private isDateRangeActive(startDate: Date | null, endDate: Date | null) {
+    const now = new Date();
+
+    if (startDate && startDate > now) {
+      return false;
+    }
+
+    if (endDate && endDate < now) {
+      return false;
+    }
+
+    return true;
+  }
+
   private formatProduct(product: any) {
     const finalPrice = this.calculateFinalPrice(product);
     const discountPercentage = this.calculateDiscountPercentage(product);
@@ -504,6 +701,15 @@ export class ProductsService {
       price: Number(product.price),
       discountValue:
         product.discountValue !== null ? Number(product.discountValue) : null,
+      collection: product.collection
+        ? {
+            ...product.collection,
+            promoPercentage:
+              product.collection.promoPercentage !== null
+                ? Number(product.collection.promoPercentage)
+                : null,
+          }
+        : null,
       finalPrice,
       discountPercentage,
       totalStock: product.variants?.reduce(
@@ -516,6 +722,16 @@ export class ProductsService {
 
   private toMoney(value: number) {
     return Number(value.toFixed(3));
+  }
+
+  private normalizeHex(value?: string | null) {
+    const trimmedValue = value?.trim();
+
+    if (!trimmedValue) {
+      return null;
+    }
+
+    return trimmedValue.toUpperCase();
   }
 
   private defaultInclude(): Prisma.ProductInclude {
