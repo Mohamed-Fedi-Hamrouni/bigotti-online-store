@@ -100,7 +100,15 @@ export class OrdersService {
       const createdOrder = await tx.order.create({
         data: {
           orderNumber,
-          customerId: connectedCustomer?.id,
+          ...(connectedCustomer
+            ? {
+                customer: {
+                  connect: {
+                    id: connectedCustomer.id,
+                  },
+                },
+              }
+            : {}),
           customerName: connectedCustomer?.fullName ?? dto.customerName,
           customerPhone: connectedCustomer?.phone ?? dto.customerPhone,
           customerEmail: connectedCustomer?.email ?? dto.customerEmail,
@@ -114,7 +122,25 @@ export class OrdersService {
           paymentStatus: 'UNPAID',
           orderStatus: 'PENDING',
           items: {
-            create: orderItems,
+            create: orderItems.map((item) => ({
+              product: {
+                connect: {
+                  id: item.productId,
+                },
+              },
+              variant: {
+                connect: {
+                  id: item.productVariantId,
+                },
+              },
+              productReference: item.productReference,
+              productName: item.productName,
+              color: item.color,
+              size: item.size,
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              totalPrice: item.totalPrice,
+            })),
           },
           payment: {
             create: {
@@ -280,11 +306,25 @@ export class OrdersService {
     };
   }
 
-  private normalizeOrderResponse<T extends { payment?: unknown }>(order: T) {
-    const { payment, ...orderWithoutPayment } = order;
+  private normalizeOrderResponse<
+    T extends {
+      payment?: unknown;
+      items?: Array<{
+        variantId?: string | null;
+        [key: string]: unknown;
+      }>;
+    },
+  >(order: T) {
+    const { payment, items, ...orderWithoutPayment } = order;
 
     return {
       ...orderWithoutPayment,
+      items: items
+        ? items.map((item) => ({
+            ...item,
+            productVariantId: item.variantId,
+          }))
+        : [],
       payments: payment ? [payment] : [],
     };
   }
