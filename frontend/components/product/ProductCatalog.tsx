@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Search, SlidersHorizontal, X } from "lucide-react";
 import { ProductCard } from "@/components/ProductCard";
 import type { Product } from "@/types/product";
@@ -10,6 +10,14 @@ type ProductCatalogProps = {
 };
 
 type SortOption = "newest" | "price-asc" | "price-desc" | "stock-desc";
+
+function getInitialQueryParam(name: string) {
+    if (typeof window === "undefined") {
+        return "";
+    }
+
+    return new URLSearchParams(window.location.search).get(name) ?? "";
+}
 
 export function ProductCatalog({ products }: ProductCatalogProps) {
     const [search, setSearch] = useState("");
@@ -21,6 +29,24 @@ export function ProductCatalog({ products }: ProductCatalogProps) {
     const [onlyPromotions, setOnlyPromotions] = useState(false);
     const [sort, setSort] = useState<SortOption>("newest");
 
+    useEffect(() => {
+        const initialCategory = getInitialQueryParam("category");
+        const initialSearch = getInitialQueryParam("search");
+        const initialPromo = getInitialQueryParam("promo");
+
+        if (initialCategory) {
+            setCategorySlug(initialCategory);
+        }
+
+        if (initialSearch) {
+            setSearch(initialSearch);
+        }
+
+        if (initialPromo === "true") {
+            setOnlyPromotions(true);
+        }
+    }, []);
+
     const categories = useMemo(() => {
         const map = new Map<string, string>();
 
@@ -28,10 +54,12 @@ export function ProductCatalog({ products }: ProductCatalogProps) {
             map.set(product.category.slug, product.category.name);
         });
 
-        return Array.from(map.entries()).map(([slug, name]) => ({
-            slug,
-            name,
-        }));
+        return Array.from(map.entries())
+            .map(([slug, name]) => ({
+                slug,
+                name,
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name));
     }, [products]);
 
     const sizes = useMemo(() => {
@@ -45,7 +73,9 @@ export function ProductCatalog({ products }: ProductCatalogProps) {
             });
         });
 
-        return Array.from(values).sort();
+        return Array.from(values).sort((a, b) =>
+            a.localeCompare(b, undefined, { numeric: true }),
+        );
     }, [products]);
 
     const colors = useMemo(() => {
@@ -61,6 +91,10 @@ export function ProductCatalog({ products }: ProductCatalogProps) {
 
         return Array.from(values).sort();
     }, [products]);
+
+    const selectedCategoryName =
+        categories.find((category) => category.slug === categorySlug)?.name ??
+        "";
 
     const filteredProducts = useMemo(() => {
         const normalizedSearch = search.trim().toLowerCase();
@@ -147,6 +181,10 @@ export function ProductCatalog({ products }: ProductCatalogProps) {
         setMaxPrice("");
         setOnlyPromotions(false);
         setSort("newest");
+
+        if (typeof window !== "undefined") {
+            window.history.replaceState(null, "", "/boutique");
+        }
     }
 
     const hasActiveFilters =
@@ -168,12 +206,13 @@ export function ProductCatalog({ products }: ProductCatalogProps) {
                     </p>
 
                     <h1 className="mt-3 text-5xl font-black uppercase tracking-tight">
-                        Tous les produits
+                        {selectedCategoryName || "Tous les produits"}
                     </h1>
 
                     <p className="mt-4 max-w-2xl text-neutral-600">
-                        Recherchez un article, filtrez par catégorie, taille,
-                        couleur, prix ou promotion.
+                        {selectedCategoryName
+                            ? `Découvrez tous les articles disponibles dans la catégorie ${selectedCategoryName}.`
+                            : "Recherchez un article, filtrez par catégorie, taille, couleur, prix ou promotion."}
                     </p>
                 </div>
 

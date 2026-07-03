@@ -17,6 +17,7 @@ import {
     Save,
     Shirt,
     Tags,
+    Trash2,
     Upload,
 } from "lucide-react";
 import {
@@ -36,9 +37,19 @@ import type {
     SaleCampaign,
 } from "@/types/product";
 
-const PRODUCT_SIZES = ["S", "M", "L", "XL", "XXL"] as const;
+const CLOTHING_SIZES = ["S", "M", "L", "XL", "XXL", "3XL"] as const;
+const SHOE_SIZES = ["40", "41", "42", "43", "44", "45"] as const;
+const BERMUDA_SIZES = ["30", "32", "34", "36", "38", "40"] as const;
+const PANTS_SIZES = ["40", "42", "44", "46", "48", "50", "52"] as const;
+const SUIT_SIZES = ["46", "48", "50", "54", "56"] as const;
 
-type ProductSize = (typeof PRODUCT_SIZES)[number];
+type SizeMode = "CLOTHING" | "SHOES" | "BERMUDA" | "PANTS" | "SUIT";
+type ProductSize = string;
+
+type ColorStockVariant = {
+    color: string;
+    stockBySize: Record<ProductSize, string>;
+};
 
 type ProductFormState = {
     reference: string;
@@ -56,7 +67,7 @@ type ProductFormState = {
     isOnSale: boolean;
     discountType: DiscountType;
     discountValue: string;
-    color: string;
+    sizeMode: SizeMode;
 };
 
 const emptyForm: ProductFormState = {
@@ -75,16 +86,68 @@ const emptyForm: ProductFormState = {
     isOnSale: false,
     discountType: "PERCENTAGE",
     discountValue: "",
-    color: "Noir",
+    sizeMode: "CLOTHING",
 };
 
-const emptyStockBySize: Record<ProductSize, string> = {
-    S: "0",
-    M: "0",
-    L: "0",
-    XL: "0",
-    XXL: "0",
-};
+function getSizesByMode(sizeMode: SizeMode): ProductSize[] {
+    if (sizeMode === "SHOES") {
+        return [...SHOE_SIZES];
+    }
+
+    if (sizeMode === "BERMUDA") {
+        return [...BERMUDA_SIZES];
+    }
+
+    if (sizeMode === "PANTS") {
+        return [...PANTS_SIZES];
+    }
+
+    if (sizeMode === "SUIT") {
+        return [...SUIT_SIZES];
+    }
+
+    return [...CLOTHING_SIZES];
+}
+
+function getSizeModeLabel(sizeMode: SizeMode) {
+    if (sizeMode === "SHOES") {
+        return "Chaussures";
+    }
+
+    if (sizeMode === "BERMUDA") {
+        return "Bermuda";
+    }
+
+    if (sizeMode === "PANTS") {
+        return "Pantalon";
+    }
+
+    if (sizeMode === "SUIT") {
+        return "Costume";
+    }
+
+    return "Vêtements";
+}
+
+function createEmptyStockBySize(sizeMode: SizeMode) {
+    return getSizesByMode(sizeMode).reduce<Record<ProductSize, string>>(
+        (stock, size) => {
+            stock[size] = "0";
+            return stock;
+        },
+        {},
+    );
+}
+
+function createColorVariant(
+    sizeMode: SizeMode,
+    color = "Noir",
+): ColorStockVariant {
+    return {
+        color,
+        stockBySize: createEmptyStockBySize(sizeMode),
+    };
+}
 
 function slugify(value: string) {
     return value
@@ -144,8 +207,9 @@ export default function NewProductPage() {
     const [saleCampaigns, setSaleCampaigns] = useState<SaleCampaign[]>([]);
 
     const [form, setForm] = useState<ProductFormState>(emptyForm);
-    const [stockBySize, setStockBySize] =
-        useState<Record<ProductSize, string>>(emptyStockBySize);
+    const [colorVariants, setColorVariants] = useState<ColorStockVariant[]>([
+        createColorVariant("CLOTHING", "Noir"),
+    ]);
     const [isSlugTouched, setIsSlugTouched] = useState(false);
 
     const [selectedImageFile, setSelectedImageFile] = useState<File | null>(
@@ -209,13 +273,24 @@ export default function NewProductPage() {
         [saleCampaigns],
     );
 
+    const availableSizes = useMemo(
+        () => getSizesByMode(form.sizeMode),
+        [form.sizeMode],
+    );
+
     const totalStock = useMemo(
         () =>
-            PRODUCT_SIZES.reduce(
-                (sum, size) => sum + Number(stockBySize[size] || 0),
+            colorVariants.reduce(
+                (total, colorVariant) =>
+                    total +
+                    availableSizes.reduce(
+                        (sum, size) =>
+                            sum + Number(colorVariant.stockBySize[size] || 0),
+                        0,
+                    ),
                 0,
             ),
-        [stockBySize],
+        [availableSizes, colorVariants],
     );
 
     const finalPrice = calculateFinalPrice(form);
@@ -240,13 +315,6 @@ export default function NewProductPage() {
         }));
     }
 
-    function updateStock(size: ProductSize, value: string) {
-        setStockBySize((currentStock) => ({
-            ...currentStock,
-            [size]: value,
-        }));
-    }
-
     function handleNameChange(value: string) {
         setForm((currentForm) => ({
             ...currentForm,
@@ -258,6 +326,81 @@ export default function NewProductPage() {
     function handleSlugChange(value: string) {
         setIsSlugTouched(true);
         updateFormField("slug", slugify(value));
+    }
+
+    function handleSizeModeChange(sizeMode: SizeMode) {
+        if (form.sizeMode === sizeMode) {
+            return;
+        }
+
+        const confirmed =
+            totalStock === 0 ||
+            window.confirm(
+                "Changer le type de tailles va réinitialiser le stock saisi. Continuer ?",
+            );
+
+        if (!confirmed) {
+            return;
+        }
+
+        setForm((currentForm) => ({
+            ...currentForm,
+            sizeMode,
+        }));
+
+        setColorVariants([createColorVariant(sizeMode, "Noir")]);
+    }
+
+    function updateColorVariantColor(index: number, color: string) {
+        setColorVariants((currentVariants) =>
+            currentVariants.map((variant, currentIndex) =>
+                currentIndex === index
+                    ? {
+                          ...variant,
+                          color,
+                      }
+                    : variant,
+            ),
+        );
+    }
+
+    function updateColorVariantStock(
+        colorIndex: number,
+        size: ProductSize,
+        stock: string,
+    ) {
+        setColorVariants((currentVariants) =>
+            currentVariants.map((variant, currentIndex) =>
+                currentIndex === colorIndex
+                    ? {
+                          ...variant,
+                          stockBySize: {
+                              ...variant.stockBySize,
+                              [size]: stock,
+                          },
+                      }
+                    : variant,
+            ),
+        );
+    }
+
+    function addColorVariant() {
+        setColorVariants((currentVariants) => [
+            ...currentVariants,
+            createColorVariant(form.sizeMode, ""),
+        ]);
+    }
+
+    function removeColorVariant(index: number) {
+        setColorVariants((currentVariants) => {
+            const remainingVariants = currentVariants.filter(
+                (_, currentIndex) => currentIndex !== index,
+            );
+
+            return remainingVariants.length > 0
+                ? remainingVariants
+                : [createColorVariant(form.sizeMode, "Noir")];
+        });
     }
 
     function handleImageChange(event: ChangeEvent<HTMLInputElement>) {
@@ -296,9 +439,40 @@ export default function NewProductPage() {
         setImagePreviewUrl(URL.createObjectURL(file));
     }
 
+    function buildVariants() {
+        const reference = form.reference.trim().toUpperCase();
+
+        return colorVariants.flatMap((colorVariant) => {
+            const color = colorVariant.color.trim();
+
+            if (!color) {
+                return [];
+            }
+
+            const skuColor = slugify(color).toUpperCase() || "COLOR";
+
+            return availableSizes
+                .map((size) => {
+                    const stockQuantity = Number(
+                        colorVariant.stockBySize[size] || 0,
+                    );
+
+                    return {
+                        color,
+                        size,
+                        stockQuantity,
+                        sku: `${reference}-${skuColor}-${size}`,
+                        isActive: stockQuantity > 0,
+                    };
+                })
+                .filter((variant) => variant.stockQuantity > 0);
+        });
+    }
+
     function validateForm() {
         const price = Number(form.price);
         const discountValue = Number(form.discountValue);
+        const variants = buildVariants();
 
         if (form.reference.trim().length < 2) {
             return "La référence doit contenir au moins 2 caractères.";
@@ -324,8 +498,21 @@ export default function NewProductPage() {
             return "Ajoutez une image principale pour éviter un produit incomplet.";
         }
 
-        if (totalStock <= 0) {
-            return "Ajoutez au moins une taille avec un stock supérieur à 0.";
+        if (
+            colorVariants.some(
+                (colorVariant) =>
+                    !colorVariant.color.trim() &&
+                    availableSizes.some(
+                        (size) =>
+                            Number(colorVariant.stockBySize[size] || 0) > 0,
+                    ),
+            )
+        ) {
+            return "Chaque couleur qui contient du stock doit avoir un nom.";
+        }
+
+        if (variants.length === 0) {
+            return "Ajoutez au moins une couleur avec une taille en stock supérieur à 0.";
         }
 
         if (form.isOnSale) {
@@ -350,7 +537,7 @@ export default function NewProductPage() {
 
     function resetForm() {
         setForm(emptyForm);
-        setStockBySize(emptyStockBySize);
+        setColorVariants([createColorVariant("CLOTHING", "Noir")]);
         setIsSlugTouched(false);
         setSelectedImageFile(null);
 
@@ -383,16 +570,7 @@ export default function NewProductPage() {
 
         const reference = form.reference.trim().toUpperCase();
         const productName = form.name.trim();
-        const color = form.color.trim() || "Noir";
-        const skuColor = slugify(color).toUpperCase() || "COLOR";
-
-        const variants = PRODUCT_SIZES.map((size) => ({
-            color,
-            size,
-            stockQuantity: Number(stockBySize[size] || 0),
-            sku: `${reference}-${skuColor}-${size}`,
-            isActive: Number(stockBySize[size] || 0) > 0,
-        })).filter((variant) => variant.stockQuantity > 0);
+        const variants = buildVariants();
 
         try {
             setIsSubmitting(true);
@@ -472,8 +650,8 @@ export default function NewProductPage() {
                         </h1>
 
                         <p className="mt-4 text-neutral-600">
-                            Le produit a été créé avec son image, ses variantes
-                            et son stock.
+                            Le produit a été créé avec son image, ses couleurs,
+                            ses tailles et son stock.
                         </p>
 
                         <div className="mt-8 rounded-3xl bg-neutral-50 p-6 text-left">
@@ -574,7 +752,7 @@ export default function NewProductPage() {
 
                         <p className="mt-3 text-neutral-600">
                             Créez un article complet avec image, prix, statut,
-                            promotion et stock par taille.
+                            couleurs, tailles et stock par variante.
                         </p>
                     </div>
 
@@ -981,56 +1159,211 @@ export default function NewProductPage() {
                             </section>
 
                             <section className="rounded-[2rem] bg-white p-8 shadow-sm">
-                                <div className="flex items-center gap-3">
-                                    <PackageCheck size={28} />
+                                <div className="flex flex-col justify-between gap-5 md:flex-row md:items-start">
+                                    <div className="flex items-center gap-3">
+                                        <PackageCheck size={28} />
 
-                                    <h2 className="text-2xl font-black">
-                                        Variantes et stock
-                                    </h2>
+                                        <div>
+                                            <h2 className="text-2xl font-black">
+                                                Couleurs, tailles et stock
+                                            </h2>
+
+                                            <p className="mt-1 text-sm text-neutral-500">
+                                                Choisissez le type de tailles,
+                                                puis ajoutez les couleurs et le
+                                                stock de chaque taille.
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        onClick={addColorVariant}
+                                        className="inline-flex items-center justify-center gap-2 rounded-full border border-neutral-300 px-5 py-3 text-sm font-bold hover:border-black"
+                                    >
+                                        <Plus size={18} />
+                                        Couleur
+                                    </button>
                                 </div>
 
-                                <div className="mt-6">
+                                <div className="mt-6 rounded-3xl bg-neutral-50 p-5">
                                     <label className="text-sm font-bold">
-                                        Couleur principale
+                                        Type de tailles
                                     </label>
 
-                                    <input
-                                        value={form.color}
-                                        onChange={(event) =>
-                                            updateFormField(
-                                                "color",
-                                                event.target.value,
-                                            )
-                                        }
-                                        placeholder="Noir"
-                                        className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
-                                    />
+                                    <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                handleSizeModeChange("CLOTHING")
+                                            }
+                                            className={
+                                                form.sizeMode === "CLOTHING"
+                                                    ? "rounded-2xl border border-black bg-black px-5 py-4 text-left text-sm font-black text-white"
+                                                    : "rounded-2xl border border-neutral-300 bg-white px-5 py-4 text-left text-sm font-black hover:border-black"
+                                            }
+                                        >
+                                            Vêtements
+                                            <span className="mt-1 block text-xs font-medium opacity-70">
+                                                S / M / L / XL / XXL / 3XL
+                                            </span>
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                handleSizeModeChange("SHOES")
+                                            }
+                                            className={
+                                                form.sizeMode === "SHOES"
+                                                    ? "rounded-2xl border border-black bg-black px-5 py-4 text-left text-sm font-black text-white"
+                                                    : "rounded-2xl border border-neutral-300 bg-white px-5 py-4 text-left text-sm font-black hover:border-black"
+                                            }
+                                        >
+                                            Chaussures
+                                            <span className="mt-1 block text-xs font-medium opacity-70">
+                                                40 / 41 / 42 / 43 / 44 / 45
+                                            </span>
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                handleSizeModeChange("BERMUDA")
+                                            }
+                                            className={
+                                                form.sizeMode === "BERMUDA"
+                                                    ? "rounded-2xl border border-black bg-black px-5 py-4 text-left text-sm font-black text-white"
+                                                    : "rounded-2xl border border-neutral-300 bg-white px-5 py-4 text-left text-sm font-black hover:border-black"
+                                            }
+                                        >
+                                            Bermuda
+                                            <span className="mt-1 block text-xs font-medium opacity-70">
+                                                30 / 32 / 34 / 36 / 38 / 40
+                                            </span>
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                handleSizeModeChange("PANTS")
+                                            }
+                                            className={
+                                                form.sizeMode === "PANTS"
+                                                    ? "rounded-2xl border border-black bg-black px-5 py-4 text-left text-sm font-black text-white"
+                                                    : "rounded-2xl border border-neutral-300 bg-white px-5 py-4 text-left text-sm font-black hover:border-black"
+                                            }
+                                        >
+                                            Pantalon
+                                            <span className="mt-1 block text-xs font-medium opacity-70">
+                                                40 / 42 / 44 / 46 / 48 / 50 / 52
+                                            </span>
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                handleSizeModeChange("SUIT")
+                                            }
+                                            className={
+                                                form.sizeMode === "SUIT"
+                                                    ? "rounded-2xl border border-black bg-black px-5 py-4 text-left text-sm font-black text-white"
+                                                    : "rounded-2xl border border-neutral-300 bg-white px-5 py-4 text-left text-sm font-black hover:border-black"
+                                            }
+                                        >
+                                            Costume
+                                            <span className="mt-1 block text-xs font-medium opacity-70">
+                                                46 / 48 / 50 / 54 / 56
+                                            </span>
+                                        </button>
+                                    </div>
                                 </div>
 
-                                <div className="mt-6 grid gap-4 md:grid-cols-5">
-                                    {PRODUCT_SIZES.map((size) => (
-                                        <div
-                                            key={size}
-                                            className="rounded-2xl bg-neutral-50 p-4"
-                                        >
-                                            <label className="text-sm font-black">
-                                                Taille {size}
-                                            </label>
+                                <div className="mt-6 space-y-5">
+                                    {colorVariants.map(
+                                        (colorVariant, colorIndex) => (
+                                            <div
+                                                key={colorIndex}
+                                                className="rounded-[2rem] border border-neutral-200 bg-white p-5"
+                                            >
+                                                <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
+                                                    <div className="flex-1">
+                                                        <label className="text-sm font-bold">
+                                                            Couleur{" "}
+                                                            {colorIndex + 1}
+                                                        </label>
 
-                                            <input
-                                                value={stockBySize[size]}
-                                                onChange={(event) =>
-                                                    updateStock(
-                                                        size,
-                                                        event.target.value,
-                                                    )
-                                                }
-                                                type="number"
-                                                min="0"
-                                                className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
-                                            />
-                                        </div>
-                                    ))}
+                                                        <input
+                                                            value={
+                                                                colorVariant.color
+                                                            }
+                                                            onChange={(event) =>
+                                                                updateColorVariantColor(
+                                                                    colorIndex,
+                                                                    event.target
+                                                                        .value,
+                                                                )
+                                                            }
+                                                            placeholder="Noir, Beige, Bleu..."
+                                                            className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
+                                                        />
+                                                    </div>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            removeColorVariant(
+                                                                colorIndex,
+                                                            )
+                                                        }
+                                                        className="inline-flex items-center justify-center gap-2 rounded-full border border-red-200 px-4 py-3 text-sm font-bold text-red-700 hover:border-red-600"
+                                                    >
+                                                        <Trash2 size={17} />
+                                                        Supprimer
+                                                    </button>
+                                                </div>
+
+                                                <div className="mt-5 grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+                                                    {availableSizes.map(
+                                                        (size) => (
+                                                            <div
+                                                                key={size}
+                                                                className="rounded-2xl bg-neutral-50 p-4"
+                                                            >
+                                                                <label className="text-sm font-black">
+                                                                    Taille{" "}
+                                                                    {size}
+                                                                </label>
+
+                                                                <input
+                                                                    value={
+                                                                        colorVariant
+                                                                            .stockBySize[
+                                                                            size
+                                                                        ] ?? "0"
+                                                                    }
+                                                                    onChange={(
+                                                                        event,
+                                                                    ) =>
+                                                                        updateColorVariantStock(
+                                                                            colorIndex,
+                                                                            size,
+                                                                            event
+                                                                                .target
+                                                                                .value,
+                                                                        )
+                                                                    }
+                                                                    type="number"
+                                                                    min="0"
+                                                                    className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
+                                                                />
+                                                            </div>
+                                                        ),
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ),
+                                    )}
                                 </div>
                             </section>
 
@@ -1181,16 +1514,43 @@ export default function NewProductPage() {
                                         {totalStock}
                                     </p>
 
-                                    <div className="mt-3 flex flex-wrap gap-2">
-                                        {PRODUCT_SIZES.map((size) => (
-                                            <span
-                                                key={size}
-                                                className="rounded-full bg-white px-3 py-1 text-xs font-bold text-neutral-700"
-                                            >
-                                                {size}:{" "}
-                                                {Number(stockBySize[size] || 0)}
-                                            </span>
-                                        ))}
+                                    <p className="mt-2 text-xs font-semibold text-neutral-500">
+                                        Type : {getSizeModeLabel(form.sizeMode)}
+                                    </p>
+
+                                    <div className="mt-4 space-y-3">
+                                        {colorVariants.map(
+                                            (colorVariant, colorIndex) => (
+                                                <div
+                                                    key={colorIndex}
+                                                    className="rounded-2xl bg-white p-3"
+                                                >
+                                                    <p className="text-xs font-black uppercase tracking-[0.16em] text-neutral-500">
+                                                        {colorVariant.color ||
+                                                            "Couleur non définie"}
+                                                    </p>
+
+                                                    <div className="mt-2 flex flex-wrap gap-2">
+                                                        {availableSizes.map(
+                                                            (size) => (
+                                                                <span
+                                                                    key={size}
+                                                                    className="rounded-full bg-neutral-50 px-3 py-1 text-xs font-bold text-neutral-700"
+                                                                >
+                                                                    {size}:{" "}
+                                                                    {Number(
+                                                                        colorVariant
+                                                                            .stockBySize[
+                                                                            size
+                                                                        ] || 0,
+                                                                    )}
+                                                                </span>
+                                                            ),
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ),
+                                        )}
                                     </div>
                                 </div>
 
