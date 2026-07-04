@@ -61,6 +61,7 @@ type ProductFormState = {
     shortDescription: string;
     description: string;
     categoryId: string;
+    categoryTypeId: string;
     collectionId: string;
     saleCampaignId: string;
     price: string;
@@ -80,6 +81,7 @@ const emptyForm: ProductFormState = {
     shortDescription: "",
     description: "",
     categoryId: "",
+    categoryTypeId: "",
     collectionId: "",
     saleCampaignId: "",
     price: "",
@@ -335,6 +337,20 @@ export default function NewProductPage() {
         (category) => category.id === form.categoryId,
     );
 
+    const selectedCategoryTypes = useMemo(() => {
+        return (selectedCategory?.types ?? [])
+            .filter((type) => type.isActive)
+            .sort(
+                (a, b) =>
+                    Number(a.position ?? 0) - Number(b.position ?? 0) ||
+                    a.name.localeCompare(b.name),
+            );
+    }, [selectedCategory]);
+
+    const selectedCategoryType = selectedCategoryTypes.find(
+        (type) => type.id === form.categoryTypeId,
+    );
+
     const mainPreviewImage = useMemo(() => {
         return (
             colorVariants.find(
@@ -582,6 +598,10 @@ export default function NewProductPage() {
             return "Sélectionnez une catégorie active.";
         }
 
+        if (selectedCategoryTypes.length > 0 && !form.categoryTypeId) {
+            return "Sélectionnez le type de catégorie du produit.";
+        }
+
         if (!Number.isFinite(price) || price <= 0) {
             return "Le prix doit être supérieur à 0.";
         }
@@ -722,6 +742,7 @@ export default function NewProductPage() {
                 shortDescription: form.shortDescription.trim(),
                 description: form.description.trim(),
                 categoryId: form.categoryId,
+                categoryTypeId: form.categoryTypeId || null,
                 price: Number(form.price),
                 status: form.status,
                 isFeatured: form.isFeatured,
@@ -1055,12 +1076,16 @@ export default function NewProductPage() {
 
                                         <select
                                             value={form.categoryId}
-                                            onChange={(event) =>
-                                                updateFormField(
-                                                    "categoryId",
-                                                    event.target.value,
-                                                )
-                                            }
+                                            onChange={(event) => {
+                                                const nextCategoryId =
+                                                    event.target.value;
+
+                                                setForm((currentForm) => ({
+                                                    ...currentForm,
+                                                    categoryId: nextCategoryId,
+                                                    categoryTypeId: "",
+                                                }));
+                                            }}
                                             className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 outline-none focus:border-black"
                                         >
                                             <option value="">
@@ -1079,6 +1104,45 @@ export default function NewProductPage() {
                                             )}
                                         </select>
                                     </div>
+
+                                    {selectedCategoryTypes.length > 0 && (
+                                        <div>
+                                            <label className="text-sm font-bold">
+                                                Type de catégorie *
+                                            </label>
+
+                                            <select
+                                                value={form.categoryTypeId}
+                                                onChange={(event) =>
+                                                    updateFormField(
+                                                        "categoryTypeId",
+                                                        event.target.value,
+                                                    )
+                                                }
+                                                className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 outline-none focus:border-black"
+                                            >
+                                                <option value="">
+                                                    Sélectionner un type
+                                                </option>
+
+                                                {selectedCategoryTypes.map(
+                                                    (type) => (
+                                                        <option
+                                                            key={type.id}
+                                                            value={type.id}
+                                                        >
+                                                            {type.name}
+                                                        </option>
+                                                    ),
+                                                )}
+                                            </select>
+
+                                            <p className="mt-2 text-xs font-semibold text-neutral-500">
+                                                Ce type dépend de la catégorie
+                                                sélectionnée.
+                                            </p>
+                                        </div>
+                                    )}
 
                                     <div>
                                         <label className="text-sm font-bold">
@@ -1681,6 +1745,18 @@ export default function NewProductPage() {
                                     {selectedCategory?.name ??
                                         "Non sélectionnée"}
                                 </p>
+
+                                {selectedCategoryType && (
+                                    <>
+                                        <p className="mt-4 text-sm text-neutral-500">
+                                            Type
+                                        </p>
+
+                                        <p className="mt-1 font-bold">
+                                            {selectedCategoryType.name}
+                                        </p>
+                                    </>
+                                )}
 
                                 <div className="mt-5 rounded-3xl bg-neutral-50 p-5">
                                     {form.isOnSale ? (

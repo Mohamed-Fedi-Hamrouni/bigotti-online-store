@@ -84,6 +84,7 @@ type ProductFormState = {
     shortDescription: string;
     description: string;
     categoryId: string;
+    categoryTypeId: string;
     collectionId: string;
     saleCampaignId: string;
     price: string;
@@ -218,6 +219,7 @@ function productToFormState(product: Product): ProductFormState {
         shortDescription: product.shortDescription ?? "",
         description: product.description ?? "",
         categoryId: product.categoryId,
+        categoryTypeId: product.categoryTypeId ?? "",
         collectionId: product.collectionId ?? "",
         saleCampaignId: product.saleCampaignId ?? "",
         price: String(product.price),
@@ -269,6 +271,7 @@ function buildUpdatePayload(params: {
         shortDescription: form.shortDescription.trim() || null,
         description: form.description.trim() || null,
         categoryId: form.categoryId,
+        categoryTypeId: form.categoryTypeId || null,
         collectionId: form.collectionId || null,
         saleCampaignId: form.saleCampaignId || null,
         price: Number(form.price),
@@ -419,6 +422,20 @@ export default function EditProductPage() {
 
     const selectedCategory = form
         ? categories.find((category) => category.id === form.categoryId)
+        : null;
+
+    const selectedCategoryTypes = useMemo(() => {
+        return (selectedCategory?.types ?? []).sort(
+            (a, b) =>
+                Number(a.position ?? 0) - Number(b.position ?? 0) ||
+                a.name.localeCompare(b.name),
+        );
+    }, [selectedCategory]);
+
+    const selectedCategoryType = form
+        ? (selectedCategoryTypes.find(
+              (type) => type.id === form.categoryTypeId,
+          ) ?? null)
         : null;
 
     const selectedCollection = form
@@ -673,6 +690,10 @@ export default function EditProductPage() {
 
         if (!payload.categoryId) {
             return "La catégorie est obligatoire.";
+        }
+
+        if (selectedCategoryTypes.length > 0 && !payload.categoryTypeId) {
+            return "Le type de catégorie est obligatoire pour cette catégorie.";
         }
 
         if (!payload.price || payload.price <= 0) {
@@ -1087,12 +1108,22 @@ export default function EditProductPage() {
 
                                         <select
                                             value={form.categoryId}
-                                            onChange={(event) =>
-                                                updateField(
-                                                    "categoryId",
-                                                    event.target.value,
-                                                )
-                                            }
+                                            onChange={(event) => {
+                                                const nextCategoryId =
+                                                    event.target.value;
+
+                                                setForm((currentForm) =>
+                                                    currentForm
+                                                        ? {
+                                                              ...currentForm,
+                                                              categoryId:
+                                                                  nextCategoryId,
+                                                              categoryTypeId:
+                                                                  "",
+                                                          }
+                                                        : currentForm,
+                                                );
+                                            }}
                                             className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 outline-none focus:border-black"
                                         >
                                             <option value="">
@@ -1120,6 +1151,51 @@ export default function EditProductPage() {
                                                 </p>
                                             )}
                                     </div>
+
+                                    {selectedCategoryTypes.length > 0 && (
+                                        <div>
+                                            <label className="text-sm font-bold">
+                                                Type de catégorie *
+                                            </label>
+
+                                            <select
+                                                value={form.categoryTypeId}
+                                                onChange={(event) =>
+                                                    updateField(
+                                                        "categoryTypeId",
+                                                        event.target.value,
+                                                    )
+                                                }
+                                                className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 outline-none focus:border-black"
+                                            >
+                                                <option value="">
+                                                    Choisir un type
+                                                </option>
+
+                                                {selectedCategoryTypes.map(
+                                                    (type) => (
+                                                        <option
+                                                            key={type.id}
+                                                            value={type.id}
+                                                        >
+                                                            {type.name}
+                                                            {!type.isActive
+                                                                ? " — désactivé"
+                                                                : ""}
+                                                        </option>
+                                                    ),
+                                                )}
+                                            </select>
+
+                                            {selectedCategoryType &&
+                                                !selectedCategoryType.isActive && (
+                                                    <p className="mt-2 text-xs font-semibold text-red-700">
+                                                        Type actuellement
+                                                        désactivé.
+                                                    </p>
+                                                )}
+                                        </div>
+                                    )}
 
                                     <div>
                                         <label className="text-sm font-bold">
@@ -1797,6 +1873,18 @@ export default function EditProductPage() {
                                         {selectedCategory?.name ??
                                             "Non sélectionnée"}
                                     </p>
+
+                                    {selectedCategoryType && (
+                                        <>
+                                            <p className="mt-4 text-sm text-neutral-500">
+                                                Type
+                                            </p>
+
+                                            <p className="mt-1 font-bold">
+                                                {selectedCategoryType.name}
+                                            </p>
+                                        </>
+                                    )}
 
                                     {selectedCollection && (
                                         <>
