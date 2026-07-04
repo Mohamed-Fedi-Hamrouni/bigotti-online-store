@@ -37,13 +37,34 @@ import type {
     SaleCampaign,
 } from "@/types/product";
 
+const NO_SIZE_SIZES = ["Unique"] as const;
 const CLOTHING_SIZES = ["S", "M", "L", "XL", "XXL", "3XL"] as const;
 const SHOE_SIZES = ["40", "41", "42", "43", "44", "45"] as const;
 const BERMUDA_SIZES = ["30", "32", "34", "36", "38", "40"] as const;
 const PANTS_SIZES = ["40", "42", "44", "46", "48", "50", "52"] as const;
 const SUIT_SIZES = ["46", "48", "50", "54", "56"] as const;
+const BELT_SIZES = [
+    "80",
+    "85",
+    "90",
+    "95",
+    "100",
+    "105",
+    "110",
+    "115",
+    "120",
+] as const;
+const TIE_SIZES = ["Slim", "Classique", "Large"] as const;
 
-type SizeMode = "CLOTHING" | "SHOES" | "BERMUDA" | "PANTS" | "SUIT";
+type SizeMode =
+    | "NO_SIZE"
+    | "CLOTHING"
+    | "SHOES"
+    | "BERMUDA"
+    | "PANTS"
+    | "SUIT"
+    | "BELT"
+    | "TIE";
 type ProductSize = string;
 
 type ColorStockVariant = {
@@ -95,6 +116,10 @@ const emptyForm: ProductFormState = {
 };
 
 function getSizesByMode(sizeMode: SizeMode): ProductSize[] {
+    if (sizeMode === "NO_SIZE") {
+        return [...NO_SIZE_SIZES];
+    }
+
     if (sizeMode === "SHOES") {
         return [...SHOE_SIZES];
     }
@@ -111,10 +136,22 @@ function getSizesByMode(sizeMode: SizeMode): ProductSize[] {
         return [...SUIT_SIZES];
     }
 
+    if (sizeMode === "BELT") {
+        return [...BELT_SIZES];
+    }
+
+    if (sizeMode === "TIE") {
+        return [...TIE_SIZES];
+    }
+
     return [...CLOTHING_SIZES];
 }
 
 function getSizeModeLabel(sizeMode: SizeMode) {
+    if (sizeMode === "NO_SIZE") {
+        return "Pas de taille";
+    }
+
     if (sizeMode === "SHOES") {
         return "Chaussures";
     }
@@ -129,6 +166,14 @@ function getSizeModeLabel(sizeMode: SizeMode) {
 
     if (sizeMode === "SUIT") {
         return "Costume";
+    }
+
+    if (sizeMode === "BELT") {
+        return "Ceinture";
+    }
+
+    if (sizeMode === "TIE") {
+        return "Cravate";
     }
 
     return "Vêtements";
@@ -1350,6 +1395,23 @@ export default function NewProductPage() {
                                         <button
                                             type="button"
                                             onClick={() =>
+                                                handleSizeModeChange("NO_SIZE")
+                                            }
+                                            className={
+                                                form.sizeMode === "NO_SIZE"
+                                                    ? "rounded-2xl border border-black bg-black px-5 py-4 text-left text-sm font-black text-white"
+                                                    : "rounded-2xl border border-neutral-300 bg-white px-5 py-4 text-left text-sm font-black hover:border-black"
+                                            }
+                                        >
+                                            Pas de taille
+                                            <span className="mt-1 block text-xs font-medium opacity-70">
+                                                Unique
+                                            </span>
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            onClick={() =>
                                                 handleSizeModeChange("CLOTHING")
                                             }
                                             className={
@@ -1429,6 +1491,41 @@ export default function NewProductPage() {
                                             Costume
                                             <span className="mt-1 block text-xs font-medium opacity-70">
                                                 46 / 48 / 50 / 54 / 56
+                                            </span>
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                handleSizeModeChange("BELT")
+                                            }
+                                            className={
+                                                form.sizeMode === "BELT"
+                                                    ? "rounded-2xl border border-black bg-black px-5 py-4 text-left text-sm font-black text-white"
+                                                    : "rounded-2xl border border-neutral-300 bg-white px-5 py-4 text-left text-sm font-black hover:border-black"
+                                            }
+                                        >
+                                            Ceinture
+                                            <span className="mt-1 block text-xs font-medium opacity-70">
+                                                80 / 85 / 90 / 95 / 100 / 105 /
+                                                110
+                                            </span>
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                handleSizeModeChange("TIE")
+                                            }
+                                            className={
+                                                form.sizeMode === "TIE"
+                                                    ? "rounded-2xl border border-black bg-black px-5 py-4 text-left text-sm font-black text-white"
+                                                    : "rounded-2xl border border-neutral-300 bg-white px-5 py-4 text-left text-sm font-black hover:border-black"
+                                            }
+                                        >
+                                            Cravate
+                                            <span className="mt-1 block text-xs font-medium opacity-70">
+                                                Slim / Classique / Large
                                             </span>
                                         </button>
                                     </div>

@@ -8,6 +8,41 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 
+type InternalOrderItem = {
+  productId: string;
+  productVariantId: string;
+  productName: string;
+  productReference: string;
+  color: string;
+  size: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+  saleCampaign: {
+    id: string;
+    name: string;
+    type: string;
+    isActive: boolean;
+    buyQuantity: number | null;
+    freeQuantity: number | null;
+    startDate: Date | null;
+    endDate: Date | null;
+  } | null;
+};
+
+type PromotionUnit = {
+  orderItemIndex: number;
+  price: number;
+};
+
+type PromotionGroup = {
+  campaignId: string;
+  campaignName: string;
+  buyQuantity: number;
+  freeQuantity: number;
+  units: PromotionUnit[];
+};
+
 @Injectable()
 export class OrdersService {
   constructor(
@@ -34,66 +69,86 @@ export class OrdersService {
         },
       },
       include: {
-        product: true,
+        product: {
+          include: {
+            saleCampaign: true,
+            collection: true,
+          },
+        },
       },
     });
 
-    if (variants.length !== variantIds.length) {
+    if (variants.length !== new Set(variantIds).size) {
       throw new BadRequestException(
         'Un ou plusieurs articles sont introuvables.',
       );
     }
 
-    const orderItems = dto.items.map((item) => {
-      const variant = variants.find(
-        (currentVariant) => currentVariant.id === item.variantId,
-      );
-
-      if (!variant) {
-        throw new BadRequestException('Variante produit introuvable.');
-      }
-
-      if (item.quantity <= 0) {
-        throw new BadRequestException(
-          'La quantité doit être supérieure à zéro.',
+    const orderItemsBeforePromotion: InternalOrderItem[] = dto.items.map(
+      (item) => {
+        const variant = variants.find(
+          (currentVariant) => currentVariant.id === item.variantId,
         );
-      }
 
-      if (variant.stockQuantity < item.quantity) {
-        throw new BadRequestException(
-          `Stock insuffisant pour ${variant.product.name} - ${variant.color} / ${variant.size}.`,
-        );
-      }
+        if (!variant) {
+          throw new BadRequestException('Variante produit introuvable.');
+        }
 
-      if (variant.product.status !== 'PUBLISHED') {
-        throw new BadRequestException(
-          `Le produit ${variant.product.name} n'est pas disponible.`,
-        );
-      }
+        if (item.quantity <= 0) {
+          throw new BadRequestException(
+            'La quantité doit être supérieure à zéro.',
+          );
+        }
 
-      const unitPrice = this.calculateProductFinalPrice(variant.product);
-      const totalPrice = unitPrice * item.quantity;
+        if (variant.stockQuantity < item.quantity) {
+          throw new BadRequestException(
+            `Stock insuffisant pour ${variant.product.name} - ${variant.color} / ${variant.size}.`,
+          );
+        }
 
-      return {
-        productId: variant.productId,
-        productVariantId: variant.id,
-        productName: variant.product.name,
-        productReference: variant.product.reference,
-        color: variant.color,
-        size: variant.size,
-        quantity: item.quantity,
-        unitPrice,
-        totalPrice,
-      };
-    });
+        if (variant.product.status !== 'PUBLISHED') {
+          throw new BadRequestException(
+            `Le produit ${variant.product.name} n'est pas disponible.`,
+          );
+        }
 
-    const subtotal = orderItems.reduce(
-      (sum, item) => sum + Number(item.totalPrice),
-      0,
+        const unitPrice = this.calculateProductFinalPrice(variant.product);
+        const totalPrice = this.toMoney(unitPrice * item.quantity);
+
+        return {
+          productId: variant.productId,
+          productVariantId: variant.id,
+          productName: variant.product.name,
+          productReference: variant.product.reference,
+          color: variant.color,
+          size: variant.size,
+          quantity: item.quantity,
+          unitPrice,
+          totalPrice,
+          saleCampaign: variant.product.saleCampaign
+            ? {
+                id: variant.product.saleCampaign.id,
+                name: variant.product.saleCampaign.name,
+                type: variant.product.saleCampaign.type,
+                isActive: variant.product.saleCampaign.isActive,
+                buyQuantity: variant.product.saleCampaign.buyQuantity,
+                freeQuantity: variant.product.saleCampaign.freeQuantity,
+                startDate: variant.product.saleCampaign.startDate,
+                endDate: variant.product.saleCampaign.endDate,
+              }
+            : null,
+        };
+      },
+    );
+
+    const orderItems = this.applyBuyXGetYPromotions(orderItemsBeforePromotion);
+
+    const subtotal = this.toMoney(
+      orderItems.reduce((sum, item) => sum + Number(item.totalPrice), 0),
     );
 
     const deliveryFee = 7;
-    const total = subtotal + deliveryFee;
+    const total = this.toMoney(subtotal + deliveryFee);
     const orderNumber = await this.generateOrderNumber();
 
     const order = await this.prisma.$transaction(async (tx) => {
@@ -240,6 +295,112 @@ export class OrdersService {
     return this.normalizeOrderResponse(order);
   }
 
+  private applyBuyXGetYPromotions(orderItems: InternalOrderItem[]) {
+    const groups = new Map<string, PromotionGroup>();
+
+    orderItems.forEach((item, orderItemIndex) => {
+      const campaign = item.saleCampaign;
+
+      if (!this.isBuyXGetYCampaignActive(campaign)) {
+        return;
+      }
+
+      const buyQuantity = Number(campaign!.buyQuantity);
+      const freeQuantity = Number(campaign!.freeQuantity);
+
+      const existingGroup = groups.get(campaign!.id);
+
+      const group =
+        existingGroup ??
+        ({
+          campaignId: campaign!.id,
+          campaignName: campaign!.name,
+          buyQuantity,
+          freeQuantity,
+          units: [],
+        } satisfies PromotionGroup);
+
+      for (let index = 0; index < item.quantity; index += 1) {
+        group.units.push({
+          orderItemIndex,
+          price: item.unitPrice,
+        });
+      }
+
+      groups.set(campaign!.id, group);
+    });
+
+    const discountsByOrderItemIndex = new Map<number, number>();
+
+    for (const group of groups.values()) {
+      const groupSize = group.buyQuantity + group.freeQuantity;
+
+      if (groupSize <= 0) {
+        continue;
+      }
+
+      const freeItemsCount = Math.min(
+        group.units.length,
+        Math.floor(group.units.length / groupSize) * group.freeQuantity,
+      );
+
+      if (freeItemsCount <= 0) {
+        continue;
+      }
+
+      const freeUnits = [...group.units]
+        .sort((a, b) => a.price - b.price)
+        .slice(0, freeItemsCount);
+
+      for (const unit of freeUnits) {
+        discountsByOrderItemIndex.set(
+          unit.orderItemIndex,
+          this.toMoney(
+            (discountsByOrderItemIndex.get(unit.orderItemIndex) ?? 0) +
+              unit.price,
+          ),
+        );
+      }
+    }
+
+    return orderItems.map((item, index) => {
+      const discount = discountsByOrderItemIndex.get(index) ?? 0;
+      const normalTotalPrice = item.unitPrice * item.quantity;
+
+      return {
+        ...item,
+        totalPrice: this.toMoney(Math.max(0, normalTotalPrice - discount)),
+      };
+    });
+  }
+
+  private isBuyXGetYCampaignActive(
+    campaign: InternalOrderItem['saleCampaign'],
+  ) {
+    if (!campaign) {
+      return false;
+    }
+
+    if (!campaign.isActive) {
+      return false;
+    }
+
+    if (campaign.type !== 'ACHETEZ_X_OBTENEZ_Y') {
+      return false;
+    }
+
+    if (
+      !campaign.buyQuantity ||
+      campaign.buyQuantity <= 0 ||
+      !campaign.freeQuantity ||
+      campaign.freeQuantity <= 0
+    ) {
+      return false;
+    }
+
+    return this.isDateRangeActive(campaign.startDate, campaign.endDate);
+  }
+
   private async generateOrderNumber() {
     const ordersCount = await this.prisma.order.count();
     const nextNumber = ordersCount + 1;
@@ -279,13 +440,70 @@ export class OrdersService {
     isOnSale?: boolean | null;
     discountType?: unknown;
     discountValue?: unknown;
+    discountStartDate?: Date | null;
+    discountEndDate?: Date | null;
+    saleCampaign?: {
+      isActive: boolean;
+      type: string;
+      discountValue: unknown | null;
+      startDate: Date | null;
+      endDate: Date | null;
+    } | null;
+    collection?: {
+      promoIsActive: boolean;
+      promoPercentage: unknown | null;
+      promoStartDate: Date | null;
+      promoEndDate: Date | null;
+    } | null;
   }) {
     const price = Number(product.price);
+
+    const productPromoPrice = this.calculateProductPromoPrice(product, price);
+
+    if (productPromoPrice !== null) {
+      return this.toMoney(productPromoPrice);
+    }
+
+    const campaignPromoPrice = this.calculateSaleCampaignPromoPrice(
+      product.saleCampaign,
+      price,
+    );
+
+    if (campaignPromoPrice !== null) {
+      return this.toMoney(campaignPromoPrice);
+    }
+
+    const collectionPromoPrice = this.calculateCollectionPromoPrice(
+      product.collection,
+      price,
+    );
+
+    if (collectionPromoPrice !== null) {
+      return this.toMoney(collectionPromoPrice);
+    }
+
+    return this.toMoney(price);
+  }
+
+  private calculateProductPromoPrice(product: any, price: number) {
+    if (!product.isOnSale || !product.discountType || !product.discountValue) {
+      return null;
+    }
+
+    if (
+      !this.isDateRangeActive(
+        product.discountStartDate,
+        product.discountEndDate,
+      )
+    ) {
+      return null;
+    }
+
     const discountType = String(product.discountType ?? 'NONE');
     const discountValue = Number(product.discountValue ?? 0);
 
-    if (!product.isOnSale || discountValue <= 0) {
-      return price;
+    if (!Number.isFinite(discountValue) || discountValue <= 0) {
+      return null;
     }
 
     if (discountType === 'PERCENTAGE') {
@@ -296,7 +514,86 @@ export class OrdersService {
       return Math.max(0, price - discountValue);
     }
 
-    return price;
+    return null;
+  }
+
+  private calculateSaleCampaignPromoPrice(
+    campaign:
+      | {
+          isActive: boolean;
+          type: string;
+          discountValue: unknown | null;
+          startDate: Date | null;
+          endDate: Date | null;
+        }
+      | null
+      | undefined,
+    price: number,
+  ) {
+    if (!campaign?.isActive || !campaign.discountValue) {
+      return null;
+    }
+
+    if (!this.isDateRangeActive(campaign.startDate, campaign.endDate)) {
+      return null;
+    }
+
+    const discountValue = Number(campaign.discountValue);
+
+    if (!Number.isFinite(discountValue) || discountValue <= 0) {
+      return null;
+    }
+
+    if (campaign.type === 'REMISE_POURCENTAGE') {
+      return Math.max(0, price - (price * discountValue) / 100);
+    }
+
+    if (campaign.type === 'REMISE_MONTANT_FIXE') {
+      return Math.max(0, price - discountValue);
+    }
+
+    return null;
+  }
+
+  private calculateCollectionPromoPrice(collection: any, price: number) {
+    if (!collection?.promoIsActive || !collection.promoPercentage) {
+      return null;
+    }
+
+    if (
+      !this.isDateRangeActive(
+        collection.promoStartDate,
+        collection.promoEndDate,
+      )
+    ) {
+      return null;
+    }
+
+    const promoPercentage = Number(collection.promoPercentage);
+
+    if (!Number.isFinite(promoPercentage) || promoPercentage <= 0) {
+      return null;
+    }
+
+    return Math.max(0, price - (price * promoPercentage) / 100);
+  }
+
+  private isDateRangeActive(startDate?: Date | null, endDate?: Date | null) {
+    const now = new Date();
+
+    if (startDate && startDate > now) {
+      return false;
+    }
+
+    if (endDate && endDate < now) {
+      return false;
+    }
+
+    return true;
+  }
+
+  private toMoney(value: number) {
+    return Number(value.toFixed(3));
   }
 
   private defaultInclude() {

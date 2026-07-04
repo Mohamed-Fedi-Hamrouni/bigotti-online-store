@@ -12,6 +12,9 @@ function formatPrice(value: number) {
 export default function CartPage() {
     const {
         items,
+        subtotalBeforePromotion,
+        promotionDiscount,
+        appliedPromotions,
         subtotal,
         deliveryFee,
         total,
@@ -28,6 +31,7 @@ export default function CartPage() {
                     <p className="text-sm uppercase tracking-[0.25em] text-neutral-500">
                         Votre sélection
                     </p>
+
                     <h1 className="mt-2 text-4xl font-bold">Panier</h1>
                 </div>
 
@@ -36,6 +40,7 @@ export default function CartPage() {
                         <h2 className="text-2xl font-bold">
                             Votre panier est vide.
                         </h2>
+
                         <p className="mt-3 text-neutral-500">
                             Découvrez la collection Bigotti et ajoutez vos
                             articles préférés.
@@ -90,6 +95,15 @@ export default function CartPage() {
                                             Stock disponible :{" "}
                                             {item.stockQuantity}
                                         </p>
+
+                                        {item.saleCampaignType ===
+                                            "ACHETEZ_X_OBTENEZ_Y" &&
+                                            item.saleCampaignIsActive && (
+                                                <div className="mt-3 inline-flex rounded-full bg-green-50 px-3 py-1 text-xs font-bold text-green-700">
+                                                    {item.saleCampaignName ??
+                                                        "Offre spéciale"}
+                                                </div>
+                                            )}
                                     </div>
 
                                     <div className="flex flex-col items-start gap-4 md:items-end">
@@ -138,11 +152,65 @@ export default function CartPage() {
                                 Résumé commande
                             </h2>
 
+                            {appliedPromotions.length > 0 && (
+                                <div className="mt-5 space-y-3">
+                                    {appliedPromotions.map((promotion) => (
+                                        <div
+                                            key={promotion.campaignId}
+                                            className="rounded-3xl bg-green-50 p-4 text-sm text-green-800"
+                                        >
+                                            <p className="font-black">
+                                                {promotion.campaignName}
+                                            </p>
+
+                                            <p className="mt-1 font-semibold">
+                                                Achetez {promotion.buyQuantity},
+                                                obtenez {promotion.freeQuantity}{" "}
+                                                offert
+                                            </p>
+
+                                            <p className="mt-1">
+                                                {promotion.freeItemsCount}{" "}
+                                                article(s) offert(s) — économie{" "}
+                                                <span className="font-black">
+                                                    {formatPrice(
+                                                        promotion.discountAmount,
+                                                    )}
+                                                </span>
+                                            </p>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
                             <div className="mt-6 space-y-4 text-sm">
                                 <div className="flex justify-between">
                                     <span className="text-neutral-500">
-                                        Sous-total
+                                        Sous-total articles
                                     </span>
+
+                                    <span className="font-semibold">
+                                        {formatPrice(subtotalBeforePromotion)}
+                                    </span>
+                                </div>
+
+                                {promotionDiscount > 0 && (
+                                    <div className="flex justify-between text-green-700">
+                                        <span className="font-semibold">
+                                            Offres appliquées
+                                        </span>
+
+                                        <span className="font-bold">
+                                            -{formatPrice(promotionDiscount)}
+                                        </span>
+                                    </div>
+                                )}
+
+                                <div className="flex justify-between">
+                                    <span className="text-neutral-500">
+                                        Sous-total après offres
+                                    </span>
+
                                     <span className="font-semibold">
                                         {formatPrice(subtotal)}
                                     </span>
@@ -152,6 +220,7 @@ export default function CartPage() {
                                     <span className="text-neutral-500">
                                         Livraison
                                     </span>
+
                                     <span className="font-semibold">
                                         {formatPrice(deliveryFee)}
                                     </span>
@@ -160,6 +229,7 @@ export default function CartPage() {
                                 <div className="border-t border-neutral-200 pt-4">
                                     <div className="flex justify-between text-lg">
                                         <span className="font-bold">Total</span>
+
                                         <span className="font-bold">
                                             {formatPrice(total)}
                                         </span>

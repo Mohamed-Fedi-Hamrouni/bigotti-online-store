@@ -8,7 +8,11 @@ import {
     useState,
     type ReactNode,
 } from "react";
-import type { Product, ProductVariant } from "@/types/product";
+import type {
+    Product,
+    ProductVariant,
+    SaleCampaignType,
+} from "@/types/product";
 
 export type CartItem = {
     variantId: string;
@@ -22,11 +26,32 @@ export type CartItem = {
     unitPrice: number;
     quantity: number;
     stockQuantity: number;
+
+    saleCampaignId?: string | null;
+    saleCampaignName?: string | null;
+    saleCampaignType?: SaleCampaignType | null;
+    saleCampaignIsActive?: boolean;
+    saleCampaignStartDate?: string | null;
+    saleCampaignEndDate?: string | null;
+    saleCampaignBuyQuantity?: number | null;
+    saleCampaignFreeQuantity?: number | null;
+};
+
+export type CartPromotionSummary = {
+    campaignId: string;
+    campaignName: string;
+    buyQuantity: number;
+    freeQuantity: number;
+    freeItemsCount: number;
+    discountAmount: number;
 };
 
 type CartContextValue = {
     items: CartItem[];
     itemsCount: number;
+    subtotalBeforePromotion: number;
+    promotionDiscount: number;
+    appliedPromotions: CartPromotionSummary[];
     subtotal: number;
     deliveryFee: number;
     total: number;
@@ -40,12 +65,163 @@ type CartContextValue = {
     clearCart: () => void;
 };
 
+type PromotionUnit = {
+    variantId: string;
+    price: number;
+};
+
+type PromotionGroup = {
+    campaignId: string;
+    campaignName: string;
+    buyQuantity: number;
+    freeQuantity: number;
+    units: PromotionUnit[];
+};
+
 const CartContext = createContext<CartContextValue | undefined>(undefined);
 
 const STORAGE_KEY = "bigotti-cart";
 
+function toMoney(value: number) {
+    return Number(value.toFixed(3));
+}
+
 function getDeliveryFee(subtotal: number) {
     return subtotal >= 200 || subtotal === 0 ? 0 : 8;
+}
+
+function isDateRangeActive(startDate?: string | null, endDate?: string | null) {
+    const now = new Date();
+
+    if (startDate && new Date(startDate) > now) {
+        return false;
+    }
+
+    if (endDate && new Date(endDate) < now) {
+        return false;
+    }
+
+    return true;
+}
+
+function isBuyXGetYCampaignActive(item: CartItem) {
+    if (!item.saleCampaignId) {
+        return false;
+    }
+
+    if (!item.saleCampaignIsActive) {
+        return false;
+    }
+
+    if (item.saleCampaignType !== "ACHETEZ_X_OBTENEZ_Y") {
+        return false;
+    }
+
+    if (
+        !item.saleCampaignBuyQuantity ||
+        item.saleCampaignBuyQuantity <= 0 ||
+        !item.saleCampaignFreeQuantity ||
+        item.saleCampaignFreeQuantity <= 0
+    ) {
+        return false;
+    }
+
+    return isDateRangeActive(
+        item.saleCampaignStartDate,
+        item.saleCampaignEndDate,
+    );
+}
+
+function calculateBuyXGetYPromotions(items: CartItem[]) {
+    const groups = new Map<string, PromotionGroup>();
+
+    for (const item of items) {
+        if (!isBuyXGetYCampaignActive(item)) {
+            continue;
+        }
+
+        const campaignId = item.saleCampaignId!;
+        const campaignName = item.saleCampaignName ?? "Offre spéciale Bigotti";
+        const buyQuantity = Number(item.saleCampaignBuyQuantity);
+        const freeQuantity = Number(item.saleCampaignFreeQuantity);
+
+        const existingGroup = groups.get(campaignId);
+
+        const group =
+            existingGroup ??
+            ({
+                campaignId,
+                campaignName,
+                buyQuantity,
+                freeQuantity,
+                units: [],
+            } satisfies PromotionGroup);
+
+        for (let index = 0; index < item.quantity; index += 1) {
+            group.units.push({
+                variantId: item.variantId,
+                price: item.unitPrice,
+            });
+        }
+
+        groups.set(campaignId, group);
+    }
+
+    const discountsByVariantId = new Map<string, number>();
+    const summaries: CartPromotionSummary[] = [];
+    let totalDiscount = 0;
+
+    for (const group of groups.values()) {
+        const groupSize = group.buyQuantity + group.freeQuantity;
+
+        if (groupSize <= 0) {
+            continue;
+        }
+
+        const freeItemsCount = Math.min(
+            group.units.length,
+            Math.floor(group.units.length / groupSize) * group.freeQuantity,
+        );
+
+        if (freeItemsCount <= 0) {
+            continue;
+        }
+
+        const freeUnits = [...group.units]
+            .sort((a, b) => a.price - b.price)
+            .slice(0, freeItemsCount);
+
+        const discountAmount = toMoney(
+            freeUnits.reduce((sum, unit) => sum + unit.price, 0),
+        );
+
+        for (const unit of freeUnits) {
+            discountsByVariantId.set(
+                unit.variantId,
+                toMoney(
+                    (discountsByVariantId.get(unit.variantId) ?? 0) +
+                        unit.price,
+                ),
+            );
+        }
+
+        totalDiscount += discountAmount;
+
+        summaries.push({
+            campaignId: group.campaignId,
+            campaignName: group.campaignName,
+            buyQuantity: group.buyQuantity,
+            freeQuantity: group.freeQuantity,
+            freeItemsCount,
+            discountAmount,
+        });
+    }
+
+    return {
+        promotionDiscount: toMoney(totalDiscount),
+        appliedPromotions: summaries,
+        discountsByVariantId,
+    };
 }
 
 export function CartProvider({ children }: { children: ReactNode }) {
@@ -72,21 +248,28 @@ export function CartProvider({ children }: { children: ReactNode }) {
         }
     }, [items, isLoaded]);
 
-    const subtotal = useMemo(
+    const subtotalBeforePromotion = useMemo(
         () =>
-            Number(
-                items
-                    .reduce(
-                        (sum, item) => sum + item.unitPrice * item.quantity,
-                        0,
-                    )
-                    .toFixed(3),
+            toMoney(
+                items.reduce(
+                    (sum, item) => sum + item.unitPrice * item.quantity,
+                    0,
+                ),
             ),
         [items],
     );
 
+    const { promotionDiscount, appliedPromotions } = useMemo(
+        () => calculateBuyXGetYPromotions(items),
+        [items],
+    );
+
+    const subtotal = toMoney(
+        Math.max(0, subtotalBeforePromotion - promotionDiscount),
+    );
+
     const deliveryFee = getDeliveryFee(subtotal);
-    const total = Number((subtotal + deliveryFee).toFixed(3));
+    const total = toMoney(subtotal + deliveryFee);
 
     const itemsCount = items.reduce((sum, item) => sum + item.quantity, 0);
 
@@ -113,6 +296,22 @@ export function CartProvider({ children }: { children: ReactNode }) {
                                   variant.stockQuantity,
                               ),
                               stockQuantity: variant.stockQuantity,
+                              unitPrice: product.finalPrice,
+                              saleCampaignId: product.saleCampaign?.id ?? null,
+                              saleCampaignName:
+                                  product.saleCampaign?.name ?? null,
+                              saleCampaignType:
+                                  product.saleCampaign?.type ?? null,
+                              saleCampaignIsActive:
+                                  product.saleCampaign?.isActive ?? false,
+                              saleCampaignStartDate:
+                                  product.saleCampaign?.startDate ?? null,
+                              saleCampaignEndDate:
+                                  product.saleCampaign?.endDate ?? null,
+                              saleCampaignBuyQuantity:
+                                  product.saleCampaign?.buyQuantity ?? null,
+                              saleCampaignFreeQuantity:
+                                  product.saleCampaign?.freeQuantity ?? null,
                           }
                         : item,
                 );
@@ -132,6 +331,18 @@ export function CartProvider({ children }: { children: ReactNode }) {
                     unitPrice: product.finalPrice,
                     quantity: Math.min(quantity, variant.stockQuantity),
                     stockQuantity: variant.stockQuantity,
+                    saleCampaignId: product.saleCampaign?.id ?? null,
+                    saleCampaignName: product.saleCampaign?.name ?? null,
+                    saleCampaignType: product.saleCampaign?.type ?? null,
+                    saleCampaignIsActive:
+                        product.saleCampaign?.isActive ?? false,
+                    saleCampaignStartDate:
+                        product.saleCampaign?.startDate ?? null,
+                    saleCampaignEndDate: product.saleCampaign?.endDate ?? null,
+                    saleCampaignBuyQuantity:
+                        product.saleCampaign?.buyQuantity ?? null,
+                    saleCampaignFreeQuantity:
+                        product.saleCampaign?.freeQuantity ?? null,
                 },
             ];
         });
@@ -168,6 +379,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
             value={{
                 items,
                 itemsCount,
+                subtotalBeforePromotion,
+                promotionDiscount,
+                appliedPromotions,
                 subtotal,
                 deliveryFee,
                 total,
