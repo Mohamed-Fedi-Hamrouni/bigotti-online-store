@@ -37,6 +37,15 @@ enum CampaignMediaType {
   VIDEO
 }
 
+enum CategoryMenuGroup {
+  HAUT
+  BAS
+  COSTUME_CEREMONIE
+  CHAUSSURES
+  ACCESSOIRES
+  AUTRE
+}
+
 enum PaymentMethod {
   CASH_ON_DELIVERY
   CARD
@@ -78,12 +87,37 @@ model Category {
   description String?
   isActive    Boolean           @default(true) @map("is_active")
   menuGroup   CategoryMenuGroup @default(AUTRE) @map("menu_group")
-  products    Product[]
-  createdAt   DateTime          @default(now()) @map("created_at")
-  updatedAt   DateTime          @updatedAt @map("updated_at")
+
+  types    CategoryType[]
+  products Product[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([menuGroup])
   @@map("categories")
+}
+
+model CategoryType {
+  id         String @id @default(uuid())
+  categoryId String @map("category_id")
+
+  name        String
+  slug        String
+  description String?
+  isActive    Boolean @default(true) @map("is_active")
+  position    Int     @default(0)
+
+  category Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  products Product[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([categoryId, slug])
+  @@index([categoryId])
+  @@index([isActive])
+  @@map("category_types")
 }
 
 model Collection {
@@ -152,6 +186,7 @@ model Product {
   description      String?
 
   categoryId     String  @map("category_id")
+  categoryTypeId String? @map("category_type_id")
   collectionId   String? @map("collection_id")
   saleCampaignId String? @map("sale_campaign_id")
 
@@ -167,6 +202,7 @@ model Product {
   isOnSale     Boolean       @default(false) @map("is_on_sale")
 
   category     Category      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  categoryType CategoryType? @relation(fields: [categoryTypeId], references: [id], onDelete: SetNull)
   collection   Collection?   @relation(fields: [collectionId], references: [id], onDelete: SetNull)
   saleCampaign SaleCampaign? @relation(fields: [saleCampaignId], references: [id], onDelete: SetNull)
 
@@ -178,6 +214,7 @@ model Product {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([categoryId])
+  @@index([categoryTypeId])
   @@index([collectionId])
   @@index([saleCampaignId])
   @@index([status])
@@ -322,13 +359,4 @@ model Payment {
 
   @@index([status])
   @@map("payments")
-}
-
-enum CategoryMenuGroup {
-  HAUT
-  BAS
-  COSTUME_CEREMONIE
-  CHAUSSURES
-  ACCESSOIRES
-  AUTRE
 }

@@ -44,6 +44,10 @@ export class CreateProductDto {
 
   @IsOptional()
   @IsString()
+  categoryTypeId?: string;
+
+  @IsOptional()
+  @IsString()
   collectionId?: string;
 
   @IsOptional()

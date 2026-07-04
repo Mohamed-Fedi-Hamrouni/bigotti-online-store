@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateCategoryDto } from './dto/create-category.dto';
+import { CategoryTypeDto, CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryStatusDto } from './dto/update-category-status.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 
@@ -25,6 +25,8 @@ export class CategoriesService {
       throw new ConflictException('Une catégorie avec ce slug existe déjà.');
     }
 
+    this.ensureUniqueTypeSlugs(createCategoryDto.types ?? []);
+
     return this.prisma.category.create({
       data: {
         name: createCategoryDto.name.trim(),
@@ -32,7 +34,17 @@ export class CategoriesService {
         description: createCategoryDto.description?.trim() || null,
         menuGroup: createCategoryDto.menuGroup ?? 'AUTRE',
         isActive: createCategoryDto.isActive ?? true,
+        types: {
+          create: (createCategoryDto.types ?? []).map((type, index) => ({
+            name: type.name.trim(),
+            slug: this.generateSlug(type.slug ?? type.name),
+            description: type.description?.trim() || null,
+            isActive: type.isActive ?? true,
+            position: type.position ?? index,
+          })),
+        },
       } as any,
+      include: this.defaultInclude(),
     });
   }
 
@@ -40,6 +52,21 @@ export class CategoriesService {
     return this.prisma.category.findMany({
       where: {
         isActive: true,
+      },
+      include: {
+        types: {
+          where: {
+            isActive: true,
+          },
+          orderBy: [
+            {
+              position: 'asc',
+            },
+            {
+              name: 'asc',
+            },
+          ],
+        },
       },
       orderBy: [
         {
@@ -54,6 +81,7 @@ export class CategoriesService {
 
   async findAllForAdmin() {
     return this.prisma.category.findMany({
+      include: this.defaultInclude(),
       orderBy: [
         {
           menuGroup: 'asc',
@@ -68,6 +96,7 @@ export class CategoriesService {
   async findOne(id: string) {
     const category = await this.prisma.category.findUnique({
       where: { id },
+      include: this.defaultInclude(),
     });
 
     if (!category) {
@@ -112,9 +141,25 @@ export class CategoriesService {
       data.isActive = updateCategoryDto.isActive;
     }
 
+    if (updateCategoryDto.types !== undefined) {
+      this.ensureUniqueTypeSlugs(updateCategoryDto.types);
+
+      data.types = {
+        deleteMany: {},
+        create: updateCategoryDto.types.map((type, index) => ({
+          name: type.name.trim(),
+          slug: this.generateSlug(type.slug ?? type.name),
+          description: type.description?.trim() || null,
+          isActive: type.isActive ?? true,
+          position: type.position ?? index,
+        })),
+      };
+    }
+
     return this.prisma.category.update({
       where: { id },
       data: data as any,
+      include: this.defaultInclude(),
     });
   }
 
@@ -129,7 +174,36 @@ export class CategoriesService {
       data: {
         isActive: updateCategoryStatusDto.isActive,
       },
+      include: this.defaultInclude(),
     });
+  }
+
+  private defaultInclude() {
+    return {
+      types: {
+        orderBy: [
+          {
+            position: 'asc' as const,
+          },
+          {
+            name: 'asc' as const,
+          },
+        ],
+      },
+    };
+  }
+
+  private ensureUniqueTypeSlugs(types: CategoryTypeDto[]) {
+    const slugs = types.map((type) =>
+      this.generateSlug(type.slug ?? type.name),
+    );
+    const uniqueSlugs = new Set(slugs);
+
+    if (slugs.length !== uniqueSlugs.size) {
+      throw new ConflictException(
+        'Les types de cette catégorie doivent avoir des noms ou slugs uniques.',
+      );
+    }
   }
 
   private generateSlug(value: string) {
