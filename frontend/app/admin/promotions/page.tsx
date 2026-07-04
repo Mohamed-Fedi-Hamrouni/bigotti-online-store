@@ -3,14 +3,30 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Edit3, Plus, Search, ShieldCheck, ShieldOff, Tag } from "lucide-react";
+import {
+    Edit3,
+    ImageIcon,
+    Plus,
+    Search,
+    ShieldCheck,
+    ShieldOff,
+    Tag,
+    UploadCloud,
+    Video,
+    X,
+} from "lucide-react";
 import {
     createSaleCampaign,
     getAdminSaleCampaigns,
     updateSaleCampaign,
     updateSaleCampaignStatus,
+    uploadCampaignMedia,
 } from "@/lib/api";
-import type { SaleCampaign } from "@/types/product";
+import type {
+    CampaignMediaType,
+    SaleCampaign,
+    SaleCampaignType,
+} from "@/types/product";
 
 type CampaignStatusFilter =
     | "ALL"
@@ -18,7 +34,8 @@ type CampaignStatusFilter =
     | "INACTIVE"
     | "RUNNING"
     | "SCHEDULED"
-    | "EXPIRED";
+    | "EXPIRED"
+    | "HOME";
 
 type CampaignFormState = {
     name: string;
@@ -27,6 +44,23 @@ type CampaignFormState = {
     isActive: boolean;
     startDate: string;
     endDate: string;
+
+    type: SaleCampaignType;
+    discountValue: string;
+    buyQuantity: string;
+    freeQuantity: string;
+
+    displayOnHome: boolean;
+    heroTitle: string;
+    heroSubtitle: string;
+
+    mediaType: CampaignMediaType | "";
+    mediaUrl: string;
+    mediaPath: string;
+    mediaFile: File | null;
+    mediaPreviewUrl: string;
+
+    position: string;
 };
 
 const emptyForm: CampaignFormState = {
@@ -36,7 +70,52 @@ const emptyForm: CampaignFormState = {
     isActive: true,
     startDate: "",
     endDate: "",
+
+    type: "EVENEMENT_SIMPLE",
+    discountValue: "",
+    buyQuantity: "2",
+    freeQuantity: "1",
+
+    displayOnHome: false,
+    heroTitle: "",
+    heroSubtitle: "",
+
+    mediaType: "",
+    mediaUrl: "",
+    mediaPath: "",
+    mediaFile: null,
+    mediaPreviewUrl: "",
+
+    position: "0",
 };
+
+const campaignTypeOptions: {
+    value: SaleCampaignType;
+    label: string;
+    description: string;
+}[] = [
+    {
+        value: "EVENEMENT_SIMPLE",
+        label: "Événement simple",
+        description: "Affichage marketing sans remise automatique.",
+    },
+    {
+        value: "REMISE_POURCENTAGE",
+        label: "Remise en pourcentage",
+        description: "Exemple : -30% sur les produits liés.",
+    },
+    {
+        value: "REMISE_MONTANT_FIXE",
+        label: "Remise fixe",
+        description: "Exemple : -20 TND sur les produits liés.",
+    },
+    {
+        value: "ACHETEZ_X_OBTENEZ_Y",
+        label: "Achetez X, obtenez Y offert",
+        description:
+            "Affichage marketing maintenant. Le calcul panier sera ajouté après.",
+    },
+];
 
 function getAdminToken() {
     if (typeof window === "undefined") {
@@ -60,6 +139,42 @@ function formatDate(value: string | null) {
     }
 
     return new Date(value).toLocaleDateString("fr-FR");
+}
+
+function formatCampaignType(type: SaleCampaignType) {
+    if (type === "REMISE_POURCENTAGE") {
+        return "Remise en pourcentage";
+    }
+
+    if (type === "REMISE_MONTANT_FIXE") {
+        return "Remise fixe";
+    }
+
+    if (type === "ACHETEZ_X_OBTENEZ_Y") {
+        return "Achetez X, obtenez Y offert";
+    }
+
+    return "Événement simple";
+}
+
+function getCampaignOfferLabel(campaign: SaleCampaign) {
+    if (campaign.type === "REMISE_POURCENTAGE" && campaign.discountValue) {
+        return `-${campaign.discountValue}%`;
+    }
+
+    if (campaign.type === "REMISE_MONTANT_FIXE" && campaign.discountValue) {
+        return `-${Number(campaign.discountValue).toFixed(3)} TND`;
+    }
+
+    if (
+        campaign.type === "ACHETEZ_X_OBTENEZ_Y" &&
+        campaign.buyQuantity &&
+        campaign.freeQuantity
+    ) {
+        return `Achetez ${campaign.buyQuantity}, obtenez ${campaign.freeQuantity} offert`;
+    }
+
+    return "Événement";
 }
 
 function getCampaignTiming(campaign: SaleCampaign) {
@@ -112,6 +227,10 @@ function getCampaignTimingClassName(campaign: SaleCampaign) {
     return "rounded-full bg-black px-3 py-1 text-xs font-bold text-white";
 }
 
+function getMediaTypeFromFile(file: File): CampaignMediaType {
+    return file.type.startsWith("video/") ? "VIDEO" : "IMAGE";
+}
+
 export default function AdminPromotionsPage() {
     const router = useRouter();
 
@@ -141,11 +260,19 @@ export default function AdminPromotionsPage() {
                 setError(
                     err instanceof Error
                         ? err.message
-                        : "Erreur lors du chargement des promotions.",
+                        : "Erreur lors du chargement des campagnes.",
                 );
             })
             .finally(() => setIsLoading(false));
     }, [router]);
+
+    useEffect(() => {
+        return () => {
+            if (form.mediaPreviewUrl) {
+                URL.revokeObjectURL(form.mediaPreviewUrl);
+            }
+        };
+    }, [form.mediaPreviewUrl]);
 
     const filteredCampaigns = useMemo(() => {
         const normalizedSearch = searchQuery.trim().toLowerCase();
@@ -159,12 +286,16 @@ export default function AdminPromotionsPage() {
                 campaign.slug.toLowerCase().includes(normalizedSearch) ||
                 String(campaign.description ?? "")
                     .toLowerCase()
+                    .includes(normalizedSearch) ||
+                formatCampaignType(campaign.type)
+                    .toLowerCase()
                     .includes(normalizedSearch);
 
             const matchesStatus =
                 statusFilter === "ALL" ||
                 (statusFilter === "ACTIVE" && campaign.isActive) ||
                 (statusFilter === "INACTIVE" && !campaign.isActive) ||
+                (statusFilter === "HOME" && campaign.displayOnHome) ||
                 statusFilter === timing;
 
             return matchesSearch && matchesStatus;
@@ -176,6 +307,10 @@ export default function AdminPromotionsPage() {
     ).length;
 
     const inactiveCampaigns = campaigns.length - activeCampaigns;
+
+    const homepageCampaigns = campaigns.filter(
+        (campaign) => campaign.displayOnHome,
+    ).length;
 
     const runningCampaigns = campaigns.filter(
         (campaign) => getCampaignTiming(campaign) === "RUNNING",
@@ -200,6 +335,10 @@ export default function AdminPromotionsPage() {
     }
 
     function resetForm() {
+        if (form.mediaPreviewUrl) {
+            URL.revokeObjectURL(form.mediaPreviewUrl);
+        }
+
         setForm(emptyForm);
         setEditingId(null);
         setError("");
@@ -207,6 +346,10 @@ export default function AdminPromotionsPage() {
     }
 
     function startEdit(campaign: SaleCampaign) {
+        if (form.mediaPreviewUrl) {
+            URL.revokeObjectURL(form.mediaPreviewUrl);
+        }
+
         setEditingId(campaign.id);
 
         setForm({
@@ -216,12 +359,121 @@ export default function AdminPromotionsPage() {
             isActive: campaign.isActive,
             startDate: toDateInputValue(campaign.startDate),
             endDate: toDateInputValue(campaign.endDate),
+
+            type: campaign.type,
+            discountValue:
+                campaign.discountValue !== null
+                    ? String(campaign.discountValue)
+                    : "",
+            buyQuantity:
+                campaign.buyQuantity !== null
+                    ? String(campaign.buyQuantity)
+                    : "2",
+            freeQuantity:
+                campaign.freeQuantity !== null
+                    ? String(campaign.freeQuantity)
+                    : "1",
+
+            displayOnHome: campaign.displayOnHome,
+            heroTitle: campaign.heroTitle ?? "",
+            heroSubtitle: campaign.heroSubtitle ?? "",
+
+            mediaType: campaign.mediaType ?? "",
+            mediaUrl: campaign.mediaUrl ?? "",
+            mediaPath: campaign.mediaPath ?? "",
+            mediaFile: null,
+            mediaPreviewUrl: "",
+
+            position: String(campaign.position ?? 0),
         });
 
         setError("");
         setSuccess("");
 
         window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    function handleMediaSelection(file: File | null) {
+        if (form.mediaPreviewUrl) {
+            URL.revokeObjectURL(form.mediaPreviewUrl);
+        }
+
+        if (!file) {
+            updateFormField("mediaFile", null);
+            updateFormField("mediaPreviewUrl", "");
+            return;
+        }
+
+        const previewUrl = URL.createObjectURL(file);
+
+        setForm((currentForm) => ({
+            ...currentForm,
+            mediaFile: file,
+            mediaPreviewUrl: previewUrl,
+            mediaType: getMediaTypeFromFile(file),
+        }));
+    }
+
+    function removeMedia() {
+        if (form.mediaPreviewUrl) {
+            URL.revokeObjectURL(form.mediaPreviewUrl);
+        }
+
+        setForm((currentForm) => ({
+            ...currentForm,
+            mediaType: "",
+            mediaUrl: "",
+            mediaPath: "",
+            mediaFile: null,
+            mediaPreviewUrl: "",
+        }));
+    }
+
+    function validateForm() {
+        if (!form.name.trim()) {
+            return "Le nom de la campagne est obligatoire.";
+        }
+
+        if (
+            form.startDate &&
+            form.endDate &&
+            new Date(form.startDate).getTime() >
+                new Date(form.endDate).getTime()
+        ) {
+            return "La date de début doit être avant la date de fin.";
+        }
+
+        if (
+            form.type === "REMISE_POURCENTAGE" &&
+            (!form.discountValue ||
+                Number(form.discountValue) <= 0 ||
+                Number(form.discountValue) > 100)
+        ) {
+            return "Pour une remise en pourcentage, la valeur doit être entre 1 et 100.";
+        }
+
+        if (
+            form.type === "REMISE_MONTANT_FIXE" &&
+            (!form.discountValue || Number(form.discountValue) <= 0)
+        ) {
+            return "Pour une remise fixe, la valeur doit être supérieure à 0.";
+        }
+
+        if (
+            form.type === "ACHETEZ_X_OBTENEZ_Y" &&
+            (!form.buyQuantity ||
+                Number(form.buyQuantity) <= 0 ||
+                !form.freeQuantity ||
+                Number(form.freeQuantity) <= 0)
+        ) {
+            return "Pour l’offre Achetez X, obtenez Y offert, les deux quantités sont obligatoires.";
+        }
+
+        if (form.displayOnHome && !form.heroTitle.trim() && !form.name.trim()) {
+            return "Le titre d’accueil est obligatoire pour afficher la campagne sur l’accueil.";
+        }
+
+        return "";
     }
 
     async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -234,18 +486,10 @@ export default function AdminPromotionsPage() {
             return;
         }
 
-        if (!form.name.trim()) {
-            setError("Le nom de la promotion est obligatoire.");
-            return;
-        }
+        const validationError = validateForm();
 
-        if (
-            form.startDate &&
-            form.endDate &&
-            new Date(form.startDate).getTime() >
-                new Date(form.endDate).getTime()
-        ) {
-            setError("La date de début doit être avant la date de fin.");
+        if (validationError) {
+            setError(validationError);
             return;
         }
 
@@ -253,16 +497,56 @@ export default function AdminPromotionsPage() {
         setError("");
         setSuccess("");
 
-        const payload = {
-            name: form.name.trim(),
-            slug: form.slug.trim() || undefined,
-            description: form.description.trim() || null,
-            isActive: form.isActive,
-            startDate: form.startDate || null,
-            endDate: form.endDate || null,
-        };
+        let mediaUrl = form.mediaUrl.trim() || null;
+        let mediaPath = form.mediaPath.trim() || null;
+        let mediaType = form.mediaType || null;
 
         try {
+            if (form.mediaFile) {
+                const uploadedMedia = await uploadCampaignMedia(
+                    token,
+                    form.mediaFile,
+                );
+
+                mediaUrl = uploadedMedia.url;
+                mediaPath = uploadedMedia.storagePath;
+                mediaType = uploadedMedia.mediaType;
+            }
+
+            const payload = {
+                name: form.name.trim(),
+                slug: form.slug.trim() || undefined,
+                description: form.description.trim() || null,
+                isActive: form.isActive,
+                startDate: form.startDate || null,
+                endDate: form.endDate || null,
+
+                type: form.type,
+                discountValue:
+                    form.type === "REMISE_POURCENTAGE" ||
+                    form.type === "REMISE_MONTANT_FIXE"
+                        ? Number(form.discountValue)
+                        : null,
+                buyQuantity:
+                    form.type === "ACHETEZ_X_OBTENEZ_Y"
+                        ? Number(form.buyQuantity)
+                        : null,
+                freeQuantity:
+                    form.type === "ACHETEZ_X_OBTENEZ_Y"
+                        ? Number(form.freeQuantity)
+                        : null,
+
+                displayOnHome: form.displayOnHome,
+                heroTitle: form.heroTitle.trim() || null,
+                heroSubtitle: form.heroSubtitle.trim() || null,
+
+                mediaType,
+                mediaUrl,
+                mediaPath,
+
+                position: Number(form.position || 0),
+            };
+
             if (editingId) {
                 const updatedCampaign = await updateSaleCampaign(
                     token,
@@ -276,7 +560,7 @@ export default function AdminPromotionsPage() {
                     ),
                 );
 
-                setSuccess("Promotion modifiée avec succès.");
+                setSuccess("Campagne modifiée avec succès.");
             } else {
                 const createdCampaign = await createSaleCampaign(token, {
                     ...payload,
@@ -288,7 +572,11 @@ export default function AdminPromotionsPage() {
                     ...currentCampaigns,
                 ]);
 
-                setSuccess("Promotion créée avec succès.");
+                setSuccess("Campagne créée avec succès.");
+            }
+
+            if (form.mediaPreviewUrl) {
+                URL.revokeObjectURL(form.mediaPreviewUrl);
             }
 
             setForm(emptyForm);
@@ -314,7 +602,7 @@ export default function AdminPromotionsPage() {
 
         if (campaign.isActive) {
             const confirmed = window.confirm(
-                `Confirmer la désactivation de la promotion "${campaign.name}" ?\n\nLa promotion ne sera pas supprimée. Elle ne sera plus visible côté client, mais restera disponible dans l’administration.`,
+                `Confirmer la désactivation de la campagne "${campaign.name}" ?\n\nLa campagne ne sera pas supprimée. Elle ne sera plus visible côté client, mais restera disponible dans l’administration.`,
             );
 
             if (!confirmed) {
@@ -322,7 +610,7 @@ export default function AdminPromotionsPage() {
             }
         } else {
             const confirmed = window.confirm(
-                `Réactiver la promotion "${campaign.name}" ?\n\nElle pourra de nouveau être utilisée côté boutique.`,
+                `Réactiver la campagne "${campaign.name}" ?\n\nElle pourra de nouveau être utilisée côté boutique.`,
             );
 
             if (!confirmed) {
@@ -359,6 +647,12 @@ export default function AdminPromotionsPage() {
         }
     }
 
+    const selectedTypeOption = campaignTypeOptions.find(
+        (option) => option.value === form.type,
+    );
+
+    const previewMediaUrl = form.mediaPreviewUrl || form.mediaUrl;
+
     return (
         <main className="min-h-screen bg-neutral-50 text-neutral-950">
             <section className="border-b border-neutral-200 bg-white">
@@ -368,11 +662,14 @@ export default function AdminPromotionsPage() {
                             Administration
                         </p>
 
-                        <h1 className="mt-2 text-4xl font-black">Promotions</h1>
+                        <h1 className="mt-2 text-4xl font-black">
+                            Campagnes & événements
+                        </h1>
 
                         <p className="mt-2 text-neutral-600">
-                            Créez et gérez les campagnes de solde sans
-                            suppression définitive.
+                            Créez des soldes, événements marketing, offres
+                            saisonnières et médias animés pour la page
+                            d’accueil.
                         </p>
                     </div>
 
@@ -401,17 +698,17 @@ export default function AdminPromotionsPage() {
                 </div>
             </section>
 
-            <section className="mx-auto grid max-w-7xl gap-8 px-6 py-8 lg:grid-cols-[420px_1fr]">
+            <section className="mx-auto grid max-w-7xl gap-8 px-6 py-8 xl:grid-cols-[460px_1fr]">
                 <aside className="h-fit rounded-[2rem] bg-white p-8 shadow-sm">
                     <h2 className="text-2xl font-black">
                         {editingId
-                            ? "Modifier une promotion"
-                            : "Nouvelle promotion"}
+                            ? "Modifier une campagne"
+                            : "Nouvelle campagne"}
                     </h2>
 
                     <form onSubmit={handleSubmit} className="mt-6 space-y-5">
                         <div>
-                            <label className="text-sm font-bold">Nom</label>
+                            <label className="text-sm font-bold">Nom *</label>
 
                             <input
                                 value={form.name}
@@ -419,7 +716,7 @@ export default function AdminPromotionsPage() {
                                     updateFormField("name", event.target.value)
                                 }
                                 className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
-                                placeholder="Ex: Soldes été"
+                                placeholder="Ex: Soldes d’été"
                             />
                         </div>
 
@@ -451,8 +748,126 @@ export default function AdminPromotionsPage() {
                                     )
                                 }
                                 className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
+                                placeholder="Texte interne ou description affichée côté boutique."
                             />
                         </div>
+
+                        <section className="rounded-3xl bg-neutral-50 p-5">
+                            <label className="text-sm font-bold">
+                                Type de campagne
+                            </label>
+
+                            <select
+                                value={form.type}
+                                onChange={(event) =>
+                                    updateFormField(
+                                        "type",
+                                        event.target.value as SaleCampaignType,
+                                    )
+                                }
+                                className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 outline-none focus:border-black"
+                            >
+                                {campaignTypeOptions.map((option) => (
+                                    <option
+                                        key={option.value}
+                                        value={option.value}
+                                    >
+                                        {option.label}
+                                    </option>
+                                ))}
+                            </select>
+
+                            {selectedTypeOption && (
+                                <p className="mt-2 text-xs font-semibold text-neutral-500">
+                                    {selectedTypeOption.description}
+                                </p>
+                            )}
+
+                            {(form.type === "REMISE_POURCENTAGE" ||
+                                form.type === "REMISE_MONTANT_FIXE") && (
+                                <div className="mt-4">
+                                    <label className="text-sm font-bold">
+                                        {form.type === "REMISE_POURCENTAGE"
+                                            ? "Pourcentage de remise *"
+                                            : "Montant de remise *"}
+                                    </label>
+
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step={
+                                            form.type === "REMISE_POURCENTAGE"
+                                                ? "1"
+                                                : "0.001"
+                                        }
+                                        value={form.discountValue}
+                                        onChange={(event) =>
+                                            updateFormField(
+                                                "discountValue",
+                                                event.target.value,
+                                            )
+                                        }
+                                        placeholder={
+                                            form.type === "REMISE_POURCENTAGE"
+                                                ? "Ex: 30"
+                                                : "Ex: 20.000"
+                                        }
+                                        className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 outline-none focus:border-black"
+                                    />
+                                </div>
+                            )}
+
+                            {form.type === "ACHETEZ_X_OBTENEZ_Y" && (
+                                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                                    <div>
+                                        <label className="text-sm font-bold">
+                                            Quantité à acheter *
+                                        </label>
+
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            step="1"
+                                            value={form.buyQuantity}
+                                            onChange={(event) =>
+                                                updateFormField(
+                                                    "buyQuantity",
+                                                    event.target.value,
+                                                )
+                                            }
+                                            className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 outline-none focus:border-black"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="text-sm font-bold">
+                                            Quantité offerte *
+                                        </label>
+
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            step="1"
+                                            value={form.freeQuantity}
+                                            onChange={(event) =>
+                                                updateFormField(
+                                                    "freeQuantity",
+                                                    event.target.value,
+                                                )
+                                            }
+                                            className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 outline-none focus:border-black"
+                                        />
+                                    </div>
+
+                                    <p className="md:col-span-2 rounded-2xl bg-yellow-50 p-4 text-xs font-semibold text-yellow-800">
+                                        Pour cette phase, cette offre est
+                                        affichée côté boutique. Le calcul réel
+                                        dans le panier sera ajouté dans l’étape
+                                        suivante.
+                                    </p>
+                                </div>
+                            )}
+                        </section>
 
                         <div className="grid gap-4 md:grid-cols-2">
                             <div>
@@ -492,8 +907,163 @@ export default function AdminPromotionsPage() {
                             </div>
                         </div>
 
+                        <section className="rounded-3xl bg-neutral-50 p-5">
+                            <label className="flex items-center justify-between text-sm font-bold">
+                                Afficher sur l’accueil
+                                <input
+                                    type="checkbox"
+                                    checked={form.displayOnHome}
+                                    onChange={(event) =>
+                                        updateFormField(
+                                            "displayOnHome",
+                                            event.target.checked,
+                                        )
+                                    }
+                                />
+                            </label>
+
+                            {form.displayOnHome && (
+                                <div className="mt-5 space-y-4">
+                                    <div>
+                                        <label className="text-sm font-bold">
+                                            Titre d’accueil
+                                        </label>
+
+                                        <input
+                                            value={form.heroTitle}
+                                            onChange={(event) =>
+                                                updateFormField(
+                                                    "heroTitle",
+                                                    event.target.value,
+                                                )
+                                            }
+                                            placeholder="Ex: Soldes d’été"
+                                            className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 outline-none focus:border-black"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="text-sm font-bold">
+                                            Sous-titre d’accueil
+                                        </label>
+
+                                        <textarea
+                                            rows={3}
+                                            value={form.heroSubtitle}
+                                            onChange={(event) =>
+                                                updateFormField(
+                                                    "heroSubtitle",
+                                                    event.target.value,
+                                                )
+                                            }
+                                            placeholder="Ex: Découvrez notre sélection limitée."
+                                            className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 outline-none focus:border-black"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="text-sm font-bold">
+                                            Position d’affichage
+                                        </label>
+
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            step="1"
+                                            value={form.position}
+                                            onChange={(event) =>
+                                                updateFormField(
+                                                    "position",
+                                                    event.target.value,
+                                                )
+                                            }
+                                            className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 outline-none focus:border-black"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+                        </section>
+
+                        <section className="rounded-3xl bg-neutral-50 p-5">
+                            <div className="flex items-center justify-between gap-4">
+                                <div>
+                                    <label className="text-sm font-bold">
+                                        Média de campagne
+                                    </label>
+
+                                    <p className="mt-1 text-xs text-neutral-500">
+                                        Image ou vidéo pour rendre l’événement
+                                        plus vivant.
+                                    </p>
+                                </div>
+
+                                <div className="flex items-center gap-2 text-neutral-500">
+                                    <ImageIcon size={18} />
+                                    <Video size={18} />
+                                </div>
+                            </div>
+
+                            {previewMediaUrl ? (
+                                <div className="mt-4 overflow-hidden rounded-3xl border border-neutral-200 bg-white">
+                                    <div className="relative aspect-video bg-neutral-100">
+                                        {form.mediaType === "VIDEO" ? (
+                                            <video
+                                                src={previewMediaUrl}
+                                                className="h-full w-full object-cover"
+                                                autoPlay
+                                                muted
+                                                loop
+                                                playsInline
+                                                controls
+                                            />
+                                        ) : (
+                                            <img
+                                                src={previewMediaUrl}
+                                                alt="Média de campagne"
+                                                className="h-full w-full object-cover"
+                                            />
+                                        )}
+
+                                        <button
+                                            type="button"
+                                            onClick={removeMedia}
+                                            className="absolute right-3 top-3 rounded-full bg-white px-3 py-2 text-xs font-bold text-black shadow"
+                                        >
+                                            <X size={14} />
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <label className="mt-4 flex cursor-pointer flex-col items-center justify-center rounded-3xl border border-dashed border-neutral-300 bg-white px-6 py-8 text-center hover:border-black">
+                                    <UploadCloud
+                                        size={28}
+                                        className="text-neutral-500"
+                                    />
+
+                                    <span className="mt-3 text-sm font-bold">
+                                        Ajouter une image ou une vidéo
+                                    </span>
+
+                                    <span className="mt-1 text-xs text-neutral-500">
+                                        JPG, PNG, WEBP, MP4 ou WEBM
+                                    </span>
+
+                                    <input
+                                        type="file"
+                                        accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"
+                                        className="hidden"
+                                        onChange={(event) =>
+                                            handleMediaSelection(
+                                                event.target.files?.[0] ?? null,
+                                            )
+                                        }
+                                    />
+                                </label>
+                            )}
+                        </section>
+
                         <label className="flex items-center justify-between rounded-2xl bg-neutral-50 p-4 text-sm font-bold">
-                            Active
+                            Campagne active
                             <input
                                 type="checkbox"
                                 checked={form.isActive}
@@ -528,7 +1098,7 @@ export default function AdminPromotionsPage() {
                                 ? "Sauvegarde..."
                                 : editingId
                                   ? "Sauvegarder"
-                                  : "Créer la promotion"}
+                                  : "Créer la campagne"}
                         </button>
 
                         {editingId && (
@@ -544,10 +1114,10 @@ export default function AdminPromotionsPage() {
                 </aside>
 
                 <div className="space-y-6">
-                    <div className="grid gap-5 md:grid-cols-5">
+                    <div className="grid gap-5 md:grid-cols-3 xl:grid-cols-6">
                         <div className="rounded-[2rem] bg-white p-6 shadow-sm">
                             <p className="text-sm text-neutral-500">
-                                Total promotions
+                                Total campagnes
                             </p>
 
                             <p className="mt-2 text-3xl font-black">
@@ -574,6 +1144,14 @@ export default function AdminPromotionsPage() {
                         </div>
 
                         <div className="rounded-[2rem] bg-white p-6 shadow-sm">
+                            <p className="text-sm text-neutral-500">Accueil</p>
+
+                            <p className="mt-2 text-3xl font-black">
+                                {homepageCampaigns}
+                            </p>
+                        </div>
+
+                        <div className="rounded-[2rem] bg-white p-6 shadow-sm">
                             <p className="text-sm text-neutral-500">En cours</p>
 
                             <p className="mt-2 text-3xl font-black">
@@ -593,7 +1171,7 @@ export default function AdminPromotionsPage() {
                     </div>
 
                     <div className="rounded-[2rem] bg-white p-6 shadow-sm">
-                        <div className="grid gap-4 md:grid-cols-[1fr_190px]">
+                        <div className="grid gap-4 md:grid-cols-[1fr_220px]">
                             <div className="relative">
                                 <Search
                                     size={18}
@@ -605,7 +1183,7 @@ export default function AdminPromotionsPage() {
                                     onChange={(event) =>
                                         setSearchQuery(event.target.value)
                                     }
-                                    placeholder="Rechercher nom, slug, description..."
+                                    placeholder="Rechercher nom, slug, type, description..."
                                     className="w-full rounded-full border border-neutral-300 py-3 pl-11 pr-4 outline-none focus:border-black"
                                 />
                             </div>
@@ -623,6 +1201,7 @@ export default function AdminPromotionsPage() {
                                 <option value="ALL">Toutes</option>
                                 <option value="ACTIVE">Actives</option>
                                 <option value="INACTIVE">Désactivées</option>
+                                <option value="HOME">Sur l’accueil</option>
                                 <option value="RUNNING">En cours</option>
                                 <option value="SCHEDULED">Planifiées</option>
                                 <option value="EXPIRED">Expirées</option>
@@ -630,18 +1209,18 @@ export default function AdminPromotionsPage() {
                         </div>
 
                         <p className="mt-4 text-sm text-neutral-500">
-                            {filteredCampaigns.length} promotion(s) affichée(s)
+                            {filteredCampaigns.length} campagne(s) affichée(s)
                         </p>
 
                         {isLoading && (
                             <div className="mt-6 rounded-2xl bg-neutral-50 p-5 text-neutral-500">
-                                Chargement des promotions...
+                                Chargement des campagnes...
                             </div>
                         )}
 
                         {!isLoading && filteredCampaigns.length === 0 && (
                             <div className="mt-6 rounded-2xl bg-neutral-50 p-5 text-neutral-500">
-                                Aucune promotion trouvée.
+                                Aucune campagne trouvée.
                             </div>
                         )}
 
@@ -656,10 +1235,41 @@ export default function AdminPromotionsPage() {
                                         key={campaign.id}
                                         className={
                                             isInactive
-                                                ? "flex flex-col justify-between gap-5 rounded-3xl border border-red-100 bg-white p-5 opacity-80 md:flex-row md:items-center"
-                                                : "flex flex-col justify-between gap-5 rounded-3xl border border-neutral-200 p-5 md:flex-row md:items-center"
+                                                ? "grid gap-5 rounded-3xl border border-red-100 bg-white p-5 opacity-80 xl:grid-cols-[180px_1fr_auto] xl:items-center"
+                                                : "grid gap-5 rounded-3xl border border-neutral-200 p-5 xl:grid-cols-[180px_1fr_auto] xl:items-center"
                                         }
                                     >
+                                        <div className="overflow-hidden rounded-3xl bg-neutral-100">
+                                            <div className="aspect-video">
+                                                {campaign.mediaUrl ? (
+                                                    campaign.mediaType ===
+                                                    "VIDEO" ? (
+                                                        <video
+                                                            src={
+                                                                campaign.mediaUrl
+                                                            }
+                                                            className="h-full w-full object-cover"
+                                                            muted
+                                                            loop
+                                                            playsInline
+                                                        />
+                                                    ) : (
+                                                        <img
+                                                            src={
+                                                                campaign.mediaUrl
+                                                            }
+                                                            alt={campaign.name}
+                                                            className="h-full w-full object-cover"
+                                                        />
+                                                    )
+                                                ) : (
+                                                    <div className="flex h-full w-full items-center justify-center text-xs font-bold uppercase tracking-[0.2em] text-neutral-400">
+                                                        Aucun média
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+
                                         <div>
                                             <div className="flex flex-wrap items-center gap-3">
                                                 <h3 className="text-xl font-black">
@@ -687,18 +1297,38 @@ export default function AdminPromotionsPage() {
                                                         campaign,
                                                     )}
                                                 </span>
+
+                                                {campaign.displayOnHome && (
+                                                    <span className="rounded-full bg-yellow-50 px-3 py-1 text-xs font-bold text-yellow-700">
+                                                        Accueil
+                                                    </span>
+                                                )}
                                             </div>
 
                                             <p className="mt-2 text-sm text-neutral-500">
                                                 /{campaign.slug}
                                             </p>
 
-                                            <p className="mt-2 text-neutral-600">
+                                            <div className="mt-3 flex flex-wrap gap-2">
+                                                <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-bold text-neutral-700">
+                                                    {formatCampaignType(
+                                                        campaign.type,
+                                                    )}
+                                                </span>
+
+                                                <span className="rounded-full bg-black px-3 py-1 text-xs font-bold text-white">
+                                                    {getCampaignOfferLabel(
+                                                        campaign,
+                                                    )}
+                                                </span>
+                                            </div>
+
+                                            <p className="mt-3 text-neutral-600">
                                                 {campaign.description ??
                                                     "Aucune description."}
                                             </p>
 
-                                            <p className="mt-2 inline-flex items-center gap-2 text-sm text-neutral-500">
+                                            <p className="mt-3 inline-flex items-center gap-2 text-sm text-neutral-500">
                                                 <Tag size={15} />
                                                 Du{" "}
                                                 {formatDate(
@@ -710,7 +1340,7 @@ export default function AdminPromotionsPage() {
 
                                             {isInactive && (
                                                 <p className="mt-3 rounded-2xl bg-red-50 p-3 text-sm font-semibold text-red-700">
-                                                    Cette promotion est
+                                                    Cette campagne est
                                                     désactivée. Elle n’est pas
                                                     supprimée, mais elle n’est
                                                     plus visible côté client.

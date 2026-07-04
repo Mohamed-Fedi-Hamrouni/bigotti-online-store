@@ -60,12 +60,330 @@ async function fetchJson<T>(
     return response.json();
 }
 
+function toNumber(value: unknown, fallback = 0) {
+    const parsedValue = Number(value);
+
+    return Number.isFinite(parsedValue) ? parsedValue : fallback;
+}
+
+function toNullableNumber(value: unknown) {
+    if (value === null || value === undefined || value === "") {
+        return null;
+    }
+
+    const parsedValue = Number(value);
+
+    return Number.isFinite(parsedValue) ? parsedValue : null;
+}
+
+function toMoney(value: number) {
+    return Number(value.toFixed(3));
+}
+
+function isDateRangeActive(startDate?: string | null, endDate?: string | null) {
+    const now = new Date();
+
+    if (startDate && new Date(startDate) > now) {
+        return false;
+    }
+
+    if (endDate && new Date(endDate) < now) {
+        return false;
+    }
+
+    return true;
+}
+
+function calculateProductPromoPrice(product: Product, price: number) {
+    if (!product.isOnSale || !product.discountType || !product.discountValue) {
+        return null;
+    }
+
+    if (
+        !isDateRangeActive(product.discountStartDate, product.discountEndDate)
+    ) {
+        return null;
+    }
+
+    const discountValue = Number(product.discountValue);
+
+    if (!Number.isFinite(discountValue) || discountValue <= 0) {
+        return null;
+    }
+
+    if (product.discountType === "PERCENTAGE") {
+        return Math.max(0, price - (price * discountValue) / 100);
+    }
+
+    if (product.discountType === "FIXED_AMOUNT") {
+        return Math.max(0, price - discountValue);
+    }
+
+    return null;
+}
+
+function calculateProductPromoPercentage(product: Product, price: number) {
+    if (!product.isOnSale || !product.discountType || !product.discountValue) {
+        return 0;
+    }
+
+    if (
+        !isDateRangeActive(product.discountStartDate, product.discountEndDate)
+    ) {
+        return 0;
+    }
+
+    const discountValue = Number(product.discountValue);
+
+    if (!Number.isFinite(discountValue) || discountValue <= 0) {
+        return 0;
+    }
+
+    if (product.discountType === "PERCENTAGE") {
+        return Math.round(discountValue);
+    }
+
+    if (product.discountType === "FIXED_AMOUNT" && price > 0) {
+        return Math.round((discountValue / price) * 100);
+    }
+
+    return 0;
+}
+
+function calculateSaleCampaignPromoPrice(product: Product, price: number) {
+    const campaign = product.saleCampaign;
+
+    if (!campaign || !campaign.isActive) {
+        return null;
+    }
+
+    if (!isDateRangeActive(campaign.startDate, campaign.endDate)) {
+        return null;
+    }
+
+    if (
+        campaign.type !== "REMISE_POURCENTAGE" &&
+        campaign.type !== "REMISE_MONTANT_FIXE"
+    ) {
+        return null;
+    }
+
+    const discountValue = Number(campaign.discountValue);
+
+    if (!Number.isFinite(discountValue) || discountValue <= 0) {
+        return null;
+    }
+
+    if (campaign.type === "REMISE_POURCENTAGE") {
+        return Math.max(0, price - (price * discountValue) / 100);
+    }
+
+    if (campaign.type === "REMISE_MONTANT_FIXE") {
+        return Math.max(0, price - discountValue);
+    }
+
+    return null;
+}
+
+function calculateSaleCampaignPromoPercentage(product: Product, price: number) {
+    const campaign = product.saleCampaign;
+
+    if (!campaign || !campaign.isActive) {
+        return 0;
+    }
+
+    if (!isDateRangeActive(campaign.startDate, campaign.endDate)) {
+        return 0;
+    }
+
+    if (
+        campaign.type !== "REMISE_POURCENTAGE" &&
+        campaign.type !== "REMISE_MONTANT_FIXE"
+    ) {
+        return 0;
+    }
+
+    const discountValue = Number(campaign.discountValue);
+
+    if (!Number.isFinite(discountValue) || discountValue <= 0) {
+        return 0;
+    }
+
+    if (campaign.type === "REMISE_POURCENTAGE") {
+        return Math.round(discountValue);
+    }
+
+    if (campaign.type === "REMISE_MONTANT_FIXE" && price > 0) {
+        return Math.round((discountValue / price) * 100);
+    }
+
+    return 0;
+}
+
+function calculateCollectionPromoPrice(product: Product, price: number) {
+    const collection = product.collection;
+
+    if (!collection?.promoIsActive || !collection.promoPercentage) {
+        return null;
+    }
+
+    if (
+        !isDateRangeActive(collection.promoStartDate, collection.promoEndDate)
+    ) {
+        return null;
+    }
+
+    const promoPercentage = Number(collection.promoPercentage);
+
+    if (!Number.isFinite(promoPercentage) || promoPercentage <= 0) {
+        return null;
+    }
+
+    return Math.max(0, price - (price * promoPercentage) / 100);
+}
+
+function calculateCollectionPromoPercentage(product: Product) {
+    const collection = product.collection;
+
+    if (!collection?.promoIsActive || !collection.promoPercentage) {
+        return 0;
+    }
+
+    if (
+        !isDateRangeActive(collection.promoStartDate, collection.promoEndDate)
+    ) {
+        return 0;
+    }
+
+    const promoPercentage = Number(collection.promoPercentage);
+
+    if (!Number.isFinite(promoPercentage) || promoPercentage <= 0) {
+        return 0;
+    }
+
+    return Math.round(promoPercentage);
+}
+
+function normalizeCollection(collection: Collection | null) {
+    if (!collection) {
+        return null;
+    }
+
+    return {
+        ...collection,
+        promoPercentage: toNullableNumber(collection.promoPercentage),
+    };
+}
+
+function normalizeSaleCampaign(
+    saleCampaign: SaleCampaign | null | undefined,
+): SaleCampaign | null {
+    if (!saleCampaign) {
+        return null;
+    }
+
+    return {
+        ...saleCampaign,
+        discountValue: toNullableNumber(saleCampaign.discountValue),
+        buyQuantity: toNullableNumber(saleCampaign.buyQuantity),
+        freeQuantity: toNullableNumber(saleCampaign.freeQuantity),
+        position: toNumber(saleCampaign.position),
+        products: saleCampaign.products?.map((product) =>
+            normalizeProduct(product),
+        ),
+    };
+}
+
+function normalizeProduct(product: Product): Product {
+    const normalizedProduct: Product = {
+        ...product,
+        price: toNumber(product.price),
+        discountValue: toNullableNumber(product.discountValue),
+        collection: normalizeCollection(product.collection),
+        saleCampaign: normalizeSaleCampaign(product.saleCampaign),
+        images: product.images ?? [],
+        variants: product.variants ?? [],
+        finalPrice: toNumber(product.finalPrice, toNumber(product.price)),
+        discountPercentage: toNumber(product.discountPercentage),
+        totalStock:
+            product.totalStock ??
+            (product.variants ?? []).reduce(
+                (sum, variant) => sum + Number(variant.stockQuantity ?? 0),
+                0,
+            ),
+    };
+
+    const price = normalizedProduct.price;
+
+    const productPromoPrice = calculateProductPromoPrice(
+        normalizedProduct,
+        price,
+    );
+
+    if (productPromoPrice !== null) {
+        return {
+            ...normalizedProduct,
+            finalPrice: toMoney(productPromoPrice),
+            discountPercentage: calculateProductPromoPercentage(
+                normalizedProduct,
+                price,
+            ),
+        };
+    }
+
+    const campaignPromoPrice = calculateSaleCampaignPromoPrice(
+        normalizedProduct,
+        price,
+    );
+
+    if (campaignPromoPrice !== null) {
+        return {
+            ...normalizedProduct,
+            finalPrice: toMoney(campaignPromoPrice),
+            discountPercentage: calculateSaleCampaignPromoPercentage(
+                normalizedProduct,
+                price,
+            ),
+        };
+    }
+
+    const collectionPromoPrice = calculateCollectionPromoPrice(
+        normalizedProduct,
+        price,
+    );
+
+    if (collectionPromoPrice !== null) {
+        return {
+            ...normalizedProduct,
+            finalPrice: toMoney(collectionPromoPrice),
+            discountPercentage:
+                calculateCollectionPromoPercentage(normalizedProduct),
+        };
+    }
+
+    return {
+        ...normalizedProduct,
+        finalPrice: toMoney(price),
+        discountPercentage: 0,
+    };
+}
+
 export async function getProducts() {
-    return fetchJson<Product[]>("/products");
+    const products = await fetchJson<Product[]>("/products");
+
+    return products.map((product) => normalizeProduct(product));
 }
 
 export async function getProductBySlug(slug: string) {
-    return fetchJson<Product>(`/products/slug/${slug}`);
+    const product = await fetchJson<Product>(`/products/slug/${slug}`);
+
+    return normalizeProduct(product);
+}
+
+export async function getHomepageSaleCampaigns() {
+    const campaigns = await fetchJson<SaleCampaign[]>("/sale-campaigns/home");
+
+    return campaigns.map((campaign) => normalizeSaleCampaign(campaign)!);
 }
 
 export async function createOrder(
@@ -113,32 +431,38 @@ export async function updateOrderStatus(
 }
 
 export async function getAdminProducts(token: string) {
-    return fetchJson<Product[]>("/products/admin/all", {
+    const products = await fetchJson<Product[]>("/products/admin/all", {
         headers: {
             Authorization: `Bearer ${token}`,
         },
     });
+
+    return products.map((product) => normalizeProduct(product));
 }
 
 export async function getAdminProduct(token: string, productId: string) {
-    return fetchJson<Product>(`/products/admin/${productId}`, {
+    const product = await fetchJson<Product>(`/products/admin/${productId}`, {
         headers: {
             Authorization: `Bearer ${token}`,
         },
     });
+
+    return normalizeProduct(product);
 }
 
 export async function createProduct(
     token: string,
     payload: CreateProductPayload,
 ) {
-    return fetchJson<Product>("/products", {
+    const product = await fetchJson<Product>("/products", {
         method: "POST",
         headers: {
             Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(payload),
     });
+
+    return normalizeProduct(product);
 }
 
 export async function updateProduct(
@@ -146,13 +470,15 @@ export async function updateProduct(
     productId: string,
     payload: UpdateProductPayload,
 ) {
-    return fetchJson<Product>(`/products/${productId}`, {
+    const product = await fetchJson<Product>(`/products/${productId}`, {
         method: "PATCH",
         headers: {
             Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(payload),
     });
+
+    return normalizeProduct(product);
 }
 
 export async function updateProductStatus(
@@ -160,13 +486,15 @@ export async function updateProductStatus(
     productId: string,
     status: ProductStatus,
 ) {
-    return fetchJson<Product>(`/products/${productId}/status`, {
+    const product = await fetchJson<Product>(`/products/${productId}/status`, {
         method: "PATCH",
         headers: {
             Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ status }),
     });
+
+    return normalizeProduct(product);
 }
 
 export async function getAdminCategories(token: string) {
@@ -268,24 +596,28 @@ export async function updateCollectionStatus(
 }
 
 export async function getAdminSaleCampaigns(token: string) {
-    return fetchJson<SaleCampaign[]>("/sale-campaigns/admin", {
+    const campaigns = await fetchJson<SaleCampaign[]>("/sale-campaigns/admin", {
         headers: {
             Authorization: `Bearer ${token}`,
         },
     });
+
+    return campaigns.map((campaign) => normalizeSaleCampaign(campaign)!);
 }
 
 export async function createSaleCampaign(
     token: string,
     payload: CreateSaleCampaignPayload,
 ) {
-    return fetchJson<SaleCampaign>("/sale-campaigns", {
+    const campaign = await fetchJson<SaleCampaign>("/sale-campaigns", {
         method: "POST",
         headers: {
             Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(payload),
     });
+
+    return normalizeSaleCampaign(campaign)!;
 }
 
 export async function updateSaleCampaign(
@@ -293,13 +625,18 @@ export async function updateSaleCampaign(
     campaignId: string,
     payload: UpdateSaleCampaignPayload,
 ) {
-    return fetchJson<SaleCampaign>(`/sale-campaigns/${campaignId}`, {
-        method: "PATCH",
-        headers: {
-            Authorization: `Bearer ${token}`,
+    const campaign = await fetchJson<SaleCampaign>(
+        `/sale-campaigns/${campaignId}`,
+        {
+            method: "PATCH",
+            headers: {
+                Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify(payload),
         },
-        body: JSON.stringify(payload),
-    });
+    );
+
+    return normalizeSaleCampaign(campaign)!;
 }
 
 export async function updateSaleCampaignStatus(
@@ -307,13 +644,18 @@ export async function updateSaleCampaignStatus(
     campaignId: string,
     isActive: boolean,
 ) {
-    return fetchJson<SaleCampaign>(`/sale-campaigns/${campaignId}/status`, {
-        method: "PATCH",
-        headers: {
-            Authorization: `Bearer ${token}`,
+    const campaign = await fetchJson<SaleCampaign>(
+        `/sale-campaigns/${campaignId}/status`,
+        {
+            method: "PATCH",
+            headers: {
+                Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ isActive }),
         },
-        body: JSON.stringify({ isActive }),
-    });
+    );
+
+    return normalizeSaleCampaign(campaign)!;
 }
 
 export type UploadProductImageResponse = {
@@ -344,6 +686,37 @@ export async function uploadProductImage(token: string, file: File) {
     }
 
     return response.json() as Promise<UploadProductImageResponse>;
+}
+
+export type UploadCampaignMediaResponse = {
+    url: string;
+    storagePath: string;
+    filename: string;
+    mediaType: "IMAGE" | "VIDEO";
+};
+
+export async function uploadCampaignMedia(token: string, file: File) {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch(`${API_URL}/uploads/campaigns`, {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+    });
+
+    if (!response.ok) {
+        const error = await response.json().catch(() => null);
+        const message = Array.isArray(error?.message)
+            ? error.message.join(", ")
+            : error?.message;
+
+        throw new Error(message ?? "Erreur lors de l’upload du média.");
+    }
+
+    return response.json() as Promise<UploadCampaignMediaResponse>;
 }
 
 export async function getManagerDashboard(token: string) {

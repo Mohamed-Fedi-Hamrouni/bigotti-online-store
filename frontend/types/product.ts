@@ -2,6 +2,14 @@ export type ProductStatus = "DRAFT" | "PUBLISHED" | "ARCHIVED";
 
 export type DiscountType = "PERCENTAGE" | "FIXED_AMOUNT";
 
+export type SaleCampaignType =
+    | "REMISE_POURCENTAGE"
+    | "REMISE_MONTANT_FIXE"
+    | "ACHETEZ_X_OBTENEZ_Y"
+    | "EVENEMENT_SIMPLE";
+
+export type CampaignMediaType = "IMAGE" | "VIDEO";
+
 export type Category = {
     id: string;
     name: string;
@@ -37,6 +45,24 @@ export type SaleCampaign = {
     isActive: boolean;
     startDate: string | null;
     endDate: string | null;
+
+    type: SaleCampaignType;
+    discountValue: number | null;
+    buyQuantity: number | null;
+    freeQuantity: number | null;
+
+    displayOnHome: boolean;
+    heroTitle: string | null;
+    heroSubtitle: string | null;
+
+    mediaType: CampaignMediaType | null;
+    mediaUrl: string | null;
+    mediaPath: string | null;
+
+    position: number;
+
+    products?: Product[];
+
     createdAt?: string;
     updatedAt?: string;
 };
@@ -48,6 +74,7 @@ export type ProductImage = {
     storagePath: string | null;
     altText: string | null;
     color: string | null;
+    colorHex: string | null;
     isMain: boolean;
     position: number;
     createdAt: string;
@@ -57,6 +84,7 @@ export type ProductVariant = {
     id: string;
     productId: string;
     color: string;
+    colorHex: string | null;
     size: string;
     stockQuantity: number;
     sku: string | null;
@@ -101,12 +129,14 @@ export type CreateProductImagePayload = {
     storagePath?: string | null;
     altText?: string;
     color?: string | null;
+    colorHex?: string | null;
     isMain?: boolean;
     position?: number;
 };
 
 export type CreateProductVariantPayload = {
     color: string;
+    colorHex?: string | null;
     size: string;
     stockQuantity: number;
     sku?: string;
@@ -125,6 +155,8 @@ export type CreateProductPayload = {
     price: number;
     discountType?: DiscountType;
     discountValue?: number;
+    discountStartDate?: string | null;
+    discountEndDate?: string | null;
     status: ProductStatus;
     isFeatured: boolean;
     isNewArrival: boolean;
@@ -204,6 +236,21 @@ export type CreateSaleCampaignPayload = {
     isActive?: boolean;
     startDate?: string | null;
     endDate?: string | null;
+
+    type?: SaleCampaignType;
+    discountValue?: number | null;
+    buyQuantity?: number | null;
+    freeQuantity?: number | null;
+
+    displayOnHome?: boolean;
+    heroTitle?: string | null;
+    heroSubtitle?: string | null;
+
+    mediaType?: CampaignMediaType | null;
+    mediaUrl?: string | null;
+    mediaPath?: string | null;
+
+    position?: number;
 };
 
 export type UpdateSaleCampaignPayload = {
@@ -213,4 +260,19 @@ export type UpdateSaleCampaignPayload = {
     isActive?: boolean;
     startDate?: string | null;
     endDate?: string | null;
+
+    type?: SaleCampaignType;
+    discountValue?: number | null;
+    buyQuantity?: number | null;
+    freeQuantity?: number | null;
+
+    displayOnHome?: boolean;
+    heroTitle?: string | null;
+    heroSubtitle?: string | null;
+
+    mediaType?: CampaignMediaType | null;
+    mediaUrl?: string | null;
+    mediaPath?: string | null;
+
+    position?: number;
 };

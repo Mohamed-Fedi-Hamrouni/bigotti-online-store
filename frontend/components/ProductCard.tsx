@@ -12,6 +12,52 @@ type ProductColorOption = {
     hex: string | null;
 };
 
+const COLOR_NAME_FALLBACKS: Record<string, string> = {
+    noir: "#111111",
+    black: "#111111",
+
+    blanc: "#ffffff",
+    white: "#ffffff",
+
+    bleu: "#1d4ed8",
+    blue: "#1d4ed8",
+    marine: "#0f172a",
+    navy: "#0f172a",
+    "bleu marine": "#0f172a",
+
+    beige: "#d6c2a6",
+    camel: "#c19a6b",
+
+    marron: "#7c4a28",
+    brown: "#7c4a28",
+
+    gris: "#737373",
+    gray: "#737373",
+    grey: "#737373",
+
+    rouge: "#dc2626",
+    red: "#dc2626",
+
+    vert: "#15803d",
+    green: "#15803d",
+
+    kaki: "#6b705c",
+    khaki: "#6b705c",
+
+    rose: "#f9a8d4",
+    pink: "#f9a8d4",
+
+    orange: "#f97316",
+
+    jaune: "#facc15",
+    yellow: "#facc15",
+
+    violet: "#7c3aed",
+    purple: "#7c3aed",
+
+    bordeaux: "#7f1d1d",
+};
+
 function formatPrice(value: number) {
     return `${value.toFixed(3)} TND`;
 }
@@ -30,6 +76,12 @@ function normalizeHex(value: string | null | undefined) {
 
 function isValidHex(value: string | null | undefined) {
     return /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(value ?? "");
+}
+
+function getFallbackHexFromName(colorName: string | null | undefined) {
+    const normalizedName = normalizeColor(colorName);
+
+    return COLOR_NAME_FALLBACKS[normalizedName] ?? null;
 }
 
 function getMainImage(images: ProductImage[]) {
@@ -67,9 +119,13 @@ function getAvailableColors(variants: ProductVariant[]) {
                 return;
             }
 
-            const hex = isValidHex(variant.colorHex)
+            const variantHex = isValidHex(variant.colorHex)
                 ? normalizeHex(variant.colorHex)
                 : null;
+
+            const fallbackHex = getFallbackHexFromName(name);
+
+            const hex = variantHex ?? fallbackHex;
 
             const key = `${normalizeColor(name)}-${hex ?? ""}`;
 
@@ -91,20 +147,25 @@ function getFallbackImageColors(images: ProductImage[]) {
 
     images.forEach((image) => {
         const imageColor = image.color?.trim() ?? "";
+
         const imageHex = isValidHex(image.colorHex)
             ? normalizeHex(image.colorHex)
             : null;
 
-        if (!imageColor && !imageHex) {
+        const fallbackHex = getFallbackHexFromName(imageColor);
+
+        const hex = imageHex ?? fallbackHex;
+
+        if (!imageColor && !hex) {
             return;
         }
 
-        const key = `${normalizeColor(imageColor)}-${imageHex ?? ""}`;
+        const key = `${normalizeColor(imageColor)}-${hex ?? ""}`;
 
         if (!colors.has(key)) {
             colors.set(key, {
-                name: imageColor || imageHex || "Couleur",
-                hex: imageHex,
+                name: imageColor || hex || "Couleur",
+                hex,
             });
         }
     });
@@ -145,6 +206,36 @@ function getSwatchStyle(color: ProductColorOption): CSSProperties {
     };
 }
 
+function getCampaignBadge(product: Product) {
+    const campaign = product.saleCampaign;
+
+    if (!campaign || !campaign.isActive) {
+        return null;
+    }
+
+    if (campaign.type === "REMISE_POURCENTAGE" && campaign.discountValue) {
+        return `-${campaign.discountValue}%`;
+    }
+
+    if (campaign.type === "REMISE_MONTANT_FIXE" && campaign.discountValue) {
+        return `-${Number(campaign.discountValue).toFixed(3)} TND`;
+    }
+
+    if (
+        campaign.type === "ACHETEZ_X_OBTENEZ_Y" &&
+        campaign.buyQuantity &&
+        campaign.freeQuantity
+    ) {
+        return `Achetez ${campaign.buyQuantity} = ${campaign.freeQuantity} offert`;
+    }
+
+    if (campaign.type === "EVENEMENT_SIMPLE") {
+        return campaign.name;
+    }
+
+    return null;
+}
+
 export function ProductCard({ product }: ProductCardProps) {
     const productImages = [...product.images].sort(
         (firstImage, secondImage) => firstImage.position - secondImage.position,
@@ -165,10 +256,11 @@ export function ProductCard({ product }: ProductCardProps) {
     });
 
     const hasDiscount = product.discountPercentage > 0;
+    const campaignBadge = getCampaignBadge(product);
     const hasHoverAnimation = Boolean(mainImage && hoverImage);
 
     return (
-        <article className="group overflow-hidden rounded-3xl border border-neutral-200 bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-xl">
+        <article className="group overflow-hidden rounded-3xl border border-neutral-200 bg-white text-neutral-950 shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-xl">
             <div className="relative aspect-[4/5] overflow-hidden bg-neutral-100">
                 <Link
                     href={`/produit/${product.slug}`}
@@ -213,11 +305,25 @@ export function ProductCard({ product }: ProductCardProps) {
                     <FavoriteButton product={product} />
                 </div>
 
-                {hasDiscount && (
-                    <span className="absolute left-4 top-4 rounded-full bg-black px-3 py-1 text-sm font-semibold text-white">
-                        -{product.discountPercentage}%
-                    </span>
-                )}
+                <div className="absolute left-4 top-4 flex max-w-[75%] flex-col items-start gap-2">
+                    {hasDiscount && (
+                        <span className="rounded-full bg-black px-3 py-1 text-sm font-semibold text-white">
+                            -{product.discountPercentage}%
+                        </span>
+                    )}
+
+                    {campaignBadge && !hasDiscount && (
+                        <span className="rounded-full bg-black px-3 py-1 text-xs font-bold text-white shadow-sm">
+                            {campaignBadge}
+                        </span>
+                    )}
+
+                    {campaignBadge && hasDiscount && (
+                        <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-black shadow-sm">
+                            {product.saleCampaign?.name}
+                        </span>
+                    )}
+                </div>
 
                 {product.isNewArrival && (
                     <span className="absolute bottom-4 left-4 rounded-full bg-white px-3 py-1 text-sm font-semibold text-black">
