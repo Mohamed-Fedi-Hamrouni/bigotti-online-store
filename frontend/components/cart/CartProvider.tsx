@@ -87,7 +87,7 @@ function toMoney(value: number) {
 }
 
 function getDeliveryFee(subtotal: number) {
-    return subtotal >= 200 || subtotal === 0 ? 0 : 8;
+    return subtotal === 0 ? 0 : 8;
 }
 
 function isDateRangeActive(startDate?: string | null, endDate?: string | null) {

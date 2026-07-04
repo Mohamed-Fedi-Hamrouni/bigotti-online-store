@@ -147,7 +147,7 @@ export class OrdersService {
       orderItems.reduce((sum, item) => sum + Number(item.totalPrice), 0),
     );
 
-    const deliveryFee = 7;
+    const deliveryFee = 8;
     const total = this.toMoney(subtotal + deliveryFee);
     const orderNumber = await this.generateOrderNumber();
 

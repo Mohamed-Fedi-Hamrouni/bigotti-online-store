@@ -24,6 +24,57 @@ type ProductDetailClientProps = {
 
 type AccordionKey = "description" | "details" | "delivery";
 
+const sizeOrder = [
+    "UNIQUE",
+    "ONE SIZE",
+    "TU",
+
+    "XS",
+    "S",
+    "M",
+    "L",
+    "XL",
+    "XXL",
+    "2XL",
+    "3XL",
+    "XXXL",
+    "4XL",
+
+    "30",
+    "32",
+    "34",
+    "36",
+    "38",
+
+    "40",
+    "41",
+    "42",
+    "43",
+    "44",
+    "45",
+
+    "46",
+    "48",
+    "50",
+    "52",
+    "54",
+    "56",
+
+    "80",
+    "85",
+    "90",
+    "95",
+    "100",
+    "105",
+    "110",
+    "115",
+    "120",
+
+    "SLIM",
+    "CLASSIQUE",
+    "LARGE",
+];
+
 function formatPrice(value: number | string | null | undefined) {
     const numericValue = Number(value);
 
@@ -44,6 +95,39 @@ function normalizeColor(value: string | null | undefined) {
 
 function normalizeHex(value: string | null | undefined) {
     return (value ?? "").trim().toUpperCase();
+}
+
+function normalizeSize(value: string | null | undefined) {
+    return (value ?? "").trim().toUpperCase();
+}
+
+function compareSizes(sizeA: string, sizeB: string) {
+    const normalizedSizeA = normalizeSize(sizeA);
+    const normalizedSizeB = normalizeSize(sizeB);
+
+    const indexA = sizeOrder.indexOf(normalizedSizeA);
+    const indexB = sizeOrder.indexOf(normalizedSizeB);
+
+    if (indexA !== -1 && indexB !== -1) {
+        return indexA - indexB;
+    }
+
+    if (indexA !== -1) {
+        return -1;
+    }
+
+    if (indexB !== -1) {
+        return 1;
+    }
+
+    const numericA = Number(normalizedSizeA);
+    const numericB = Number(normalizedSizeB);
+
+    if (Number.isFinite(numericA) && Number.isFinite(numericB)) {
+        return numericA - numericB;
+    }
+
+    return normalizedSizeA.localeCompare(normalizedSizeB);
 }
 
 function isValidHex(value: string | null | undefined) {
@@ -116,7 +200,7 @@ function getAvailableSizes(variants: ProductVariant[], selectedColor: string) {
                 )
                 .map((variant) => variant.size),
         ),
-    ).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    ).sort(compareSizes);
 }
 
 function getStockForColor(variants: ProductVariant[], color: string) {
@@ -434,6 +518,12 @@ export function ProductDetailClient({
                                     Catégorie : {product.category.name}
                                 </p>
 
+                                {product.categoryType && (
+                                    <p className="mt-1 text-sm text-neutral-500">
+                                        Type : {product.categoryType.name}
+                                    </p>
+                                )}
+
                                 {product.collection && (
                                     <p className="mt-1 text-sm text-neutral-500">
                                         Collection : {product.collection.name}
@@ -711,6 +801,16 @@ export function ProductDetailClient({
                                                     Catégorie :{" "}
                                                     {product.category.name}
                                                 </p>
+
+                                                {product.categoryType && (
+                                                    <p>
+                                                        Type :{" "}
+                                                        {
+                                                            product.categoryType
+                                                                .name
+                                                        }
+                                                    </p>
+                                                )}
 
                                                 <p>
                                                     Stock total :{" "}
