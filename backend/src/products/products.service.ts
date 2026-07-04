@@ -53,26 +53,14 @@ export class ProductsService {
         isNewArrival: createProductDto.isNewArrival ?? false,
         isOnSale: createProductDto.isOnSale ?? false,
 
-        category: {
-          connect: {
-            id: createProductDto.categoryId,
-          },
-        },
+        category: { connect: { id: createProductDto.categoryId } },
 
         collection: createProductDto.collectionId
-          ? {
-              connect: {
-                id: createProductDto.collectionId,
-              },
-            }
+          ? { connect: { id: createProductDto.collectionId } }
           : undefined,
 
         saleCampaign: createProductDto.saleCampaignId
-          ? {
-              connect: {
-                id: createProductDto.saleCampaignId,
-              },
-            }
+          ? { connect: { id: createProductDto.saleCampaignId } }
           : undefined,
 
         images: {
@@ -106,13 +94,9 @@ export class ProductsService {
 
   async findPublicProducts() {
     const products = await this.prisma.product.findMany({
-      where: {
-        status: 'PUBLISHED',
-      },
+      where: { status: 'PUBLISHED' },
       include: this.defaultInclude(),
-      orderBy: {
-        createdAt: 'desc',
-      },
+      orderBy: { createdAt: 'desc' },
     });
 
     return products.map((product) => this.formatProduct(product));
@@ -120,10 +104,7 @@ export class ProductsService {
 
   async findPublicProductBySlug(slug: string) {
     const product = await this.prisma.product.findFirst({
-      where: {
-        slug,
-        status: 'PUBLISHED',
-      },
+      where: { slug, status: 'PUBLISHED' },
       include: this.defaultInclude(),
     });
 
@@ -137,9 +118,7 @@ export class ProductsService {
   async findAllForAdmin() {
     const products = await this.prisma.product.findMany({
       include: this.defaultInclude(),
-      orderBy: {
-        createdAt: 'desc',
-      },
+      orderBy: { createdAt: 'desc' },
     });
 
     return products.map((product) => this.formatProduct(product));
@@ -258,35 +237,19 @@ export class ProductsService {
     }
 
     if (updateProductDto.categoryId !== undefined) {
-      data.category = {
-        connect: {
-          id: updateProductDto.categoryId,
-        },
-      };
+      data.category = { connect: { id: updateProductDto.categoryId } };
     }
 
     if (updateProductDto.collectionId !== undefined) {
       data.collection = updateProductDto.collectionId
-        ? {
-            connect: {
-              id: updateProductDto.collectionId,
-            },
-          }
-        : {
-            disconnect: true,
-          };
+        ? { connect: { id: updateProductDto.collectionId } }
+        : { disconnect: true };
     }
 
     if (updateProductDto.saleCampaignId !== undefined) {
       data.saleCampaign = updateProductDto.saleCampaignId
-        ? {
-            connect: {
-              id: updateProductDto.saleCampaignId,
-            },
-          }
-        : {
-            disconnect: true,
-          };
+        ? { connect: { id: updateProductDto.saleCampaignId } }
+        : { disconnect: true };
     }
 
     if (updateProductDto.images !== undefined) {
@@ -404,7 +367,7 @@ export class ProductsService {
       });
 
       if (!campaign) {
-        throw new BadRequestException('Campagne de solde introuvable.');
+        throw new BadRequestException('Campagne introuvable.');
       }
     }
   }
@@ -468,6 +431,13 @@ export class ProductsService {
     discountValue: unknown | null;
     discountStartDate: Date | null;
     discountEndDate: Date | null;
+    saleCampaign?: {
+      isActive: boolean;
+      type: string;
+      discountValue: unknown | null;
+      startDate: Date | null;
+      endDate: Date | null;
+    } | null;
     collection?: {
       promoIsActive: boolean;
       promoPercentage: unknown | null;
@@ -481,6 +451,15 @@ export class ProductsService {
 
     if (productPromoPrice !== null) {
       return this.toMoney(productPromoPrice);
+    }
+
+    const campaignPromoPrice = this.calculateSaleCampaignPromoPrice(
+      product.saleCampaign,
+      price,
+    );
+
+    if (campaignPromoPrice !== null) {
+      return this.toMoney(campaignPromoPrice);
     }
 
     const collectionPromoPrice = this.calculateCollectionPromoPrice(
@@ -502,6 +481,13 @@ export class ProductsService {
     discountValue: unknown | null;
     discountStartDate: Date | null;
     discountEndDate: Date | null;
+    saleCampaign?: {
+      isActive: boolean;
+      type: string;
+      discountValue: unknown | null;
+      startDate: Date | null;
+      endDate: Date | null;
+    } | null;
     collection?: {
       promoIsActive: boolean;
       promoPercentage: unknown | null;
@@ -520,6 +506,15 @@ export class ProductsService {
       return productPromoPercentage;
     }
 
+    const campaignPromoPercentage = this.calculateSaleCampaignPromoPercentage(
+      product.saleCampaign,
+      price,
+    );
+
+    if (campaignPromoPercentage > 0) {
+      return campaignPromoPercentage;
+    }
+
     const collectionPromoPercentage = this.calculateCollectionPromoPercentage(
       product.collection,
     );
@@ -531,16 +526,7 @@ export class ProductsService {
     return 0;
   }
 
-  private calculateProductPromoPrice(
-    product: {
-      isOnSale: boolean;
-      discountType: string | null;
-      discountValue: unknown | null;
-      discountStartDate: Date | null;
-      discountEndDate: Date | null;
-    },
-    price: number,
-  ) {
+  private calculateProductPromoPrice(product: any, price: number) {
     if (!product.isOnSale || !product.discountType || !product.discountValue) {
       return null;
     }
@@ -571,16 +557,7 @@ export class ProductsService {
     return null;
   }
 
-  private calculateProductPromoPercentage(
-    product: {
-      isOnSale: boolean;
-      discountType: string | null;
-      discountValue: unknown | null;
-      discountStartDate: Date | null;
-      discountEndDate: Date | null;
-    },
-    price: number,
-  ) {
+  private calculateProductPromoPercentage(product: any, price: number) {
     if (!product.isOnSale || !product.discountType || !product.discountValue) {
       return 0;
     }
@@ -611,18 +588,83 @@ export class ProductsService {
     return 0;
   }
 
-  private calculateCollectionPromoPrice(
-    collection:
+  private calculateSaleCampaignPromoPrice(
+    campaign:
       | {
-          promoIsActive: boolean;
-          promoPercentage: unknown | null;
-          promoStartDate: Date | null;
-          promoEndDate: Date | null;
+          isActive: boolean;
+          type: string;
+          discountValue: unknown | null;
+          startDate: Date | null;
+          endDate: Date | null;
         }
       | null
       | undefined,
     price: number,
   ) {
+    if (!campaign?.isActive || !campaign.discountValue) {
+      return null;
+    }
+
+    if (!this.isDateRangeActive(campaign.startDate, campaign.endDate)) {
+      return null;
+    }
+
+    const discountValue = Number(campaign.discountValue);
+
+    if (!Number.isFinite(discountValue) || discountValue <= 0) {
+      return null;
+    }
+
+    if (campaign.type === 'REMISE_POURCENTAGE') {
+      return Math.max(0, price - (price * discountValue) / 100);
+    }
+
+    if (campaign.type === 'REMISE_MONTANT_FIXE') {
+      return Math.max(0, price - discountValue);
+    }
+
+    return null;
+  }
+
+  private calculateSaleCampaignPromoPercentage(
+    campaign:
+      | {
+          isActive: boolean;
+          type: string;
+          discountValue: unknown | null;
+          startDate: Date | null;
+          endDate: Date | null;
+        }
+      | null
+      | undefined,
+    price: number,
+  ) {
+    if (!campaign?.isActive || !campaign.discountValue) {
+      return 0;
+    }
+
+    if (!this.isDateRangeActive(campaign.startDate, campaign.endDate)) {
+      return 0;
+    }
+
+    const discountValue = Number(campaign.discountValue);
+
+    if (!Number.isFinite(discountValue) || discountValue <= 0) {
+      return 0;
+    }
+
+    if (campaign.type === 'REMISE_POURCENTAGE') {
+      return Math.round(discountValue);
+    }
+
+    if (campaign.type === 'REMISE_MONTANT_FIXE' && price > 0) {
+      return Math.round((discountValue / price) * 100);
+    }
+
+    return 0;
+  }
+
+  private calculateCollectionPromoPrice(collection: any, price: number) {
     if (!collection?.promoIsActive || !collection.promoPercentage) {
       return null;
     }
@@ -645,17 +687,7 @@ export class ProductsService {
     return Math.max(0, price - (price * promoPercentage) / 100);
   }
 
-  private calculateCollectionPromoPercentage(
-    collection:
-      | {
-          promoIsActive: boolean;
-          promoPercentage: unknown | null;
-          promoStartDate: Date | null;
-          promoEndDate: Date | null;
-        }
-      | null
-      | undefined,
-  ) {
+  private calculateCollectionPromoPercentage(collection: any) {
     if (!collection?.promoIsActive || !collection.promoPercentage) {
       return 0;
     }
@@ -707,6 +739,15 @@ export class ProductsService {
             promoPercentage:
               product.collection.promoPercentage !== null
                 ? Number(product.collection.promoPercentage)
+                : null,
+          }
+        : null,
+      saleCampaign: product.saleCampaign
+        ? {
+            ...product.saleCampaign,
+            discountValue:
+              product.saleCampaign.discountValue !== null
+                ? Number(product.saleCampaign.discountValue)
                 : null,
           }
         : null,
