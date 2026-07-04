@@ -27,7 +27,7 @@ type CollectionGroup = {
     label: string;
 };
 
-type ShoesMenuItem = {
+type TypeMenuItem = {
     id: string;
     label: string;
     href: string;
@@ -106,9 +106,12 @@ function buildCategoryLink(category: Category | null, fallbackSearch: string) {
     return category ? getCategoryHref(category) : getSearchHref(fallbackSearch);
 }
 
-function buildShoesMenuItems(categories: Category[]): ShoesMenuItem[] {
+function buildTypeMenuItems(
+    categories: Category[],
+    menuGroup: CategoryMenuGroup,
+): TypeMenuItem[] {
     return categories
-        .filter((category) => category.menuGroup === "CHAUSSURES")
+        .filter((category) => category.menuGroup === menuGroup)
         .flatMap((category) => {
             const activeTypes = (category.types ?? [])
                 .filter((type) => type.isActive)
@@ -152,6 +155,8 @@ export function PublicHeader() {
     const [isSearchOpen, setIsSearchOpen] = useState(false);
     const [isMobileCollectionOpen, setIsMobileCollectionOpen] = useState(false);
     const [isMobileShoesOpen, setIsMobileShoesOpen] = useState(false);
+    const [isMobileAccessoriesOpen, setIsMobileAccessoriesOpen] =
+        useState(false);
     const [availableCategories, setAvailableCategories] = useState<Category[]>(
         [],
     );
@@ -180,11 +185,16 @@ export function PublicHeader() {
     }, [availableCategories]);
 
     const shoesMenuItems = useMemo(() => {
-        return buildShoesMenuItems(availableCategories);
+        return buildTypeMenuItems(availableCategories, "CHAUSSURES");
+    }, [availableCategories]);
+
+    const accessoriesMenuItems = useMemo(() => {
+        return buildTypeMenuItems(availableCategories, "ACCESSOIRES");
     }, [availableCategories]);
 
     const hasCollectionCategories = groupedCollectionCategories.length > 0;
     const hasShoesMenuItems = shoesMenuItems.length > 0;
+    const hasAccessoriesMenuItems = accessoriesMenuItems.length > 0;
 
     const costumeCategory =
         findFirstCategoryByGroup(availableCategories, "COSTUME_CEREMONIE") ??
@@ -192,15 +202,6 @@ export function PublicHeader() {
             "costume",
             "ceremonie",
             "cérémonie",
-        ]);
-
-    const accessoiresCategory =
-        findFirstCategoryByGroup(availableCategories, "ACCESSOIRES") ??
-        findFirstCategoryByKeyword(availableCategories, [
-            "accessoire",
-            "ceinture",
-            "lunette",
-            "sac",
         ]);
 
     const mobileCollectionLabel = useMemo(() => {
@@ -223,6 +224,14 @@ export function PublicHeader() {
 
         return `Chaussures (${shoesMenuItems.length})`;
     }, [shoesMenuItems.length]);
+
+    const mobileAccessoriesLabel = useMemo(() => {
+        if (accessoriesMenuItems.length === 0) {
+            return "Accessoires";
+        }
+
+        return `Accessoires (${accessoriesMenuItems.length})`;
+    }, [accessoriesMenuItems.length]);
 
     return (
         <>
@@ -368,15 +377,43 @@ export function PublicHeader() {
                             </div>
                         </div>
 
-                        <Link
-                            href={buildCategoryLink(
-                                accessoiresCategory,
-                                "accessoires",
-                            )}
-                            className="relative py-3 transition after:absolute after:bottom-1 after:left-0 after:h-px after:w-0 after:bg-black after:transition-all hover:text-black hover:after:w-full"
-                        >
-                            Accessoires
-                        </Link>
+                        <div className="group/accessoires relative">
+                            <button
+                                type="button"
+                                className="flex items-center gap-2 py-3 transition hover:text-black"
+                                aria-label="Ouvrir les accessoires"
+                            >
+                                Accessoires
+                                <ChevronDown
+                                    size={16}
+                                    className="transition group-hover/accessoires:rotate-180"
+                                />
+                            </button>
+
+                            <div className="invisible absolute left-1/2 top-full z-50 w-[min(430px,calc(100vw-3rem))] -translate-x-1/2 translate-y-4 rounded-[2rem] border border-neutral-100 bg-white p-7 opacity-0 shadow-2xl transition-all duration-200 group-hover/accessoires:visible group-hover/accessoires:translate-y-0 group-hover/accessoires:opacity-100">
+                                <p className="text-xs font-black uppercase tracking-[0.28em] text-neutral-400">
+                                    Accessoires
+                                </p>
+
+                                {hasAccessoriesMenuItems ? (
+                                    <div className="mt-5 space-y-1">
+                                        {accessoriesMenuItems.map((item) => (
+                                            <Link
+                                                key={item.id}
+                                                href={item.href}
+                                                className="block rounded-2xl px-3 py-3 text-sm font-black uppercase tracking-[0.14em] text-neutral-700 transition hover:bg-neutral-50 hover:text-black"
+                                            >
+                                                {item.label}
+                                            </Link>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="mt-5 rounded-3xl bg-neutral-50 p-5 text-sm font-semibold normal-case tracking-normal text-neutral-500">
+                                        Aucun type d’accessoire disponible.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                     </nav>
 
                     <div className="flex shrink-0 items-center gap-2">
@@ -610,16 +647,57 @@ export function PublicHeader() {
                                     )}
                                 </div>
 
-                                <Link
-                                    href={buildCategoryLink(
-                                        accessoiresCategory,
-                                        "accessoires",
+                                <div className="rounded-2xl bg-neutral-50">
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            setIsMobileAccessoriesOpen(
+                                                (currentValue) => !currentValue,
+                                            )
+                                        }
+                                        className="flex w-full items-center justify-between px-5 py-4 text-left text-sm font-black uppercase tracking-[0.16em]"
+                                    >
+                                        {mobileAccessoriesLabel}
+                                        <ChevronDown
+                                            size={18}
+                                            className={
+                                                isMobileAccessoriesOpen
+                                                    ? "rotate-180 transition"
+                                                    : "transition"
+                                            }
+                                        />
+                                    </button>
+
+                                    {isMobileAccessoriesOpen && (
+                                        <div className="max-h-80 overflow-y-auto border-t border-neutral-200 px-4 py-3">
+                                            {hasAccessoriesMenuItems ? (
+                                                <div className="space-y-2">
+                                                    {accessoriesMenuItems.map(
+                                                        (item) => (
+                                                            <Link
+                                                                key={item.id}
+                                                                href={item.href}
+                                                                onClick={() =>
+                                                                    setIsMenuOpen(
+                                                                        false,
+                                                                    )
+                                                                }
+                                                                className="block rounded-2xl bg-white px-4 py-4 text-sm font-black uppercase tracking-[0.16em]"
+                                                            >
+                                                                {item.label}
+                                                            </Link>
+                                                        ),
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <p className="rounded-2xl bg-white p-4 text-sm font-semibold text-neutral-500">
+                                                    Aucun type d’accessoire
+                                                    disponible.
+                                                </p>
+                                            )}
+                                        </div>
                                     )}
-                                    onClick={() => setIsMenuOpen(false)}
-                                    className="block rounded-2xl bg-neutral-50 px-5 py-4 text-sm font-black uppercase tracking-[0.16em]"
-                                >
-                                    Accessoires
-                                </Link>
+                                </div>
 
                                 <Link
                                     href="/#nouveautes"
