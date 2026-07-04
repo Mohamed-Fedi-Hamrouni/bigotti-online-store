@@ -24,6 +24,7 @@ export class ProductsService {
     await this.ensureSlugIsUnique(slug);
     await this.ensureRelationsExist({
       categoryId: createProductDto.categoryId,
+      categoryTypeId: createProductDto.categoryTypeId,
       collectionId: createProductDto.collectionId,
       saleCampaignId: createProductDto.saleCampaignId,
     });
@@ -54,6 +55,10 @@ export class ProductsService {
         isOnSale: createProductDto.isOnSale ?? false,
 
         category: { connect: { id: createProductDto.categoryId } },
+
+        categoryType: createProductDto.categoryTypeId
+          ? { connect: { id: createProductDto.categoryTypeId } }
+          : undefined,
 
         collection: createProductDto.collectionId
           ? { connect: { id: createProductDto.collectionId } }
@@ -138,7 +143,14 @@ export class ProductsService {
   }
 
   async update(id: string, updateProductDto: UpdateProductDto) {
-    await this.findOneForAdmin(id);
+    const currentProduct = await this.prisma.product.findUnique({
+      where: { id },
+      include: this.defaultInclude(),
+    });
+
+    if (!currentProduct) {
+      throw new NotFoundException('Produit introuvable.');
+    }
 
     const data: Record<string, unknown> = {};
 
@@ -224,13 +236,23 @@ export class ProductsService {
       data.isOnSale = updateProductDto.isOnSale;
     }
 
+    const effectiveCategoryId =
+      updateProductDto.categoryId ?? currentProduct.categoryId;
+
+    const effectiveCategoryTypeId =
+      updateProductDto.categoryTypeId !== undefined
+        ? updateProductDto.categoryTypeId
+        : currentProduct.categoryTypeId;
+
     if (
-      updateProductDto.categoryId ||
-      updateProductDto.collectionId ||
-      updateProductDto.saleCampaignId
+      updateProductDto.categoryId !== undefined ||
+      updateProductDto.categoryTypeId !== undefined ||
+      updateProductDto.collectionId !== undefined ||
+      updateProductDto.saleCampaignId !== undefined
     ) {
       await this.ensureRelationsExist({
-        categoryId: updateProductDto.categoryId,
+        categoryId: effectiveCategoryId,
+        categoryTypeId: effectiveCategoryTypeId,
         collectionId: updateProductDto.collectionId,
         saleCampaignId: updateProductDto.saleCampaignId,
       });
@@ -238,6 +260,12 @@ export class ProductsService {
 
     if (updateProductDto.categoryId !== undefined) {
       data.category = { connect: { id: updateProductDto.categoryId } };
+    }
+
+    if (updateProductDto.categoryTypeId !== undefined) {
+      data.categoryType = updateProductDto.categoryTypeId
+        ? { connect: { id: updateProductDto.categoryTypeId } }
+        : { disconnect: true };
     }
 
     if (updateProductDto.collectionId !== undefined) {
@@ -338,6 +366,7 @@ export class ProductsService {
 
   private async ensureRelationsExist(params: {
     categoryId?: string;
+    categoryTypeId?: string | null;
     collectionId?: string | null;
     saleCampaignId?: string | null;
   }) {
@@ -348,6 +377,22 @@ export class ProductsService {
 
       if (!category) {
         throw new BadRequestException('Catégorie introuvable.');
+      }
+    }
+
+    if (params.categoryTypeId) {
+      const categoryType = await this.prisma.categoryType.findUnique({
+        where: { id: params.categoryTypeId },
+      });
+
+      if (!categoryType) {
+        throw new BadRequestException('Type de catégorie introuvable.');
+      }
+
+      if (params.categoryId && categoryType.categoryId !== params.categoryId) {
+        throw new BadRequestException(
+          'Le type sélectionné ne correspond pas à la catégorie choisie.',
+        );
       }
     }
 
@@ -778,6 +823,7 @@ export class ProductsService {
   private defaultInclude(): Prisma.ProductInclude {
     return {
       category: true,
+      categoryType: true,
       collection: true,
       saleCampaign: true,
       images: {
