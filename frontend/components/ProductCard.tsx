@@ -62,6 +62,14 @@ function formatPrice(value: number) {
     return `${value.toFixed(3)} TND`;
 }
 
+function formatCompactMoney(value: number) {
+    if (Number.isInteger(value)) {
+        return `${value} TND`;
+    }
+
+    return `${value.toFixed(3)} TND`;
+}
+
 function normalizeColor(value: string | null | undefined) {
     return (value ?? "")
         .trim()
@@ -76,6 +84,20 @@ function normalizeHex(value: string | null | undefined) {
 
 function isValidHex(value: string | null | undefined) {
     return /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(value ?? "");
+}
+
+function isDateRangeActive(startDate?: string | null, endDate?: string | null) {
+    const now = new Date();
+
+    if (startDate && new Date(startDate) > now) {
+        return false;
+    }
+
+    if (endDate && new Date(endDate) < now) {
+        return false;
+    }
+
+    return true;
 }
 
 function getFallbackHexFromName(colorName: string | null | undefined) {
@@ -206,10 +228,24 @@ function getSwatchStyle(color: ProductColorOption): CSSProperties {
     };
 }
 
-function getCampaignBadge(product: Product) {
+function getActiveCampaign(product: Product) {
     const campaign = product.saleCampaign;
 
     if (!campaign || !campaign.isActive) {
+        return null;
+    }
+
+    if (!isDateRangeActive(campaign.startDate, campaign.endDate)) {
+        return null;
+    }
+
+    return campaign;
+}
+
+function getCampaignOfferLabel(product: Product) {
+    const campaign = getActiveCampaign(product);
+
+    if (!campaign) {
         return null;
     }
 
@@ -218,7 +254,7 @@ function getCampaignBadge(product: Product) {
     }
 
     if (campaign.type === "REMISE_MONTANT_FIXE" && campaign.discountValue) {
-        return `-${Number(campaign.discountValue).toFixed(3)} TND`;
+        return `-${formatCompactMoney(Number(campaign.discountValue))}`;
     }
 
     if (
@@ -227,10 +263,6 @@ function getCampaignBadge(product: Product) {
         campaign.freeQuantity
     ) {
         return `Achetez ${campaign.buyQuantity} = ${campaign.freeQuantity} offert`;
-    }
-
-    if (campaign.type === "EVENEMENT_SIMPLE") {
-        return campaign.name;
     }
 
     return null;
@@ -255,8 +287,10 @@ export function ProductCard({ product }: ProductCardProps) {
         colors: displayedColors,
     });
 
+    const activeCampaign = getActiveCampaign(product);
+    const campaignOfferLabel = getCampaignOfferLabel(product);
+
     const hasDiscount = product.discountPercentage > 0;
-    const campaignBadge = getCampaignBadge(product);
     const hasHoverAnimation = Boolean(mainImage && hoverImage);
 
     return (
@@ -305,28 +339,29 @@ export function ProductCard({ product }: ProductCardProps) {
                     <FavoriteButton product={product} />
                 </div>
 
-                <div className="absolute left-4 top-4 flex max-w-[75%] flex-col items-start gap-2">
+                <div className="absolute left-4 top-4 flex max-w-[80%] flex-col items-start gap-2">
                     {hasDiscount && (
-                        <span className="rounded-full bg-black px-3 py-1 text-sm font-semibold text-white">
-                            -{product.discountPercentage}%
+                        <span className="rounded-full bg-black px-3 py-1 text-xs font-black text-white shadow-sm">
+                            {campaignOfferLabel ??
+                                `-${product.discountPercentage}%`}
                         </span>
                     )}
 
-                    {campaignBadge && !hasDiscount && (
-                        <span className="rounded-full bg-black px-3 py-1 text-xs font-bold text-white shadow-sm">
-                            {campaignBadge}
+                    {!hasDiscount && campaignOfferLabel && (
+                        <span className="rounded-full bg-black px-3 py-1 text-xs font-black text-white shadow-sm">
+                            {campaignOfferLabel}
                         </span>
                     )}
 
-                    {campaignBadge && hasDiscount && (
-                        <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-black shadow-sm">
-                            {product.saleCampaign?.name}
+                    {activeCampaign && (
+                        <span className="max-w-full truncate rounded-full bg-white px-3 py-1 text-xs font-black text-black shadow-sm">
+                            {activeCampaign.name}
                         </span>
                     )}
                 </div>
 
                 {product.isNewArrival && (
-                    <span className="absolute bottom-4 left-4 rounded-full bg-white px-3 py-1 text-sm font-semibold text-black">
+                    <span className="absolute bottom-4 left-4 rounded-full bg-white px-3 py-1 text-sm font-semibold text-black shadow-sm">
                         Nouveau
                     </span>
                 )}
