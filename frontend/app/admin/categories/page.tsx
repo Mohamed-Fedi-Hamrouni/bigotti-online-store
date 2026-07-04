@@ -3,23 +3,44 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Edit3, Plus, Search, ShieldCheck, ShieldOff } from "lucide-react";
+import {
+    Edit3,
+    Plus,
+    Search,
+    ShieldCheck,
+    ShieldOff,
+    Trash2,
+} from "lucide-react";
 import {
     createCategory,
     getAdminCategories,
     updateCategory,
     updateCategoryStatus,
 } from "@/lib/api";
-import type { Category, CategoryMenuGroup } from "@/types/product";
+import type {
+    Category,
+    CategoryMenuGroup,
+    CategoryType,
+} from "@/types/product";
 
 type CategoryStatusFilter = "ALL" | "ACTIVE" | "INACTIVE";
 type CategoryGroupFilter = "ALL" | CategoryMenuGroup;
+
+type EditableCategoryType = {
+    id?: string;
+    name: string;
+    slug: string;
+    description: string;
+    isActive: boolean;
+    position: string;
+};
 
 type CategoryFormState = {
     name: string;
     slug: string;
     description: string;
     menuGroup: CategoryMenuGroup;
+    types: EditableCategoryType[];
     isActive: boolean;
 };
 
@@ -65,6 +86,7 @@ const emptyForm: CategoryFormState = {
     slug: "",
     description: "",
     menuGroup: "AUTRE",
+    types: [],
     isActive: true,
 };
 
@@ -74,6 +96,27 @@ function getAdminToken() {
     }
 
     return window.localStorage.getItem("bigotti-admin-token");
+}
+
+function createEmptyCategoryType(position: number): EditableCategoryType {
+    return {
+        name: "",
+        slug: "",
+        description: "",
+        isActive: true,
+        position: String(position),
+    };
+}
+
+function categoryTypeToFormType(type: CategoryType): EditableCategoryType {
+    return {
+        id: type.id,
+        name: type.name,
+        slug: type.slug,
+        description: type.description ?? "",
+        isActive: type.isActive,
+        position: String(type.position ?? 0),
+    };
 }
 
 function getMenuGroupLabel(menuGroup: CategoryMenuGroup | null | undefined) {
@@ -118,12 +161,17 @@ function getMenuGroupBadgeClass(
     return "rounded-full bg-neutral-100 px-3 py-1 text-xs font-bold text-neutral-600";
 }
 
+function normalizeText(value: string) {
+    return value.trim().toLowerCase();
+}
+
 export default function AdminCategoriesPage() {
     const router = useRouter();
 
     const [categories, setCategories] = useState<Category[]>([]);
     const [form, setForm] = useState<CategoryFormState>(emptyForm);
     const [editingId, setEditingId] = useState<string | null>(null);
+    const [typesTouched, setTypesTouched] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [statusFilter, setStatusFilter] =
         useState<CategoryStatusFilter>("ALL");
@@ -161,6 +209,11 @@ export default function AdminCategoriesPage() {
             const menuGroup = category.menuGroup ?? "AUTRE";
             const menuGroupLabel = getMenuGroupLabel(menuGroup);
 
+            const typeNames = (category.types ?? [])
+                .map((type) => type.name)
+                .join(" ")
+                .toLowerCase();
+
             const matchesSearch =
                 !normalizedSearch ||
                 category.name.toLowerCase().includes(normalizedSearch) ||
@@ -168,7 +221,8 @@ export default function AdminCategoriesPage() {
                 String(category.description ?? "")
                     .toLowerCase()
                     .includes(normalizedSearch) ||
-                menuGroupLabel.toLowerCase().includes(normalizedSearch);
+                menuGroupLabel.toLowerCase().includes(normalizedSearch) ||
+                typeNames.includes(normalizedSearch);
 
             const matchesStatus =
                 statusFilter === "ALL" ||
@@ -200,6 +254,11 @@ export default function AdminCategoriesPage() {
             category.menuGroup === "ACCESSOIRES",
     ).length;
 
+    const totalCategoryTypes = categories.reduce(
+        (sum, category) => sum + (category.types?.length ?? 0),
+        0,
+    );
+
     function updateFormField<K extends keyof CategoryFormState>(
         field: K,
         value: CategoryFormState[K],
@@ -210,25 +269,118 @@ export default function AdminCategoriesPage() {
         }));
     }
 
+    function updateCategoryType(
+        index: number,
+        updates: Partial<EditableCategoryType>,
+    ) {
+        setTypesTouched(true);
+
+        setForm((currentForm) => ({
+            ...currentForm,
+            types: currentForm.types.map((type, currentIndex) =>
+                currentIndex === index
+                    ? {
+                          ...type,
+                          ...updates,
+                      }
+                    : type,
+            ),
+        }));
+    }
+
+    function addCategoryType() {
+        setTypesTouched(true);
+
+        setForm((currentForm) => ({
+            ...currentForm,
+            types: [
+                ...currentForm.types,
+                createEmptyCategoryType(currentForm.types.length),
+            ],
+        }));
+    }
+
+    function removeCategoryType(index: number) {
+        setTypesTouched(true);
+
+        setForm((currentForm) => ({
+            ...currentForm,
+            types: currentForm.types.filter(
+                (_type, currentIndex) => currentIndex !== index,
+            ),
+        }));
+    }
+
     function resetForm() {
         setForm(emptyForm);
         setEditingId(null);
+        setTypesTouched(false);
         setError("");
         setSuccess("");
     }
 
     function startEdit(category: Category) {
         setEditingId(category.id);
+        setTypesTouched(false);
+
         setForm({
             name: category.name,
             slug: category.slug,
             description: category.description ?? "",
             menuGroup: category.menuGroup ?? "AUTRE",
+            types: (category.types ?? []).map(categoryTypeToFormType),
             isActive: category.isActive,
         });
+
         setError("");
         setSuccess("");
         window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    function validateForm() {
+        if (!form.name.trim()) {
+            return "Le nom de la catégorie est obligatoire.";
+        }
+
+        const activeTypes = form.types.filter((type) => type.name.trim());
+
+        const typeNames = activeTypes.map((type) => normalizeText(type.name));
+
+        if (new Set(typeNames).size !== typeNames.length) {
+            return "Les types de catégorie doivent avoir des noms uniques.";
+        }
+
+        const typeSlugs = activeTypes
+            .map((type) => type.slug.trim() || type.name.trim())
+            .map(normalizeText);
+
+        if (new Set(typeSlugs).size !== typeSlugs.length) {
+            return "Les types de catégorie doivent avoir des slugs uniques.";
+        }
+
+        if (
+            activeTypes.some(
+                (type) =>
+                    type.position.trim() !== "" && Number(type.position) < 0,
+            )
+        ) {
+            return "La position des types doit être supérieure ou égale à 0.";
+        }
+
+        return "";
+    }
+
+    function buildTypesPayload() {
+        return form.types
+            .filter((type) => type.name.trim())
+            .map((type, index) => ({
+                name: type.name.trim(),
+                slug: type.slug.trim() || undefined,
+                description: type.description.trim() || null,
+                isActive: type.isActive,
+                position:
+                    type.position.trim() !== "" ? Number(type.position) : index,
+            }));
     }
 
     async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -241,8 +393,10 @@ export default function AdminCategoriesPage() {
             return;
         }
 
-        if (!form.name.trim()) {
-            setError("Le nom de la catégorie est obligatoire.");
+        const validationError = validateForm();
+
+        if (validationError) {
+            setError(validationError);
             return;
         }
 
@@ -250,7 +404,7 @@ export default function AdminCategoriesPage() {
         setError("");
         setSuccess("");
 
-        const payload = {
+        const categoryPayload = {
             name: form.name.trim(),
             slug: form.slug.trim() || undefined,
             description: form.description.trim() || null,
@@ -260,6 +414,13 @@ export default function AdminCategoriesPage() {
 
         try {
             if (editingId) {
+                const payload = typesTouched
+                    ? {
+                          ...categoryPayload,
+                          types: buildTypesPayload(),
+                      }
+                    : categoryPayload;
+
                 const updatedCategory = await updateCategory(
                     token,
                     editingId,
@@ -275,8 +436,9 @@ export default function AdminCategoriesPage() {
                 setSuccess("Catégorie modifiée avec succès.");
             } else {
                 const createdCategory = await createCategory(token, {
-                    ...payload,
+                    ...categoryPayload,
                     description: form.description.trim() || undefined,
+                    types: buildTypesPayload(),
                 });
 
                 setCategories((currentCategories) => [
@@ -289,6 +451,7 @@ export default function AdminCategoriesPage() {
 
             setForm(emptyForm);
             setEditingId(null);
+            setTypesTouched(false);
         } catch (err) {
             setError(
                 err instanceof Error
@@ -367,8 +530,8 @@ export default function AdminCategoriesPage() {
                         <h1 className="mt-2 text-4xl font-black">Catégories</h1>
 
                         <p className="mt-2 text-neutral-600">
-                            Gérez les catégories et leur position dans le menu
-                            public.
+                            Gérez les catégories, leurs groupes de menu et leurs
+                            types associés.
                         </p>
                     </div>
 
@@ -390,7 +553,7 @@ export default function AdminCategoriesPage() {
                 </div>
             </section>
 
-            <section className="mx-auto grid max-w-7xl gap-8 px-6 py-8 lg:grid-cols-[420px_1fr]">
+            <section className="mx-auto grid max-w-7xl gap-8 px-6 py-8 lg:grid-cols-[460px_1fr]">
                 <aside className="h-fit rounded-[2rem] bg-white p-8 shadow-sm">
                     <h2 className="text-2xl font-black">
                         {editingId
@@ -408,7 +571,7 @@ export default function AdminCategoriesPage() {
                                     updateFormField("name", event.target.value)
                                 }
                                 className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
-                                placeholder="Ex: Chemises"
+                                placeholder="Ex: Chaussures"
                             />
                         </div>
 
@@ -453,13 +616,6 @@ export default function AdminCategoriesPage() {
                             <p className="mt-2 rounded-2xl bg-neutral-50 p-3 text-xs font-semibold text-neutral-600">
                                 {getMenuGroupDescription(form.menuGroup)}
                             </p>
-
-                            <p className="mt-2 text-xs text-neutral-500">
-                                Dans le menu public, la zone Collection affiche
-                                seulement Haut et Bas. Costume & cérémonie,
-                                Chaussures et Accessoires ont leurs propres
-                                entrées dans la barre de navigation.
-                            </p>
                         </div>
 
                         <div>
@@ -477,12 +633,175 @@ export default function AdminCategoriesPage() {
                                     )
                                 }
                                 className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
-                                placeholder="Ex: Chemises élégantes pour homme."
+                                placeholder="Ex: Chaussures élégantes pour homme."
                             />
                         </div>
 
+                        <section className="rounded-3xl bg-neutral-50 p-5">
+                            <div className="flex items-center justify-between gap-4">
+                                <div>
+                                    <h3 className="text-sm font-black">
+                                        Types de catégorie
+                                    </h3>
+
+                                    <p className="mt-1 text-xs text-neutral-500">
+                                        Exemple pour Chaussures : Mocassins,
+                                        Mules, Sabots, Baskets.
+                                    </p>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={addCategoryType}
+                                    className="shrink-0 rounded-full bg-black px-4 py-2 text-xs font-black text-white"
+                                >
+                                    + Type
+                                </button>
+                            </div>
+
+                            {form.types.length === 0 ? (
+                                <div className="mt-4 rounded-2xl bg-white p-4 text-sm font-semibold text-neutral-500">
+                                    Aucun type ajouté pour cette catégorie.
+                                </div>
+                            ) : (
+                                <div className="mt-4 space-y-4">
+                                    {form.types.map((type, index) => (
+                                        <div
+                                            key={`${type.id ?? "new"}-${index}`}
+                                            className="rounded-3xl bg-white p-4"
+                                        >
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="flex-1">
+                                                    <label className="text-xs font-bold text-neutral-500">
+                                                        Nom du type *
+                                                    </label>
+
+                                                    <input
+                                                        value={type.name}
+                                                        onChange={(event) =>
+                                                            updateCategoryType(
+                                                                index,
+                                                                {
+                                                                    name: event
+                                                                        .target
+                                                                        .value,
+                                                                },
+                                                            )
+                                                        }
+                                                        placeholder="Ex: Mocassins"
+                                                        className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 text-sm outline-none focus:border-black"
+                                                    />
+                                                </div>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        removeCategoryType(
+                                                            index,
+                                                        )
+                                                    }
+                                                    className="mt-7 rounded-full border border-red-200 p-3 text-red-700 hover:border-red-600"
+                                                    aria-label="Supprimer le type"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </div>
+
+                                            <div className="mt-3 grid gap-3 md:grid-cols-[1fr_100px]">
+                                                <div>
+                                                    <label className="text-xs font-bold text-neutral-500">
+                                                        Slug
+                                                    </label>
+
+                                                    <input
+                                                        value={type.slug}
+                                                        onChange={(event) =>
+                                                            updateCategoryType(
+                                                                index,
+                                                                {
+                                                                    slug: event
+                                                                        .target
+                                                                        .value,
+                                                                },
+                                                            )
+                                                        }
+                                                        placeholder="Généré automatiquement"
+                                                        className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 text-sm outline-none focus:border-black"
+                                                    />
+                                                </div>
+
+                                                <div>
+                                                    <label className="text-xs font-bold text-neutral-500">
+                                                        Position
+                                                    </label>
+
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        value={type.position}
+                                                        onChange={(event) =>
+                                                            updateCategoryType(
+                                                                index,
+                                                                {
+                                                                    position:
+                                                                        event
+                                                                            .target
+                                                                            .value,
+                                                                },
+                                                            )
+                                                        }
+                                                        className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 text-sm outline-none focus:border-black"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="mt-3">
+                                                <label className="text-xs font-bold text-neutral-500">
+                                                    Description
+                                                </label>
+
+                                                <input
+                                                    value={type.description}
+                                                    onChange={(event) =>
+                                                        updateCategoryType(
+                                                            index,
+                                                            {
+                                                                description:
+                                                                    event.target
+                                                                        .value,
+                                                            },
+                                                        )
+                                                    }
+                                                    placeholder="Description courte du type"
+                                                    className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 text-sm outline-none focus:border-black"
+                                                />
+                                            </div>
+
+                                            <label className="mt-3 flex items-center justify-between rounded-2xl bg-neutral-50 p-3 text-xs font-bold">
+                                                Type actif
+                                                <input
+                                                    type="checkbox"
+                                                    checked={type.isActive}
+                                                    onChange={(event) =>
+                                                        updateCategoryType(
+                                                            index,
+                                                            {
+                                                                isActive:
+                                                                    event.target
+                                                                        .checked,
+                                                            },
+                                                        )
+                                                    }
+                                                />
+                                            </label>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </section>
+
                         <label className="flex items-center justify-between rounded-2xl bg-neutral-50 p-4 text-sm font-bold">
-                            Active
+                            Catégorie active
                             <input
                                 type="checkbox"
                                 checked={form.isActive}
@@ -533,7 +852,7 @@ export default function AdminCategoriesPage() {
                 </aside>
 
                 <div className="space-y-6">
-                    <div className="grid gap-5 md:grid-cols-4">
+                    <div className="grid gap-5 md:grid-cols-5">
                         <div className="rounded-[2rem] bg-white p-6 shadow-sm">
                             <p className="text-sm text-neutral-500">
                                 Total catégories
@@ -554,6 +873,16 @@ export default function AdminCategoriesPage() {
 
                         <div className="rounded-[2rem] bg-white p-6 shadow-sm">
                             <p className="text-sm text-neutral-500">
+                                Désactivées
+                            </p>
+
+                            <p className="mt-2 text-3xl font-black">
+                                {inactiveCategories}
+                            </p>
+                        </div>
+
+                        <div className="rounded-[2rem] bg-white p-6 shadow-sm">
+                            <p className="text-sm text-neutral-500">
                                 Collection
                             </p>
 
@@ -563,12 +892,10 @@ export default function AdminCategoriesPage() {
                         </div>
 
                         <div className="rounded-[2rem] bg-white p-6 shadow-sm">
-                            <p className="text-sm text-neutral-500">
-                                Menu principal
-                            </p>
+                            <p className="text-sm text-neutral-500">Types</p>
 
                             <p className="mt-2 text-3xl font-black">
-                                {principalMenuCategories}
+                                {totalCategoryTypes}
                             </p>
                         </div>
                     </div>
@@ -586,7 +913,7 @@ export default function AdminCategoriesPage() {
                                     onChange={(event) =>
                                         setSearchQuery(event.target.value)
                                     }
-                                    placeholder="Rechercher nom, slug, description, groupe..."
+                                    placeholder="Rechercher nom, slug, description, groupe, type..."
                                     className="w-full rounded-full border border-neutral-300 py-3 pl-11 pr-4 outline-none focus:border-black"
                                 />
                             </div>
@@ -650,6 +977,7 @@ export default function AdminCategoriesPage() {
                                 const isInactive = !category.isActive;
                                 const isUpdating =
                                     actionLoadingId === category.id;
+                                const types = category.types ?? [];
 
                                 return (
                                     <article
@@ -660,7 +988,7 @@ export default function AdminCategoriesPage() {
                                                 : "flex flex-col justify-between gap-5 rounded-3xl border border-neutral-200 p-5 md:flex-row md:items-center"
                                         }
                                     >
-                                        <div>
+                                        <div className="min-w-0 flex-1">
                                             <div className="flex flex-wrap items-center gap-3">
                                                 <h3 className="text-xl font-black">
                                                     {category.name}
@@ -703,6 +1031,33 @@ export default function AdminCategoriesPage() {
                                                 {category.description ??
                                                     "Aucune description."}
                                             </p>
+
+                                            <div className="mt-4">
+                                                <p className="text-xs font-black uppercase tracking-[0.2em] text-neutral-400">
+                                                    Types de catégorie
+                                                </p>
+
+                                                {types.length > 0 ? (
+                                                    <div className="mt-3 flex flex-wrap gap-2">
+                                                        {types.map((type) => (
+                                                            <span
+                                                                key={type.id}
+                                                                className={
+                                                                    type.isActive
+                                                                        ? "rounded-full bg-neutral-100 px-3 py-1 text-xs font-bold text-neutral-700"
+                                                                        : "rounded-full bg-red-50 px-3 py-1 text-xs font-bold text-red-700"
+                                                                }
+                                                            >
+                                                                {type.name}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <p className="mt-2 text-sm text-neutral-500">
+                                                        Aucun type ajouté.
+                                                    </p>
+                                                )}
+                                            </div>
 
                                             {isInactive && (
                                                 <p className="mt-3 rounded-2xl bg-red-50 p-3 text-sm font-semibold text-red-700">
