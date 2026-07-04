@@ -830,3 +830,9 @@ export async function changeCustomerPassword(
         },
     );
 }
+
+export async function getCategories() {
+    const categories = await fetchJson<Category[]>("/categories");
+
+    return categories.map((category) => normalizeCategory(category));
+}

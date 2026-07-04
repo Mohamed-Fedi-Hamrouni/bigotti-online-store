@@ -15,17 +15,26 @@ import { useCart } from "@/components/cart/CartProvider";
 import { useCustomerAuth } from "@/components/customer-auth/CustomerAuthProvider";
 import { useFavorites } from "@/components/favorites/FavoritesProvider";
 import { SearchOverlay } from "@/components/search/SearchOverlay";
-import { getProducts } from "@/lib/api";
-import type { Category, CategoryMenuGroup } from "@/types/product";
+import { getCategories } from "@/lib/api";
+import type {
+    Category,
+    CategoryMenuGroup,
+    CategoryType,
+} from "@/types/product";
 
-type AvailableCategory = Category & {
-    productsCount: number;
-};
-
-const collectionGroups: {
+type CollectionGroup = {
     value: CategoryMenuGroup;
     label: string;
-}[] = [
+};
+
+type ShoesMenuItem = {
+    id: string;
+    label: string;
+    href: string;
+    position: number;
+};
+
+const collectionGroups: CollectionGroup[] = [
     {
         value: "HAUT",
         label: "Haut",
@@ -44,15 +53,21 @@ function normalizeText(value: string | null | undefined) {
         .replace(/[\u0300-\u036f]/g, "");
 }
 
-function getCategoryHref(category: AvailableCategory) {
+function getCategoryHref(category: Category) {
     return `/boutique?category=${encodeURIComponent(category.slug)}`;
+}
+
+function getCategoryTypeHref(category: Category, type: CategoryType) {
+    return `/boutique?category=${encodeURIComponent(
+        category.slug,
+    )}&categoryType=${encodeURIComponent(type.slug)}`;
 }
 
 function getSearchHref(search: string) {
     return `/boutique?search=${encodeURIComponent(search)}`;
 }
 
-function groupCollectionCategories(categories: AvailableCategory[]) {
+function groupCollectionCategories(categories: Category[]) {
     return collectionGroups
         .map((group) => ({
             ...group,
@@ -64,14 +79,14 @@ function groupCollectionCategories(categories: AvailableCategory[]) {
 }
 
 function findFirstCategoryByGroup(
-    categories: AvailableCategory[],
+    categories: Category[],
     group: CategoryMenuGroup,
 ) {
     return categories.find((category) => category.menuGroup === group) ?? null;
 }
 
 function findFirstCategoryByKeyword(
-    categories: AvailableCategory[],
+    categories: Category[],
     keywords: string[],
 ) {
     return (
@@ -87,11 +102,45 @@ function findFirstCategoryByKeyword(
     );
 }
 
-function buildCategoryLink(
-    category: AvailableCategory | null,
-    fallbackSearch: string,
-) {
+function buildCategoryLink(category: Category | null, fallbackSearch: string) {
     return category ? getCategoryHref(category) : getSearchHref(fallbackSearch);
+}
+
+function buildShoesMenuItems(categories: Category[]): ShoesMenuItem[] {
+    return categories
+        .filter((category) => category.menuGroup === "CHAUSSURES")
+        .flatMap((category) => {
+            const activeTypes = (category.types ?? [])
+                .filter((type) => type.isActive)
+                .sort(
+                    (a, b) =>
+                        Number(a.position ?? 0) - Number(b.position ?? 0) ||
+                        a.name.localeCompare(b.name),
+                );
+
+            if (activeTypes.length > 0) {
+                return activeTypes.map((type) => ({
+                    id: type.id,
+                    label: type.name,
+                    href: getCategoryTypeHref(category, type),
+                    position: Number(type.position ?? 0),
+                }));
+            }
+
+            return [
+                {
+                    id: category.id,
+                    label: category.name,
+                    href: getCategoryHref(category),
+                    position: 0,
+                },
+            ];
+        })
+        .sort(
+            (a, b) =>
+                Number(a.position ?? 0) - Number(b.position ?? 0) ||
+                a.label.localeCompare(b.label),
+        );
 }
 
 export function PublicHeader() {
@@ -103,40 +152,23 @@ export function PublicHeader() {
     const [isSearchOpen, setIsSearchOpen] = useState(false);
     const [isMobileCollectionOpen, setIsMobileCollectionOpen] = useState(false);
     const [isMobileShoesOpen, setIsMobileShoesOpen] = useState(false);
-    const [availableCategories, setAvailableCategories] = useState<
-        AvailableCategory[]
-    >([]);
+    const [availableCategories, setAvailableCategories] = useState<Category[]>(
+        [],
+    );
 
     useEffect(() => {
-        getProducts()
-            .then((products) => {
-                const categoriesMap = new Map<string, AvailableCategory>();
-
-                for (const product of products) {
-                    if (!product.category || !product.category.isActive) {
-                        continue;
-                    }
-
-                    const existingCategory = categoriesMap.get(
-                        product.category.id,
-                    );
-
-                    if (existingCategory) {
-                        existingCategory.productsCount += 1;
-                    } else {
-                        categoriesMap.set(product.category.id, {
-                            ...product.category,
-                            menuGroup: product.category.menuGroup ?? "AUTRE",
-                            productsCount: 1,
-                        });
-                    }
-                }
-
-                const categories = Array.from(categoriesMap.values()).sort(
-                    (a, b) => a.name.localeCompare(b.name),
+        getCategories()
+            .then((categories) => {
+                setAvailableCategories(
+                    categories
+                        .filter((category) => category.isActive)
+                        .map((category) => ({
+                            ...category,
+                            types: (category.types ?? []).filter(
+                                (type) => type.isActive,
+                            ),
+                        })),
                 );
-
-                setAvailableCategories(categories);
             })
             .catch(() => {
                 setAvailableCategories([]);
@@ -147,14 +179,12 @@ export function PublicHeader() {
         return groupCollectionCategories(availableCategories);
     }, [availableCategories]);
 
-    const shoesCategories = useMemo(() => {
-        return availableCategories
-            .filter((category) => category.menuGroup === "CHAUSSURES")
-            .sort((a, b) => a.name.localeCompare(b.name));
+    const shoesMenuItems = useMemo(() => {
+        return buildShoesMenuItems(availableCategories);
     }, [availableCategories]);
 
     const hasCollectionCategories = groupedCollectionCategories.length > 0;
-    const hasShoesCategories = shoesCategories.length > 0;
+    const hasShoesMenuItems = shoesMenuItems.length > 0;
 
     const costumeCategory =
         findFirstCategoryByGroup(availableCategories, "COSTUME_CEREMONIE") ??
@@ -162,14 +192,6 @@ export function PublicHeader() {
             "costume",
             "ceremonie",
             "cérémonie",
-        ]);
-
-    const chaussuresCategory =
-        findFirstCategoryByGroup(availableCategories, "CHAUSSURES") ??
-        findFirstCategoryByKeyword(availableCategories, [
-            "chaussure",
-            "mocassin",
-            "basket",
         ]);
 
     const accessoiresCategory =
@@ -195,12 +217,12 @@ export function PublicHeader() {
     }, [availableCategories]);
 
     const mobileShoesLabel = useMemo(() => {
-        if (shoesCategories.length === 0) {
+        if (shoesMenuItems.length === 0) {
             return "Chaussures";
         }
 
-        return `Chaussures (${shoesCategories.length})`;
-    }, [shoesCategories.length]);
+        return `Chaussures (${shoesMenuItems.length})`;
+    }, [shoesMenuItems.length]);
 
     return (
         <>
@@ -248,7 +270,7 @@ export function PublicHeader() {
                                 />
                             </button>
 
-                            <div className="invisible absolute left-1/2 top-full z-50 w-[min(760px,calc(100vw-3rem))] -translate-x-1/2 translate-y-4 rounded-[2rem] border border-neutral-100 bg-white p-8 opacity-0 shadow-2xl transition-all duration-200 group-hover/collection:visible group-hover/collection:translate-y-0 group-hover/collection:opacity-100">
+                            <div className="invisible absolute left-1/2 top-full z-50 w-[min(720px,calc(100vw-3rem))] -translate-x-1/2 translate-y-4 rounded-[2rem] border border-neutral-100 bg-white p-8 opacity-0 shadow-2xl transition-all duration-200 group-hover/collection:visible group-hover/collection:translate-y-0 group-hover/collection:opacity-100">
                                 <p className="text-xs font-black uppercase tracking-[0.28em] text-neutral-400">
                                     Collection
                                 </p>
@@ -277,19 +299,11 @@ export function PublicHeader() {
                                                                     href={getCategoryHref(
                                                                         category,
                                                                     )}
-                                                                    className="group/category flex items-center justify-between gap-4 rounded-2xl px-3 py-3 transition hover:bg-neutral-50"
+                                                                    className="block rounded-2xl px-3 py-3 text-sm font-black uppercase tracking-[0.14em] text-neutral-700 transition hover:bg-neutral-50 hover:text-black"
                                                                 >
-                                                                    <span className="text-sm font-black uppercase tracking-[0.14em] text-neutral-700 transition group-hover/category:text-black">
-                                                                        {
-                                                                            category.name
-                                                                        }
-                                                                    </span>
-
-                                                                    <span className="shrink-0 rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] font-black text-neutral-500">
-                                                                        {
-                                                                            category.productsCount
-                                                                        }
-                                                                    </span>
+                                                                    {
+                                                                        category.name
+                                                                    }
                                                                 </Link>
                                                             ),
                                                         )}
@@ -329,50 +343,26 @@ export function PublicHeader() {
                                 />
                             </button>
 
-                            <div className="invisible absolute left-1/2 top-full z-50 w-[min(420px,calc(100vw-3rem))] -translate-x-1/2 translate-y-4 rounded-[2rem] border border-neutral-100 bg-white p-7 opacity-0 shadow-2xl transition-all duration-200 group-hover/chaussures:visible group-hover/chaussures:translate-y-0 group-hover/chaussures:opacity-100">
-                                <div className="flex items-center justify-between gap-4 border-b border-neutral-200 pb-4">
-                                    <div>
-                                        <p className="text-xs font-black uppercase tracking-[0.28em] text-neutral-400">
-                                            Chaussures
-                                        </p>
+                            <div className="invisible absolute left-1/2 top-full z-50 w-[min(430px,calc(100vw-3rem))] -translate-x-1/2 translate-y-4 rounded-[2rem] border border-neutral-100 bg-white p-7 opacity-0 shadow-2xl transition-all duration-200 group-hover/chaussures:visible group-hover/chaussures:translate-y-0 group-hover/chaussures:opacity-100">
+                                <p className="text-xs font-black uppercase tracking-[0.28em] text-neutral-400">
+                                    Chaussures
+                                </p>
 
-                                        <h3 className="mt-2 text-xl font-black uppercase tracking-tight text-black">
-                                            Types disponibles
-                                        </h3>
-                                    </div>
-
-                                    <Link
-                                        href={buildCategoryLink(
-                                            chaussuresCategory,
-                                            "chaussures",
-                                        )}
-                                        className="shrink-0 rounded-full bg-black px-4 py-2.5 text-[11px] font-black uppercase tracking-[0.16em] text-white transition hover:bg-neutral-800"
-                                    >
-                                        Tout voir
-                                    </Link>
-                                </div>
-
-                                {hasShoesCategories ? (
-                                    <div className="mt-4 space-y-1">
-                                        {shoesCategories.map((category) => (
+                                {hasShoesMenuItems ? (
+                                    <div className="mt-5 space-y-1">
+                                        {shoesMenuItems.map((item) => (
                                             <Link
-                                                key={category.id}
-                                                href={getCategoryHref(category)}
-                                                className="group/category flex items-center justify-between gap-4 rounded-2xl px-3 py-3 transition hover:bg-neutral-50"
+                                                key={item.id}
+                                                href={item.href}
+                                                className="block rounded-2xl px-3 py-3 text-sm font-black uppercase tracking-[0.14em] text-neutral-700 transition hover:bg-neutral-50 hover:text-black"
                                             >
-                                                <span className="text-sm font-black uppercase tracking-[0.14em] text-neutral-700 transition group-hover/category:text-black">
-                                                    {category.name}
-                                                </span>
-
-                                                <span className="shrink-0 rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] font-black text-neutral-500">
-                                                    {category.productsCount}
-                                                </span>
+                                                {item.label}
                                             </Link>
                                         ))}
                                     </div>
                                 ) : (
                                     <div className="mt-5 rounded-3xl bg-neutral-50 p-5 text-sm font-semibold normal-case tracking-normal text-neutral-500">
-                                        Aucune catégorie Chaussures disponible.
+                                        Aucun type de chaussure disponible.
                                     </div>
                                 )}
                             </div>
@@ -534,21 +524,11 @@ export function PublicHeader() {
                                                                                         false,
                                                                                     )
                                                                                 }
-                                                                                className="block rounded-2xl bg-white px-4 py-4"
+                                                                                className="block rounded-2xl bg-white px-4 py-4 text-sm font-black uppercase tracking-[0.16em]"
                                                                             >
-                                                                                <div className="flex items-center justify-between gap-3">
-                                                                                    <p className="text-sm font-black uppercase tracking-[0.16em]">
-                                                                                        {
-                                                                                            category.name
-                                                                                        }
-                                                                                    </p>
-
-                                                                                    <span className="shrink-0 rounded-full bg-neutral-100 px-3 py-1 text-xs font-black">
-                                                                                        {
-                                                                                            category.productsCount
-                                                                                        }
-                                                                                    </span>
-                                                                                </div>
+                                                                                {
+                                                                                    category.name
+                                                                                }
                                                                             </Link>
                                                                         ),
                                                                     )}
@@ -601,44 +581,28 @@ export function PublicHeader() {
 
                                     {isMobileShoesOpen && (
                                         <div className="max-h-80 overflow-y-auto border-t border-neutral-200 px-4 py-3">
-                                            {hasShoesCategories ? (
+                                            {hasShoesMenuItems ? (
                                                 <div className="space-y-2">
-                                                    {shoesCategories.map(
-                                                        (category) => (
+                                                    {shoesMenuItems.map(
+                                                        (item) => (
                                                             <Link
-                                                                key={
-                                                                    category.id
-                                                                }
-                                                                href={getCategoryHref(
-                                                                    category,
-                                                                )}
+                                                                key={item.id}
+                                                                href={item.href}
                                                                 onClick={() =>
                                                                     setIsMenuOpen(
                                                                         false,
                                                                     )
                                                                 }
-                                                                className="block rounded-2xl bg-white px-4 py-4"
+                                                                className="block rounded-2xl bg-white px-4 py-4 text-sm font-black uppercase tracking-[0.16em]"
                                                             >
-                                                                <div className="flex items-center justify-between gap-3">
-                                                                    <p className="text-sm font-black uppercase tracking-[0.16em]">
-                                                                        {
-                                                                            category.name
-                                                                        }
-                                                                    </p>
-
-                                                                    <span className="shrink-0 rounded-full bg-neutral-100 px-3 py-1 text-xs font-black">
-                                                                        {
-                                                                            category.productsCount
-                                                                        }
-                                                                    </span>
-                                                                </div>
+                                                                {item.label}
                                                             </Link>
                                                         ),
                                                     )}
                                                 </div>
                                             ) : (
                                                 <p className="rounded-2xl bg-white p-4 text-sm font-semibold text-neutral-500">
-                                                    Aucune catégorie Chaussures
+                                                    Aucun type de chaussure
                                                     disponible.
                                                 </p>
                                             )}
