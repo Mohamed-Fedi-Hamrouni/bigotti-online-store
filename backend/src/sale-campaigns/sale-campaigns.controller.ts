@@ -24,6 +24,11 @@ export class SaleCampaignsController {
     return this.saleCampaignsService.findPublicCampaigns();
   }
 
+  @Get('home')
+  findHomepageCampaigns() {
+    return this.saleCampaignsService.findHomepageCampaigns();
+  }
+
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN', 'SUPER_ADMIN')
   @Get('admin')

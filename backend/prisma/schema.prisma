@@ -25,6 +25,18 @@ enum DiscountType {
   FIXED_AMOUNT
 }
 
+enum SaleCampaignType {
+  REMISE_POURCENTAGE
+  REMISE_MONTANT_FIXE
+  ACHETEZ_X_OBTENEZ_Y
+  EVENEMENT_SIMPLE
+}
+
+enum CampaignMediaType {
+  IMAGE
+  VIDEO
+}
+
 enum PaymentMethod {
   CASH_ON_DELIVERY
   CARD
@@ -81,13 +93,15 @@ model Collection {
   isFeatured  Boolean   @default(false) @map("is_featured")
   startDate   DateTime? @map("start_date")
   endDate     DateTime? @map("end_date")
-  products    Product[]
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
-    promoIsActive  Boolean   @default(false) @map("promo_is_active")
+
+  promoIsActive  Boolean   @default(false) @map("promo_is_active")
   promoPercentage Decimal?  @map("promo_percentage") @db.Decimal(5, 2)
-  promoStartDate DateTime?  @map("promo_start_date")
-  promoEndDate   DateTime?  @map("promo_end_date")
+  promoStartDate DateTime? @map("promo_start_date")
+  promoEndDate   DateTime? @map("promo_end_date")
+
+  products  Product[]
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
 
   @@map("collections")
 }
@@ -100,10 +114,29 @@ model SaleCampaign {
   isActive    Boolean   @default(true) @map("is_active")
   startDate   DateTime? @map("start_date")
   endDate     DateTime? @map("end_date")
-  products    Product[]
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
 
+  type          SaleCampaignType @default(EVENEMENT_SIMPLE)
+  discountValue Decimal?         @map("discount_value") @db.Decimal(10, 3)
+  buyQuantity   Int?             @map("buy_quantity")
+  freeQuantity  Int?             @map("free_quantity")
+
+  displayOnHome Boolean @default(false) @map("display_on_home")
+  heroTitle     String? @map("hero_title")
+  heroSubtitle  String? @map("hero_subtitle")
+
+  mediaType CampaignMediaType? @map("media_type")
+  mediaUrl  String?            @map("media_url")
+  mediaPath String?            @map("media_path")
+
+  position Int @default(0)
+
+  products  Product[]
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([isActive])
+  @@index([displayOnHome])
+  @@index([type])
   @@map("sale_campaigns")
 }
 
