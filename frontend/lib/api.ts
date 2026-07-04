@@ -9,6 +9,7 @@ import type {
 } from "@/types/order";
 import type {
     Category,
+    CategoryType,
     Collection,
     CreateCategoryPayload,
     CreateCollectionPayload,
@@ -264,6 +265,27 @@ function calculateCollectionPromoPercentage(product: Product) {
     return Math.round(promoPercentage);
 }
 
+function normalizeCategoryType(
+    categoryType: CategoryType | null | undefined,
+): CategoryType | null {
+    if (!categoryType) {
+        return null;
+    }
+
+    return {
+        ...categoryType,
+        position: toNumber(categoryType.position),
+    };
+}
+
+function normalizeCategory(category: Category): Category {
+    return {
+        ...category,
+        menuGroup: category.menuGroup ?? "AUTRE",
+        types: category.types?.map((type) => normalizeCategoryType(type)!),
+    };
+}
+
 function normalizeCollection(collection: Collection | null) {
     if (!collection) {
         return null;
@@ -297,8 +319,11 @@ function normalizeSaleCampaign(
 function normalizeProduct(product: Product): Product {
     const normalizedProduct: Product = {
         ...product,
+        categoryTypeId: product.categoryTypeId ?? null,
         price: toNumber(product.price),
         discountValue: toNullableNumber(product.discountValue),
+        category: normalizeCategory(product.category),
+        categoryType: normalizeCategoryType(product.categoryType),
         collection: normalizeCollection(product.collection),
         saleCampaign: normalizeSaleCampaign(product.saleCampaign),
         images: product.images ?? [],
@@ -498,24 +523,28 @@ export async function updateProductStatus(
 }
 
 export async function getAdminCategories(token: string) {
-    return fetchJson<Category[]>("/categories/admin", {
+    const categories = await fetchJson<Category[]>("/categories/admin", {
         headers: {
             Authorization: `Bearer ${token}`,
         },
     });
+
+    return categories.map((category) => normalizeCategory(category));
 }
 
 export async function createCategory(
     token: string,
     payload: CreateCategoryPayload,
 ) {
-    return fetchJson<Category>("/categories", {
+    const category = await fetchJson<Category>("/categories", {
         method: "POST",
         headers: {
             Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(payload),
     });
+
+    return normalizeCategory(category);
 }
 
 export async function updateCategory(
@@ -523,13 +552,15 @@ export async function updateCategory(
     categoryId: string,
     payload: UpdateCategoryPayload,
 ) {
-    return fetchJson<Category>(`/categories/${categoryId}`, {
+    const category = await fetchJson<Category>(`/categories/${categoryId}`, {
         method: "PATCH",
         headers: {
             Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(payload),
     });
+
+    return normalizeCategory(category);
 }
 
 export async function updateCategoryStatus(
@@ -537,13 +568,18 @@ export async function updateCategoryStatus(
     categoryId: string,
     isActive: boolean,
 ) {
-    return fetchJson<Category>(`/categories/${categoryId}/status`, {
-        method: "PATCH",
-        headers: {
-            Authorization: `Bearer ${token}`,
+    const category = await fetchJson<Category>(
+        `/categories/${categoryId}/status`,
+        {
+            method: "PATCH",
+            headers: {
+                Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ isActive }),
         },
-        body: JSON.stringify({ isActive }),
-    });
+    );
+
+    return normalizeCategory(category);
 }
 
 export async function getAdminCollections(token: string) {

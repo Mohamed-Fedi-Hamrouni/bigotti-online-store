@@ -18,6 +18,26 @@ export type CategoryMenuGroup =
     | "ACCESSOIRES"
     | "AUTRE";
 
+export type CategoryType = {
+    id: string;
+    categoryId: string;
+    name: string;
+    slug: string;
+    description: string | null;
+    isActive: boolean;
+    position: number;
+    createdAt?: string;
+    updatedAt?: string;
+};
+
+export type CreateCategoryTypePayload = {
+    name: string;
+    slug?: string;
+    description?: string | null;
+    isActive?: boolean;
+    position?: number;
+};
+
 export type Category = {
     id: string;
     name: string;
@@ -25,6 +45,7 @@ export type Category = {
     description: string | null;
     isActive: boolean;
     menuGroup: CategoryMenuGroup;
+    types?: CategoryType[];
     createdAt?: string;
     updatedAt?: string;
 };
@@ -110,6 +131,7 @@ export type Product = {
     shortDescription: string | null;
     description: string | null;
     categoryId: string;
+    categoryTypeId: string | null;
     collectionId: string | null;
     saleCampaignId: string | null;
     price: number;
@@ -124,6 +146,7 @@ export type Product = {
     createdAt: string;
     updatedAt: string;
     category: Category;
+    categoryType: CategoryType | null;
     collection: Collection | null;
     saleCampaign: SaleCampaign | null;
     images: ProductImage[];
@@ -159,6 +182,7 @@ export type CreateProductPayload = {
     shortDescription?: string;
     description?: string;
     categoryId: string;
+    categoryTypeId?: string | null;
     collectionId?: string;
     saleCampaignId?: string;
     price: number;
@@ -181,6 +205,7 @@ export type UpdateProductPayload = {
     shortDescription?: string | null;
     description?: string | null;
     categoryId?: string;
+    categoryTypeId?: string | null;
     collectionId?: string | null;
     saleCampaignId?: string | null;
     price?: number;
@@ -201,6 +226,7 @@ export type CreateCategoryPayload = {
     slug?: string;
     description?: string;
     menuGroup?: CategoryMenuGroup;
+    types?: CreateCategoryTypePayload[];
     isActive?: boolean;
 };
 
@@ -209,6 +235,7 @@ export type UpdateCategoryPayload = {
     slug?: string;
     description?: string | null;
     menuGroup?: CategoryMenuGroup;
+    types?: CreateCategoryTypePayload[];
     isActive?: boolean;
 };
 
