@@ -10,21 +10,61 @@ import {
     updateCategory,
     updateCategoryStatus,
 } from "@/lib/api";
-import type { Category } from "@/types/product";
+import type { Category, CategoryMenuGroup } from "@/types/product";
 
 type CategoryStatusFilter = "ALL" | "ACTIVE" | "INACTIVE";
+type CategoryGroupFilter = "ALL" | CategoryMenuGroup;
 
 type CategoryFormState = {
     name: string;
     slug: string;
     description: string;
+    menuGroup: CategoryMenuGroup;
     isActive: boolean;
 };
+
+const categoryMenuGroupOptions: {
+    value: CategoryMenuGroup;
+    label: string;
+    description: string;
+}[] = [
+    {
+        value: "HAUT",
+        label: "Haut",
+        description: "Polos, chemises, pulls, vestes et pièces du haut.",
+    },
+    {
+        value: "BAS",
+        label: "Bas",
+        description: "Pantalons, jeans, shorts et pièces du bas.",
+    },
+    {
+        value: "COSTUME_CEREMONIE",
+        label: "Costume & cérémonie",
+        description: "Costumes, ensembles habillés et articles de cérémonie.",
+    },
+    {
+        value: "CHAUSSURES",
+        label: "Chaussures",
+        description: "Mocassins, baskets et chaussures habillées.",
+    },
+    {
+        value: "ACCESSOIRES",
+        label: "Accessoires",
+        description: "Ceintures, lunettes, sacs et accessoires.",
+    },
+    {
+        value: "AUTRE",
+        label: "Autre",
+        description: "Catégories non classées dans le menu principal.",
+    },
+];
 
 const emptyForm: CategoryFormState = {
     name: "",
     slug: "",
     description: "",
+    menuGroup: "AUTRE",
     isActive: true,
 };
 
@@ -36,6 +76,48 @@ function getAdminToken() {
     return window.localStorage.getItem("bigotti-admin-token");
 }
 
+function getMenuGroupLabel(menuGroup: CategoryMenuGroup | null | undefined) {
+    return (
+        categoryMenuGroupOptions.find((option) => option.value === menuGroup)
+            ?.label ?? "Autre"
+    );
+}
+
+function getMenuGroupDescription(
+    menuGroup: CategoryMenuGroup | null | undefined,
+) {
+    return (
+        categoryMenuGroupOptions.find((option) => option.value === menuGroup)
+            ?.description ?? "Catégorie non classée."
+    );
+}
+
+function getMenuGroupBadgeClass(
+    menuGroup: CategoryMenuGroup | null | undefined,
+) {
+    if (menuGroup === "HAUT") {
+        return "rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700";
+    }
+
+    if (menuGroup === "BAS") {
+        return "rounded-full bg-purple-50 px-3 py-1 text-xs font-bold text-purple-700";
+    }
+
+    if (menuGroup === "COSTUME_CEREMONIE") {
+        return "rounded-full bg-yellow-50 px-3 py-1 text-xs font-bold text-yellow-700";
+    }
+
+    if (menuGroup === "CHAUSSURES") {
+        return "rounded-full bg-neutral-950 px-3 py-1 text-xs font-bold text-white";
+    }
+
+    if (menuGroup === "ACCESSOIRES") {
+        return "rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700";
+    }
+
+    return "rounded-full bg-neutral-100 px-3 py-1 text-xs font-bold text-neutral-600";
+}
+
 export default function AdminCategoriesPage() {
     const router = useRouter();
 
@@ -45,6 +127,7 @@ export default function AdminCategoriesPage() {
     const [searchQuery, setSearchQuery] = useState("");
     const [statusFilter, setStatusFilter] =
         useState<CategoryStatusFilter>("ALL");
+    const [groupFilter, setGroupFilter] = useState<CategoryGroupFilter>("ALL");
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
@@ -75,28 +158,47 @@ export default function AdminCategoriesPage() {
         const normalizedSearch = searchQuery.trim().toLowerCase();
 
         return categories.filter((category) => {
+            const menuGroup = category.menuGroup ?? "AUTRE";
+            const menuGroupLabel = getMenuGroupLabel(menuGroup);
+
             const matchesSearch =
                 !normalizedSearch ||
                 category.name.toLowerCase().includes(normalizedSearch) ||
                 category.slug.toLowerCase().includes(normalizedSearch) ||
                 String(category.description ?? "")
                     .toLowerCase()
-                    .includes(normalizedSearch);
+                    .includes(normalizedSearch) ||
+                menuGroupLabel.toLowerCase().includes(normalizedSearch);
 
             const matchesStatus =
                 statusFilter === "ALL" ||
                 (statusFilter === "ACTIVE" && category.isActive) ||
                 (statusFilter === "INACTIVE" && !category.isActive);
 
-            return matchesSearch && matchesStatus;
+            const matchesGroup =
+                groupFilter === "ALL" || menuGroup === groupFilter;
+
+            return matchesSearch && matchesStatus && matchesGroup;
         });
-    }, [categories, searchQuery, statusFilter]);
+    }, [categories, searchQuery, statusFilter, groupFilter]);
 
     const activeCategories = categories.filter(
         (category) => category.isActive,
     ).length;
 
     const inactiveCategories = categories.length - activeCategories;
+
+    const collectionCategories = categories.filter(
+        (category) =>
+            category.menuGroup === "HAUT" || category.menuGroup === "BAS",
+    ).length;
+
+    const principalMenuCategories = categories.filter(
+        (category) =>
+            category.menuGroup === "COSTUME_CEREMONIE" ||
+            category.menuGroup === "CHAUSSURES" ||
+            category.menuGroup === "ACCESSOIRES",
+    ).length;
 
     function updateFormField<K extends keyof CategoryFormState>(
         field: K,
@@ -121,6 +223,7 @@ export default function AdminCategoriesPage() {
             name: category.name,
             slug: category.slug,
             description: category.description ?? "",
+            menuGroup: category.menuGroup ?? "AUTRE",
             isActive: category.isActive,
         });
         setError("");
@@ -151,6 +254,7 @@ export default function AdminCategoriesPage() {
             name: form.name.trim(),
             slug: form.slug.trim() || undefined,
             description: form.description.trim() || null,
+            menuGroup: form.menuGroup,
             isActive: form.isActive,
         };
 
@@ -263,7 +367,8 @@ export default function AdminCategoriesPage() {
                         <h1 className="mt-2 text-4xl font-black">Catégories</h1>
 
                         <p className="mt-2 text-neutral-600">
-                            Gérez les catégories sans suppression définitive.
+                            Gérez les catégories et leur position dans le menu
+                            public.
                         </p>
                     </div>
 
@@ -295,7 +400,7 @@ export default function AdminCategoriesPage() {
 
                     <form onSubmit={handleSubmit} className="mt-6 space-y-5">
                         <div>
-                            <label className="text-sm font-bold">Nom</label>
+                            <label className="text-sm font-bold">Nom *</label>
 
                             <input
                                 value={form.name}
@@ -322,6 +427,43 @@ export default function AdminCategoriesPage() {
 
                         <div>
                             <label className="text-sm font-bold">
+                                Groupe du menu *
+                            </label>
+
+                            <select
+                                value={form.menuGroup}
+                                onChange={(event) =>
+                                    updateFormField(
+                                        "menuGroup",
+                                        event.target.value as CategoryMenuGroup,
+                                    )
+                                }
+                                className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 outline-none focus:border-black"
+                            >
+                                {categoryMenuGroupOptions.map((option) => (
+                                    <option
+                                        key={option.value}
+                                        value={option.value}
+                                    >
+                                        {option.label}
+                                    </option>
+                                ))}
+                            </select>
+
+                            <p className="mt-2 rounded-2xl bg-neutral-50 p-3 text-xs font-semibold text-neutral-600">
+                                {getMenuGroupDescription(form.menuGroup)}
+                            </p>
+
+                            <p className="mt-2 text-xs text-neutral-500">
+                                Dans le menu public, la zone Collection affiche
+                                seulement Haut et Bas. Costume & cérémonie,
+                                Chaussures et Accessoires ont leurs propres
+                                entrées dans la barre de navigation.
+                            </p>
+                        </div>
+
+                        <div>
+                            <label className="text-sm font-bold">
                                 Description
                             </label>
 
@@ -335,6 +477,7 @@ export default function AdminCategoriesPage() {
                                     )
                                 }
                                 className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
+                                placeholder="Ex: Chemises élégantes pour homme."
                             />
                         </div>
 
@@ -390,7 +533,7 @@ export default function AdminCategoriesPage() {
                 </aside>
 
                 <div className="space-y-6">
-                    <div className="grid gap-5 md:grid-cols-3">
+                    <div className="grid gap-5 md:grid-cols-4">
                         <div className="rounded-[2rem] bg-white p-6 shadow-sm">
                             <p className="text-sm text-neutral-500">
                                 Total catégories
@@ -411,17 +554,27 @@ export default function AdminCategoriesPage() {
 
                         <div className="rounded-[2rem] bg-white p-6 shadow-sm">
                             <p className="text-sm text-neutral-500">
-                                Désactivées
+                                Collection
                             </p>
 
                             <p className="mt-2 text-3xl font-black">
-                                {inactiveCategories}
+                                {collectionCategories}
+                            </p>
+                        </div>
+
+                        <div className="rounded-[2rem] bg-white p-6 shadow-sm">
+                            <p className="text-sm text-neutral-500">
+                                Menu principal
+                            </p>
+
+                            <p className="mt-2 text-3xl font-black">
+                                {principalMenuCategories}
                             </p>
                         </div>
                     </div>
 
                     <div className="rounded-[2rem] bg-white p-6 shadow-sm">
-                        <div className="grid gap-4 md:grid-cols-[1fr_180px]">
+                        <div className="grid gap-4 md:grid-cols-[1fr_180px_220px]">
                             <div className="relative">
                                 <Search
                                     size={18}
@@ -433,7 +586,7 @@ export default function AdminCategoriesPage() {
                                     onChange={(event) =>
                                         setSearchQuery(event.target.value)
                                     }
-                                    placeholder="Rechercher nom, slug, description..."
+                                    placeholder="Rechercher nom, slug, description, groupe..."
                                     className="w-full rounded-full border border-neutral-300 py-3 pl-11 pr-4 outline-none focus:border-black"
                                 />
                             </div>
@@ -451,6 +604,27 @@ export default function AdminCategoriesPage() {
                                 <option value="ALL">Toutes</option>
                                 <option value="ACTIVE">Actives</option>
                                 <option value="INACTIVE">Désactivées</option>
+                            </select>
+
+                            <select
+                                value={groupFilter}
+                                onChange={(event) =>
+                                    setGroupFilter(
+                                        event.target
+                                            .value as CategoryGroupFilter,
+                                    )
+                                }
+                                className="rounded-full border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-black"
+                            >
+                                <option value="ALL">Tous les groupes</option>
+                                {categoryMenuGroupOptions.map((option) => (
+                                    <option
+                                        key={option.value}
+                                        value={option.value}
+                                    >
+                                        {option.label}
+                                    </option>
+                                ))}
                             </select>
                         </div>
 
@@ -472,6 +646,7 @@ export default function AdminCategoriesPage() {
 
                         <div className="mt-6 space-y-4">
                             {filteredCategories.map((category) => {
+                                const menuGroup = category.menuGroup ?? "AUTRE";
                                 const isInactive = !category.isActive;
                                 const isUpdating =
                                     actionLoadingId === category.id;
@@ -502,10 +677,26 @@ export default function AdminCategoriesPage() {
                                                         ? "Active"
                                                         : "Désactivée"}
                                                 </span>
+
+                                                <span
+                                                    className={getMenuGroupBadgeClass(
+                                                        menuGroup,
+                                                    )}
+                                                >
+                                                    {getMenuGroupLabel(
+                                                        menuGroup,
+                                                    )}
+                                                </span>
                                             </div>
 
                                             <p className="mt-2 text-sm text-neutral-500">
                                                 /{category.slug}
+                                            </p>
+
+                                            <p className="mt-2 text-sm font-semibold text-neutral-500">
+                                                {getMenuGroupDescription(
+                                                    menuGroup,
+                                                )}
                                             </p>
 
                                             <p className="mt-2 text-neutral-600">

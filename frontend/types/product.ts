@@ -10,12 +10,21 @@ export type SaleCampaignType =
 
 export type CampaignMediaType = "IMAGE" | "VIDEO";
 
+export type CategoryMenuGroup =
+    | "HAUT"
+    | "BAS"
+    | "COSTUME_CEREMONIE"
+    | "CHAUSSURES"
+    | "ACCESSOIRES"
+    | "AUTRE";
+
 export type Category = {
     id: string;
     name: string;
     slug: string;
     description: string | null;
     isActive: boolean;
+    menuGroup: CategoryMenuGroup;
     createdAt?: string;
     updatedAt?: string;
 };
@@ -191,6 +200,7 @@ export type CreateCategoryPayload = {
     name: string;
     slug?: string;
     description?: string;
+    menuGroup?: CategoryMenuGroup;
     isActive?: boolean;
 };
 
@@ -198,6 +208,7 @@ export type UpdateCategoryPayload = {
     name?: string;
     slug?: string;
     description?: string | null;
+    menuGroup?: CategoryMenuGroup;
     isActive?: boolean;
 };
 

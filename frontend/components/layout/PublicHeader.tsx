@@ -4,7 +4,6 @@ import Link from "next/link";
 import {
     ChevronDown,
     Heart,
-    MapPin,
     Menu,
     Search,
     ShoppingBag,
@@ -17,80 +16,32 @@ import { useCustomerAuth } from "@/components/customer-auth/CustomerAuthProvider
 import { useFavorites } from "@/components/favorites/FavoritesProvider";
 import { SearchOverlay } from "@/components/search/SearchOverlay";
 import { getProducts } from "@/lib/api";
-import type { Category, Product } from "@/types/product";
+import type { Category, CategoryMenuGroup } from "@/types/product";
 
 type AvailableCategory = Category & {
     productsCount: number;
 };
 
-type MenuProductPreview = {
-    id: string;
-    name: string;
-    slug: string;
-    imageUrl: string;
-    categoryName: string;
-};
-
-type StoreLocation = {
-    city: "Tunis" | "Nabeul" | "Sfax";
-    name: string;
-    address: string;
-    lat: number;
-    lng: number;
-};
-
-const storeLocations: StoreLocation[] = [
+const collectionGroups: {
+    value: CategoryMenuGroup;
+    label: string;
+}[] = [
     {
-        city: "Tunis",
-        name: "Bigotti Soukra Ariana",
-        address: "Soukra Ariana, avant Monoprix, à droite",
-        lat: 36.8787,
-        lng: 10.2496,
+        value: "HAUT",
+        label: "Haut",
     },
     {
-        city: "Tunis",
-        name: "Bigotti Lafayette",
-        address: "Lafayette, devant Champion",
-        lat: 36.8145,
-        lng: 10.1818,
-    },
-    {
-        city: "Tunis",
-        name: "Bigotti Lac 2",
-        address: "Lac 2, Jinan Al Bouhayra, à côté de Tunisia Mall",
-        lat: 36.8483,
-        lng: 10.2778,
-    },
-    {
-        city: "Nabeul",
-        name: "Bigotti Nabeul",
-        address:
-            "Avenue Habib Thameur, à côté de l’Institut Supérieur des Langues",
-        lat: 36.4561,
-        lng: 10.7376,
-    },
-    {
-        city: "Sfax",
-        name: "Bigotti Sfax",
-        address: "Nasria, Avenue Med Chaabouni, Immeuble El Habib",
-        lat: 34.7526,
-        lng: 10.7397,
+        value: "BAS",
+        label: "Bas",
     },
 ];
 
-function buildOpenStreetMapEmbedUrl(location: StoreLocation) {
-    const delta = location.city === "Tunis" ? 0.055 : 0.075;
-
-    const left = location.lng - delta;
-    const bottom = location.lat - delta * 0.65;
-    const right = location.lng + delta;
-    const top = location.lat + delta * 0.65;
-
-    return `https://www.openstreetmap.org/export/embed.html?bbox=${left}%2C${bottom}%2C${right}%2C${top}&layer=mapnik&marker=${location.lat}%2C${location.lng}`;
-}
-
-function buildOpenStreetMapExternalUrl(location: StoreLocation) {
-    return `https://www.openstreetmap.org/?mlat=${location.lat}&mlon=${location.lng}#map=15/${location.lat}/${location.lng}`;
+function normalizeText(value: string | null | undefined) {
+    return (value ?? "")
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
 }
 
 function getCategoryHref(category: AvailableCategory) {
@@ -101,11 +52,46 @@ function getSearchHref(search: string) {
     return `/boutique?search=${encodeURIComponent(search)}`;
 }
 
-function getMainImage(product: Product) {
-    const mainImage =
-        product.images.find((image) => image.isMain) ?? product.images[0];
+function groupCollectionCategories(categories: AvailableCategory[]) {
+    return collectionGroups
+        .map((group) => ({
+            ...group,
+            categories: categories.filter(
+                (category) => category.menuGroup === group.value,
+            ),
+        }))
+        .filter((group) => group.categories.length > 0);
+}
 
-    return mainImage?.url ?? "";
+function findFirstCategoryByGroup(
+    categories: AvailableCategory[],
+    group: CategoryMenuGroup,
+) {
+    return categories.find((category) => category.menuGroup === group) ?? null;
+}
+
+function findFirstCategoryByKeyword(
+    categories: AvailableCategory[],
+    keywords: string[],
+) {
+    return (
+        categories.find((category) => {
+            const normalizedValue = normalizeText(
+                `${category.name} ${category.slug}`,
+            );
+
+            return keywords.some((keyword) =>
+                normalizedValue.includes(normalizeText(keyword)),
+            );
+        }) ?? null
+    );
+}
+
+function buildCategoryLink(
+    category: AvailableCategory | null,
+    fallbackSearch: string,
+) {
+    return category ? getCategoryHref(category) : getSearchHref(fallbackSearch);
 }
 
 export function PublicHeader() {
@@ -115,15 +101,11 @@ export function PublicHeader() {
 
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isSearchOpen, setIsSearchOpen] = useState(false);
-    const [isCollectionOpen, setIsCollectionOpen] = useState(false);
-    const [isLocationOpen, setIsLocationOpen] = useState(false);
-    const [selectedLocation, setSelectedLocation] = useState<StoreLocation>(
-        storeLocations[0],
-    );
+    const [isMobileCollectionOpen, setIsMobileCollectionOpen] = useState(false);
+    const [isMobileShoesOpen, setIsMobileShoesOpen] = useState(false);
     const [availableCategories, setAvailableCategories] = useState<
         AvailableCategory[]
     >([]);
-    const [menuProducts, setMenuProducts] = useState<MenuProductPreview[]>([]);
 
     useEffect(() => {
         getProducts()
@@ -144,6 +126,7 @@ export function PublicHeader() {
                     } else {
                         categoriesMap.set(product.category.id, {
                             ...product.category,
+                            menuGroup: product.category.menuGroup ?? "AUTRE",
                             productsCount: 1,
                         });
                     }
@@ -153,74 +136,71 @@ export function PublicHeader() {
                     (a, b) => a.name.localeCompare(b.name),
                 );
 
-                const previews = products
-                    .filter((product) => getMainImage(product))
-                    .slice(0, 2)
-                    .map((product) => ({
-                        id: product.id,
-                        name: product.name,
-                        slug: product.slug,
-                        imageUrl: getMainImage(product),
-                        categoryName: product.category.name,
-                    }));
-
                 setAvailableCategories(categories);
-                setMenuProducts(previews);
             })
             .catch(() => {
                 setAvailableCategories([]);
-                setMenuProducts([]);
             });
     }, []);
 
-    const groupedStoreLocations = useMemo(() => {
-        return storeLocations.reduce<Record<string, StoreLocation[]>>(
-            (groups, location) => {
-                if (!groups[location.city]) {
-                    groups[location.city] = [];
-                }
-
-                groups[location.city].push(location);
-                return groups;
-            },
-            {},
-        );
-    }, []);
-
-    const categoryColumns = useMemo(() => {
-        const middle = Math.ceil(availableCategories.length / 2);
-
-        return [
-            availableCategories.slice(0, middle),
-            availableCategories.slice(middle),
-        ];
+    const groupedCollectionCategories = useMemo(() => {
+        return groupCollectionCategories(availableCategories);
     }, [availableCategories]);
 
-    const hasAvailableCategories = availableCategories.length > 0;
+    const shoesCategories = useMemo(() => {
+        return availableCategories
+            .filter((category) => category.menuGroup === "CHAUSSURES")
+            .sort((a, b) => a.name.localeCompare(b.name));
+    }, [availableCategories]);
 
-    const costumesHref =
-        availableCategories.find((category) =>
-            category.slug.toLowerCase().includes("costume"),
-        ) ||
-        availableCategories.find((category) =>
-            category.name.toLowerCase().includes("costume"),
-        );
+    const hasCollectionCategories = groupedCollectionCategories.length > 0;
+    const hasShoesCategories = shoesCategories.length > 0;
 
-    const chaussuresHref =
-        availableCategories.find((category) =>
-            category.slug.toLowerCase().includes("chaussure"),
-        ) ||
-        availableCategories.find((category) =>
-            category.name.toLowerCase().includes("chaussure"),
-        );
+    const costumeCategory =
+        findFirstCategoryByGroup(availableCategories, "COSTUME_CEREMONIE") ??
+        findFirstCategoryByKeyword(availableCategories, [
+            "costume",
+            "ceremonie",
+            "cérémonie",
+        ]);
+
+    const chaussuresCategory =
+        findFirstCategoryByGroup(availableCategories, "CHAUSSURES") ??
+        findFirstCategoryByKeyword(availableCategories, [
+            "chaussure",
+            "mocassin",
+            "basket",
+        ]);
+
+    const accessoiresCategory =
+        findFirstCategoryByGroup(availableCategories, "ACCESSOIRES") ??
+        findFirstCategoryByKeyword(availableCategories, [
+            "accessoire",
+            "ceinture",
+            "lunette",
+            "sac",
+        ]);
 
     const mobileCollectionLabel = useMemo(() => {
-        if (availableCategories.length === 0) {
+        const count = availableCategories.filter(
+            (category) =>
+                category.menuGroup === "HAUT" || category.menuGroup === "BAS",
+        ).length;
+
+        if (count === 0) {
             return "Collection";
         }
 
-        return `Collection (${availableCategories.length})`;
-    }, [availableCategories.length]);
+        return `Collection (${count})`;
+    }, [availableCategories]);
+
+    const mobileShoesLabel = useMemo(() => {
+        if (shoesCategories.length === 0) {
+            return "Chaussures";
+        }
+
+        return `Chaussures (${shoesCategories.length})`;
+    }, [shoesCategories.length]);
 
     return (
         <>
@@ -229,7 +209,7 @@ export function PublicHeader() {
                     Livraison à domicile — Paiement à la livraison disponible
                 </div>
 
-                <div className="mx-auto flex max-w-7xl items-center justify-between gap-6 px-6 py-5">
+                <div className="mx-auto flex max-w-7xl items-center justify-between gap-6 px-6 py-4">
                     <button
                         type="button"
                         onClick={() => setIsMenuOpen(true)}
@@ -241,22 +221,18 @@ export function PublicHeader() {
 
                     <Link
                         href="/"
-                        className="flex shrink-0 items-center"
+                        className="flex shrink-0 items-center text-xl font-black uppercase tracking-[0.22em]"
                         aria-label="Bigotti Collection"
                     >
-                        <img
-                            src="/images/bigotti-logo.jpg"
-                            alt="Bigotti Collection"
-                            className="h-20 w-auto object-contain md:h-24 lg:h-28"
-                        />
+                        Bigotti
                     </Link>
 
-                    <nav className="hidden flex-1 items-center justify-center gap-8 text-sm font-black uppercase tracking-[0.18em] text-neutral-700 lg:flex">
+                    <nav className="hidden flex-1 items-center justify-center gap-7 text-sm font-black uppercase tracking-[0.16em] text-neutral-700 lg:flex">
                         <Link
-                            href="/#nouveautes"
+                            href="/#promotions"
                             className="relative py-3 transition after:absolute after:bottom-1 after:left-0 after:h-px after:w-0 after:bg-black after:transition-all hover:text-black hover:after:w-full"
                         >
-                            Nouveautés
+                            Promotions
                         </Link>
 
                         <div className="group/collection relative">
@@ -272,201 +248,148 @@ export function PublicHeader() {
                                 />
                             </button>
 
-                            <div className="invisible absolute left-1/2 top-full z-50 w-[min(1120px,calc(100vw-3rem))] -translate-x-1/2 translate-y-4 rounded-[2rem] border border-neutral-100 bg-white p-8 opacity-0 shadow-2xl transition-all duration-200 group-hover/collection:visible group-hover/collection:translate-y-0 group-hover/collection:opacity-100">
-                                <div className="grid gap-8 lg:grid-cols-[1.1fr_1.1fr_1.2fr]">
-                                    <div>
-                                        <p className="text-xs font-black uppercase tracking-[0.28em] text-neutral-400">
-                                            Promotions
-                                        </p>
+                            <div className="invisible absolute left-1/2 top-full z-50 w-[min(760px,calc(100vw-3rem))] -translate-x-1/2 translate-y-4 rounded-[2rem] border border-neutral-100 bg-white p-8 opacity-0 shadow-2xl transition-all duration-200 group-hover/collection:visible group-hover/collection:translate-y-0 group-hover/collection:opacity-100">
+                                <p className="text-xs font-black uppercase tracking-[0.28em] text-neutral-400">
+                                    Collection
+                                </p>
 
-                                        <Link
-                                            href="/boutique?promo=true"
-                                            className="mt-5 block rounded-3xl bg-neutral-950 p-6 text-white transition hover:bg-black"
-                                        >
-                                            <p className="text-2xl font-black uppercase">
-                                                Offres du moment
-                                            </p>
+                                {hasCollectionCategories ? (
+                                    <div className="mt-6 grid gap-10 md:grid-cols-2">
+                                        {groupedCollectionCategories.map(
+                                            (group) => (
+                                                <div
+                                                    key={group.value}
+                                                    className="min-w-0"
+                                                >
+                                                    <div className="mb-4 border-b border-neutral-200 pb-3">
+                                                        <p className="text-base font-black uppercase tracking-[0.22em] text-black">
+                                                            {group.label}
+                                                        </p>
+                                                    </div>
 
-                                            <p className="mt-3 text-sm font-medium normal-case tracking-normal text-neutral-300">
-                                                Découvrez les articles en
-                                                promotion disponibles dans la
-                                                boutique.
-                                            </p>
-                                        </Link>
-
-                                        <Link
-                                            href="/#nouveautes"
-                                            className="mt-4 block rounded-3xl border border-neutral-200 p-5 transition hover:border-black"
-                                        >
-                                            <p className="text-sm font-black uppercase tracking-[0.18em] text-black">
-                                                Nouveautés
-                                            </p>
-
-                                            <p className="mt-2 text-sm font-medium normal-case tracking-normal text-neutral-500">
-                                                Les dernières pièces ajoutées à
-                                                la collection.
-                                            </p>
-                                        </Link>
-                                    </div>
-
-                                    <div>
-                                        <p className="text-xs font-black uppercase tracking-[0.28em] text-neutral-400">
-                                            Collection
-                                        </p>
-
-                                        {hasAvailableCategories ? (
-                                            <div className="mt-5 grid max-h-[360px] gap-6 overflow-y-auto pr-3 md:grid-cols-2">
-                                                {categoryColumns.map(
-                                                    (column, columnIndex) => (
-                                                        <div
-                                                            key={columnIndex}
-                                                            className="space-y-4"
-                                                        >
-                                                            {column.map(
-                                                                (category) => (
-                                                                    <Link
-                                                                        key={
-                                                                            category.id
+                                                    <div className="space-y-1">
+                                                        {group.categories.map(
+                                                            (category) => (
+                                                                <Link
+                                                                    key={
+                                                                        category.id
+                                                                    }
+                                                                    href={getCategoryHref(
+                                                                        category,
+                                                                    )}
+                                                                    className="group/category flex items-center justify-between gap-4 rounded-2xl px-3 py-3 transition hover:bg-neutral-50"
+                                                                >
+                                                                    <span className="text-sm font-black uppercase tracking-[0.14em] text-neutral-700 transition group-hover/category:text-black">
+                                                                        {
+                                                                            category.name
                                                                         }
-                                                                        href={getCategoryHref(
-                                                                            category,
-                                                                        )}
-                                                                        className="block rounded-2xl p-3 transition hover:bg-neutral-50"
-                                                                    >
-                                                                        <div className="flex items-center justify-between gap-4">
-                                                                            <p className="text-sm font-black uppercase tracking-[0.16em] text-black">
-                                                                                {
-                                                                                    category.name
-                                                                                }
-                                                                            </p>
+                                                                    </span>
 
-                                                                            <span className="shrink-0 text-xs font-black text-neutral-400">
-                                                                                {
-                                                                                    category.productsCount
-                                                                                }
-                                                                            </span>
-                                                                        </div>
-
-                                                                        {category.description && (
-                                                                            <p className="mt-2 line-clamp-2 text-sm font-medium normal-case tracking-normal text-neutral-500">
-                                                                                {
-                                                                                    category.description
-                                                                                }
-                                                                            </p>
-                                                                        )}
-                                                                    </Link>
-                                                                ),
-                                                            )}
-                                                        </div>
-                                                    ),
-                                                )}
-                                            </div>
-                                        ) : (
-                                            <div className="mt-5 rounded-3xl bg-neutral-50 p-5 text-sm font-semibold normal-case tracking-normal text-neutral-500">
-                                                Aucune catégorie disponible pour
-                                                le moment.
-                                            </div>
-                                        )}
-
-                                        <Link
-                                            href="/boutique"
-                                            className="mt-6 block rounded-full bg-black px-5 py-3 text-center text-xs font-black uppercase tracking-[0.18em] text-white transition hover:bg-neutral-800"
-                                        >
-                                            Voir toute la boutique
-                                        </Link>
-                                    </div>
-
-                                    <div>
-                                        <p className="text-xs font-black uppercase tracking-[0.28em] text-neutral-400">
-                                            Sélection
-                                        </p>
-
-                                        <div className="mt-5 grid gap-4 md:grid-cols-2">
-                                            {menuProducts.length > 0 ? (
-                                                menuProducts.map((product) => (
-                                                    <Link
-                                                        key={product.id}
-                                                        href={`/produit/${product.slug}`}
-                                                        className="group/product block overflow-hidden rounded-3xl bg-neutral-50"
-                                                    >
-                                                        <div className="aspect-[3/4] overflow-hidden bg-neutral-100">
-                                                            <img
-                                                                src={
-                                                                    product.imageUrl
-                                                                }
-                                                                alt={
-                                                                    product.name
-                                                                }
-                                                                className="h-full w-full object-cover transition duration-500 group-hover/product:scale-105"
-                                                            />
-                                                        </div>
-
-                                                        <div className="p-4">
-                                                            <p className="text-xs font-black uppercase tracking-[0.18em] text-neutral-400">
-                                                                {
-                                                                    product.categoryName
-                                                                }
-                                                            </p>
-
-                                                            <p className="mt-2 text-sm font-black normal-case tracking-normal text-black">
-                                                                {product.name}
-                                                            </p>
-                                                        </div>
-                                                    </Link>
-                                                ))
-                                            ) : (
-                                                <div className="col-span-2 rounded-3xl bg-neutral-50 p-6 text-sm font-semibold normal-case tracking-normal text-neutral-500">
-                                                    Ajoutez des produits avec
-                                                    images pour afficher une
-                                                    sélection ici.
+                                                                    <span className="shrink-0 rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] font-black text-neutral-500">
+                                                                        {
+                                                                            category.productsCount
+                                                                        }
+                                                                    </span>
+                                                                </Link>
+                                                            ),
+                                                        )}
+                                                    </div>
                                                 </div>
-                                            )}
-                                        </div>
+                                            ),
+                                        )}
                                     </div>
-                                </div>
+                                ) : (
+                                    <div className="mt-6 rounded-3xl bg-neutral-50 p-5 text-sm font-semibold normal-case tracking-normal text-neutral-500">
+                                        Aucune catégorie Haut/Bas disponible.
+                                    </div>
+                                )}
                             </div>
                         </div>
 
                         <Link
-                            href={
-                                costumesHref
-                                    ? getCategoryHref(costumesHref)
-                                    : getSearchHref("costume")
-                            }
+                            href={buildCategoryLink(
+                                costumeCategory,
+                                "costume ceremonie",
+                            )}
                             className="relative py-3 transition after:absolute after:bottom-1 after:left-0 after:h-px after:w-0 after:bg-black after:transition-all hover:text-black hover:after:w-full"
                         >
-                            Costumes
+                            Costume & cérémonie
                         </Link>
 
-                        <Link
-                            href={
-                                chaussuresHref
-                                    ? getCategoryHref(chaussuresHref)
-                                    : getSearchHref("chaussure")
-                            }
-                            className="relative py-3 transition after:absolute after:bottom-1 after:left-0 after:h-px after:w-0 after:bg-black after:transition-all hover:text-black hover:after:w-full"
-                        >
-                            Chaussures
-                        </Link>
+                        <div className="group/chaussures relative">
+                            <button
+                                type="button"
+                                className="flex items-center gap-2 py-3 transition hover:text-black"
+                                aria-label="Ouvrir les chaussures"
+                            >
+                                Chaussures
+                                <ChevronDown
+                                    size={16}
+                                    className="transition group-hover/chaussures:rotate-180"
+                                />
+                            </button>
+
+                            <div className="invisible absolute left-1/2 top-full z-50 w-[min(420px,calc(100vw-3rem))] -translate-x-1/2 translate-y-4 rounded-[2rem] border border-neutral-100 bg-white p-7 opacity-0 shadow-2xl transition-all duration-200 group-hover/chaussures:visible group-hover/chaussures:translate-y-0 group-hover/chaussures:opacity-100">
+                                <div className="flex items-center justify-between gap-4 border-b border-neutral-200 pb-4">
+                                    <div>
+                                        <p className="text-xs font-black uppercase tracking-[0.28em] text-neutral-400">
+                                            Chaussures
+                                        </p>
+
+                                        <h3 className="mt-2 text-xl font-black uppercase tracking-tight text-black">
+                                            Types disponibles
+                                        </h3>
+                                    </div>
+
+                                    <Link
+                                        href={buildCategoryLink(
+                                            chaussuresCategory,
+                                            "chaussures",
+                                        )}
+                                        className="shrink-0 rounded-full bg-black px-4 py-2.5 text-[11px] font-black uppercase tracking-[0.16em] text-white transition hover:bg-neutral-800"
+                                    >
+                                        Tout voir
+                                    </Link>
+                                </div>
+
+                                {hasShoesCategories ? (
+                                    <div className="mt-4 space-y-1">
+                                        {shoesCategories.map((category) => (
+                                            <Link
+                                                key={category.id}
+                                                href={getCategoryHref(category)}
+                                                className="group/category flex items-center justify-between gap-4 rounded-2xl px-3 py-3 transition hover:bg-neutral-50"
+                                            >
+                                                <span className="text-sm font-black uppercase tracking-[0.14em] text-neutral-700 transition group-hover/category:text-black">
+                                                    {category.name}
+                                                </span>
+
+                                                <span className="shrink-0 rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] font-black text-neutral-500">
+                                                    {category.productsCount}
+                                                </span>
+                                            </Link>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="mt-5 rounded-3xl bg-neutral-50 p-5 text-sm font-semibold normal-case tracking-normal text-neutral-500">
+                                        Aucune catégorie Chaussures disponible.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
 
                         <Link
-                            href="/suivi-commande"
+                            href={buildCategoryLink(
+                                accessoiresCategory,
+                                "accessoires",
+                            )}
                             className="relative py-3 transition after:absolute after:bottom-1 after:left-0 after:h-px after:w-0 after:bg-black after:transition-all hover:text-black hover:after:w-full"
                         >
-                            Suivi
+                            Accessoires
                         </Link>
                     </nav>
 
                     <div className="flex shrink-0 items-center gap-2">
-                        <button
-                            type="button"
-                            onClick={() => setIsLocationOpen(true)}
-                            className="hidden rounded-full border border-neutral-200 p-3.5 transition hover:border-black hover:bg-neutral-50 md:inline-flex"
-                            aria-label="Nos boutiques"
-                        >
-                            <MapPin size={20} />
-                        </button>
-
                         <button
                             type="button"
                             onClick={() => setIsSearchOpen(true)}
@@ -518,11 +441,13 @@ export function PublicHeader() {
                     <div className="fixed inset-0 z-50 bg-black/50 lg:hidden">
                         <div className="h-full w-[86%] max-w-sm overflow-y-auto bg-white p-6 shadow-2xl">
                             <div className="flex items-center justify-between">
-                                <img
-                                    src="/images/bigotti-logo.jpg"
-                                    alt="Bigotti Collection"
-                                    className="h-24 w-auto object-contain"
-                                />
+                                <Link
+                                    href="/"
+                                    onClick={() => setIsMenuOpen(false)}
+                                    className="text-xl font-black uppercase tracking-[0.22em]"
+                                >
+                                    Bigotti
+                                </Link>
 
                                 <button
                                     type="button"
@@ -539,17 +464,6 @@ export function PublicHeader() {
                                     type="button"
                                     onClick={() => {
                                         setIsMenuOpen(false);
-                                        setIsLocationOpen(true);
-                                    }}
-                                    className="block w-full rounded-2xl bg-neutral-50 px-5 py-4 text-left text-sm font-black uppercase tracking-[0.16em]"
-                                >
-                                    Nos boutiques
-                                </button>
-
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setIsMenuOpen(false);
                                         setIsSearchOpen(true);
                                     }}
                                     className="block w-full rounded-2xl bg-neutral-50 px-5 py-4 text-left text-sm font-black uppercase tracking-[0.16em]"
@@ -558,18 +472,18 @@ export function PublicHeader() {
                                 </button>
 
                                 <Link
-                                    href="/#nouveautes"
+                                    href="/#promotions"
                                     onClick={() => setIsMenuOpen(false)}
                                     className="block rounded-2xl bg-neutral-50 px-5 py-4 text-sm font-black uppercase tracking-[0.16em]"
                                 >
-                                    Nouveautés
+                                    Promotions
                                 </Link>
 
                                 <div className="rounded-2xl bg-neutral-50">
                                     <button
                                         type="button"
                                         onClick={() =>
-                                            setIsCollectionOpen(
+                                            setIsMobileCollectionOpen(
                                                 (currentValue) => !currentValue,
                                             )
                                         }
@@ -579,18 +493,117 @@ export function PublicHeader() {
                                         <ChevronDown
                                             size={18}
                                             className={
-                                                isCollectionOpen
+                                                isMobileCollectionOpen
                                                     ? "rotate-180 transition"
                                                     : "transition"
                                             }
                                         />
                                     </button>
 
-                                    {isCollectionOpen && (
-                                        <div className="max-h-72 overflow-y-auto border-t border-neutral-200 px-4 py-3">
-                                            {hasAvailableCategories ? (
+                                    {isMobileCollectionOpen && (
+                                        <div className="max-h-80 overflow-y-auto border-t border-neutral-200 px-4 py-3">
+                                            {hasCollectionCategories ? (
+                                                <div className="space-y-5">
+                                                    {groupedCollectionCategories.map(
+                                                        (group) => (
+                                                            <div
+                                                                key={
+                                                                    group.value
+                                                                }
+                                                            >
+                                                                <p className="px-1 text-xs font-black uppercase tracking-[0.22em] text-neutral-400">
+                                                                    {
+                                                                        group.label
+                                                                    }
+                                                                </p>
+
+                                                                <div className="mt-2 space-y-2">
+                                                                    {group.categories.map(
+                                                                        (
+                                                                            category,
+                                                                        ) => (
+                                                                            <Link
+                                                                                key={
+                                                                                    category.id
+                                                                                }
+                                                                                href={getCategoryHref(
+                                                                                    category,
+                                                                                )}
+                                                                                onClick={() =>
+                                                                                    setIsMenuOpen(
+                                                                                        false,
+                                                                                    )
+                                                                                }
+                                                                                className="block rounded-2xl bg-white px-4 py-4"
+                                                                            >
+                                                                                <div className="flex items-center justify-between gap-3">
+                                                                                    <p className="text-sm font-black uppercase tracking-[0.16em]">
+                                                                                        {
+                                                                                            category.name
+                                                                                        }
+                                                                                    </p>
+
+                                                                                    <span className="shrink-0 rounded-full bg-neutral-100 px-3 py-1 text-xs font-black">
+                                                                                        {
+                                                                                            category.productsCount
+                                                                                        }
+                                                                                    </span>
+                                                                                </div>
+                                                                            </Link>
+                                                                        ),
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        ),
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <p className="rounded-2xl bg-white p-4 text-sm font-semibold text-neutral-500">
+                                                    Aucune catégorie Haut/Bas
+                                                    disponible.
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <Link
+                                    href={buildCategoryLink(
+                                        costumeCategory,
+                                        "costume ceremonie",
+                                    )}
+                                    onClick={() => setIsMenuOpen(false)}
+                                    className="block rounded-2xl bg-neutral-50 px-5 py-4 text-sm font-black uppercase tracking-[0.16em]"
+                                >
+                                    Costume & cérémonie
+                                </Link>
+
+                                <div className="rounded-2xl bg-neutral-50">
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            setIsMobileShoesOpen(
+                                                (currentValue) => !currentValue,
+                                            )
+                                        }
+                                        className="flex w-full items-center justify-between px-5 py-4 text-left text-sm font-black uppercase tracking-[0.16em]"
+                                    >
+                                        {mobileShoesLabel}
+                                        <ChevronDown
+                                            size={18}
+                                            className={
+                                                isMobileShoesOpen
+                                                    ? "rotate-180 transition"
+                                                    : "transition"
+                                            }
+                                        />
+                                    </button>
+
+                                    {isMobileShoesOpen && (
+                                        <div className="max-h-80 overflow-y-auto border-t border-neutral-200 px-4 py-3">
+                                            {hasShoesCategories ? (
                                                 <div className="space-y-2">
-                                                    {availableCategories.map(
+                                                    {shoesCategories.map(
                                                         (category) => (
                                                             <Link
                                                                 key={
@@ -619,21 +632,14 @@ export function PublicHeader() {
                                                                         }
                                                                     </span>
                                                                 </div>
-
-                                                                {category.description && (
-                                                                    <p className="mt-2 text-sm text-neutral-500">
-                                                                        {
-                                                                            category.description
-                                                                        }
-                                                                    </p>
-                                                                )}
                                                             </Link>
                                                         ),
                                                     )}
                                                 </div>
                                             ) : (
                                                 <p className="rounded-2xl bg-white p-4 text-sm font-semibold text-neutral-500">
-                                                    Aucune catégorie disponible.
+                                                    Aucune catégorie Chaussures
+                                                    disponible.
                                                 </p>
                                             )}
                                         </div>
@@ -641,35 +647,22 @@ export function PublicHeader() {
                                 </div>
 
                                 <Link
-                                    href={
-                                        costumesHref
-                                            ? getCategoryHref(costumesHref)
-                                            : getSearchHref("costume")
-                                    }
+                                    href={buildCategoryLink(
+                                        accessoiresCategory,
+                                        "accessoires",
+                                    )}
                                     onClick={() => setIsMenuOpen(false)}
                                     className="block rounded-2xl bg-neutral-50 px-5 py-4 text-sm font-black uppercase tracking-[0.16em]"
                                 >
-                                    Costumes
+                                    Accessoires
                                 </Link>
 
                                 <Link
-                                    href={
-                                        chaussuresHref
-                                            ? getCategoryHref(chaussuresHref)
-                                            : getSearchHref("chaussure")
-                                    }
+                                    href="/#nouveautes"
                                     onClick={() => setIsMenuOpen(false)}
                                     className="block rounded-2xl bg-neutral-50 px-5 py-4 text-sm font-black uppercase tracking-[0.16em]"
                                 >
-                                    Chaussures
-                                </Link>
-
-                                <Link
-                                    href="/suivi-commande"
-                                    onClick={() => setIsMenuOpen(false)}
-                                    className="block rounded-2xl bg-neutral-50 px-5 py-4 text-sm font-black uppercase tracking-[0.16em]"
-                                >
-                                    Suivi
+                                    Nouveautés
                                 </Link>
 
                                 <Link
@@ -704,157 +697,6 @@ export function PublicHeader() {
                     </div>
                 )}
             </header>
-
-            {isLocationOpen && (
-                <div className="fixed inset-0 z-[70] bg-black/60 px-4 py-6 backdrop-blur-sm">
-                    <div className="mx-auto flex max-h-[92vh] max-w-6xl flex-col overflow-hidden rounded-[2rem] bg-white shadow-2xl">
-                        <div className="flex items-start justify-between gap-4 border-b border-neutral-200 px-6 py-5">
-                            <div>
-                                <p className="text-xs font-black uppercase tracking-[0.28em] text-neutral-400">
-                                    Bigotti Collection
-                                </p>
-
-                                <h2 className="mt-2 text-3xl font-black">
-                                    Nos points de vente
-                                </h2>
-
-                                <p className="mt-2 max-w-2xl text-sm text-neutral-500">
-                                    La carte est centrée par défaut sur les
-                                    boutiques de Tunis. Cliquez sur un point de
-                                    vente pour déplacer le zoom.
-                                </p>
-                            </div>
-
-                            <button
-                                type="button"
-                                onClick={() => setIsLocationOpen(false)}
-                                className="rounded-full border border-neutral-200 p-3 transition hover:border-black"
-                                aria-label="Fermer la carte"
-                            >
-                                <X size={20} />
-                            </button>
-                        </div>
-
-                        <div className="grid min-h-0 flex-1 lg:grid-cols-[1fr_380px]">
-                            <div className="min-h-[420px] bg-neutral-100 lg:min-h-[620px]">
-                                <iframe
-                                    title={`Carte ${selectedLocation.name}`}
-                                    src={buildOpenStreetMapEmbedUrl(
-                                        selectedLocation,
-                                    )}
-                                    className="h-full min-h-[420px] w-full border-0 lg:min-h-[620px]"
-                                    loading="lazy"
-                                />
-                            </div>
-
-                            <aside className="max-h-[620px] overflow-y-auto border-l border-neutral-200 p-6">
-                                <div className="rounded-3xl bg-neutral-950 p-5 text-white">
-                                    <p className="text-xs font-black uppercase tracking-[0.22em] text-neutral-400">
-                                        Boutique sélectionnée
-                                    </p>
-
-                                    <h3 className="mt-3 text-xl font-black">
-                                        {selectedLocation.name}
-                                    </h3>
-
-                                    <p className="mt-2 text-sm leading-6 text-neutral-300">
-                                        {selectedLocation.address}
-                                    </p>
-
-                                    <a
-                                        href={buildOpenStreetMapExternalUrl(
-                                            selectedLocation,
-                                        )}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="mt-5 inline-flex rounded-full bg-white px-5 py-3 text-xs font-black uppercase tracking-[0.16em] text-black transition hover:bg-neutral-200"
-                                    >
-                                        Ouvrir sur OpenStreetMap
-                                    </a>
-                                </div>
-
-                                <div className="mt-6 space-y-6">
-                                    {Object.entries(groupedStoreLocations).map(
-                                        ([city, locations]) => (
-                                            <div key={city}>
-                                                <p className="text-sm font-black uppercase tracking-[0.22em] text-neutral-400">
-                                                    {city}
-                                                </p>
-
-                                                <div className="mt-3 space-y-3">
-                                                    {locations.map(
-                                                        (location) => {
-                                                            const isSelected =
-                                                                selectedLocation.name ===
-                                                                location.name;
-
-                                                            return (
-                                                                <button
-                                                                    key={
-                                                                        location.name
-                                                                    }
-                                                                    type="button"
-                                                                    onClick={() =>
-                                                                        setSelectedLocation(
-                                                                            location,
-                                                                        )
-                                                                    }
-                                                                    className={
-                                                                        isSelected
-                                                                            ? "w-full rounded-3xl border border-black bg-black p-5 text-left text-white"
-                                                                            : "w-full rounded-3xl border border-neutral-200 bg-neutral-50 p-5 text-left transition hover:border-black hover:bg-white"
-                                                                    }
-                                                                >
-                                                                    <div className="flex items-start gap-3">
-                                                                        <MapPin
-                                                                            size={
-                                                                                20
-                                                                            }
-                                                                            className="mt-0.5 shrink-0"
-                                                                        />
-
-                                                                        <div>
-                                                                            <p className="font-black">
-                                                                                {
-                                                                                    location.name
-                                                                                }
-                                                                            </p>
-
-                                                                            <p
-                                                                                className={
-                                                                                    isSelected
-                                                                                        ? "mt-1 text-sm leading-6 text-neutral-300"
-                                                                                        : "mt-1 text-sm leading-6 text-neutral-500"
-                                                                                }
-                                                                            >
-                                                                                {
-                                                                                    location.address
-                                                                                }
-                                                                            </p>
-                                                                        </div>
-                                                                    </div>
-                                                                </button>
-                                                            );
-                                                        },
-                                                    )}
-                                                </div>
-                                            </div>
-                                        ),
-                                    )}
-                                </div>
-
-                                <p className="mt-6 rounded-2xl bg-yellow-50 p-4 text-xs font-semibold leading-6 text-yellow-800">
-                                    Les positions sont placées sur les zones des
-                                    adresses disponibles. Pour une précision
-                                    parfaite, on peut ensuite remplacer ces
-                                    points par les coordonnées exactes GPS de
-                                    chaque boutique.
-                                </p>
-                            </aside>
-                        </div>
-                    </div>
-                </div>
-            )}
 
             <SearchOverlay
                 isOpen={isSearchOpen}

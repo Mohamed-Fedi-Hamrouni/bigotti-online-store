@@ -72,15 +72,17 @@ model User {
 }
 
 model Category {
-  id          String    @id @default(uuid())
+  id          String            @id @default(uuid())
   name        String
-  slug        String    @unique
+  slug        String            @unique
   description String?
-  isActive    Boolean   @default(true) @map("is_active")
+  isActive    Boolean           @default(true) @map("is_active")
+  menuGroup   CategoryMenuGroup @default(AUTRE) @map("menu_group")
   products    Product[]
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
 
+  @@index([menuGroup])
   @@map("categories")
 }
 
@@ -320,4 +322,13 @@ model Payment {
 
   @@index([status])
   @@map("payments")
+}
+
+enum CategoryMenuGroup {
+  HAUT
+  BAS
+  COSTUME_CEREMONIE
+  CHAUSSURES
+  ACCESSOIRES
+  AUTRE
 }

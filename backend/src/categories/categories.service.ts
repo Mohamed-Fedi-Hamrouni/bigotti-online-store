@@ -30,8 +30,9 @@ export class CategoriesService {
         name: createCategoryDto.name.trim(),
         slug,
         description: createCategoryDto.description?.trim() || null,
+        menuGroup: createCategoryDto.menuGroup ?? 'AUTRE',
         isActive: createCategoryDto.isActive ?? true,
-      },
+      } as any,
     });
   }
 
@@ -40,17 +41,27 @@ export class CategoriesService {
       where: {
         isActive: true,
       },
-      orderBy: {
-        name: 'asc',
-      },
+      orderBy: [
+        {
+          menuGroup: 'asc',
+        },
+        {
+          name: 'asc',
+        },
+      ],
     });
   }
 
   async findAllForAdmin() {
     return this.prisma.category.findMany({
-      orderBy: {
-        createdAt: 'desc',
-      },
+      orderBy: [
+        {
+          menuGroup: 'asc',
+        },
+        {
+          createdAt: 'desc',
+        },
+      ],
     });
   }
 
@@ -69,12 +80,7 @@ export class CategoriesService {
   async update(id: string, updateCategoryDto: UpdateCategoryDto) {
     await this.findOne(id);
 
-    const data: {
-      name?: string;
-      slug?: string;
-      description?: string | null;
-      isActive?: boolean;
-    } = {};
+    const data: Record<string, unknown> = {};
 
     if (updateCategoryDto.name !== undefined) {
       data.name = updateCategoryDto.name.trim();
@@ -98,13 +104,17 @@ export class CategoriesService {
       data.description = updateCategoryDto.description?.trim() || null;
     }
 
+    if (updateCategoryDto.menuGroup !== undefined) {
+      data.menuGroup = updateCategoryDto.menuGroup;
+    }
+
     if (updateCategoryDto.isActive !== undefined) {
       data.isActive = updateCategoryDto.isActive;
     }
 
     return this.prisma.category.update({
       where: { id },
-      data,
+      data: data as any,
     });
   }
 
