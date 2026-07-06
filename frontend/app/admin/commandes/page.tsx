@@ -75,6 +75,50 @@ function getOrderStatusClassName(status: OrderStatus) {
     return "rounded-full bg-neutral-100 px-3 py-1 text-sm font-semibold text-neutral-700";
 }
 
+function normalizeOrderText(value: string | null | undefined) {
+    return (value ?? "")
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+}
+
+function isStorePickupOrder(order: AdminOrder) {
+    const deliveryAddress = normalizeOrderText(order.deliveryAddress);
+    const deliveryNotes = normalizeOrderText(order.deliveryNotes);
+
+    return (
+        deliveryAddress.includes("retrait en magasin") ||
+        deliveryNotes.includes("retrait en magasin")
+    );
+}
+
+function getFulfillmentMethodLabel(order: AdminOrder) {
+    return isStorePickupOrder(order)
+        ? "Retrait en magasin"
+        : "Livraison à domicile";
+}
+
+function getFulfillmentSummary(order: AdminOrder) {
+    if (isStorePickupOrder(order)) {
+        return `Retrait en magasin : ${order.deliveryCity}`;
+    }
+
+    return `Livraison à domicile : ${order.deliveryAddress}, ${order.deliveryCity}`;
+}
+
+function getPaymentMethodLabel(order: AdminOrder) {
+    if (isStorePickupOrder(order)) {
+        return "Paiement au retrait magasin";
+    }
+
+    if (order.paymentMethod === "CASH_ON_DELIVERY") {
+        return "Paiement à la livraison";
+    }
+
+    return "Paiement à confirmer";
+}
+
 export default function AdminOrdersPage() {
     const router = useRouter();
 
@@ -120,7 +164,16 @@ export default function AdminOrdersPage() {
                 String(order.customerEmail ?? "")
                     .toLowerCase()
                     .includes(normalizedSearch) ||
-                order.deliveryCity.toLowerCase().includes(normalizedSearch);
+                order.deliveryCity.toLowerCase().includes(normalizedSearch) ||
+                String(order.deliveryAddress ?? "")
+                    .toLowerCase()
+                    .includes(normalizedSearch) ||
+                String(order.deliveryNotes ?? "")
+                    .toLowerCase()
+                    .includes(normalizedSearch) ||
+                getFulfillmentMethodLabel(order)
+                    .toLowerCase()
+                    .includes(normalizedSearch);
 
             const matchesOrderStatus =
                 orderStatusFilter === "ALL" ||
@@ -451,8 +504,7 @@ export default function AdminOrdersPage() {
                                         </p>
 
                                         <p className="mt-1 text-neutral-600">
-                                            Adresse : {order.deliveryAddress},{" "}
-                                            {order.deliveryCity}
+                                            {getFulfillmentSummary(order)}
                                         </p>
 
                                         <p className="mt-1 text-sm text-neutral-500">
@@ -485,10 +537,7 @@ export default function AdminOrdersPage() {
                                         </p>
 
                                         <p className="mt-2 text-sm text-neutral-500">
-                                            {order.paymentMethod ===
-                                            "CASH_ON_DELIVERY"
-                                                ? "Paiement à la livraison"
-                                                : "Paiement carte"}
+                                            {getPaymentMethodLabel(order)}
                                         </p>
 
                                         <Link

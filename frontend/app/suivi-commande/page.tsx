@@ -42,6 +42,58 @@ function getPaymentStatusLabel(status: string) {
     return labels[status] ?? status;
 }
 
+function normalizeOrderText(value: string | null | undefined) {
+    return (value ?? "")
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+}
+
+function isStorePickupOrder(
+    order: Pick<TrackedOrder, "deliveryAddress" | "deliveryNotes">,
+) {
+    const deliveryAddress = normalizeOrderText(order.deliveryAddress);
+    const deliveryNotes = normalizeOrderText(order.deliveryNotes);
+
+    return (
+        deliveryAddress.includes("retrait en magasin") ||
+        deliveryNotes.includes("retrait en magasin")
+    );
+}
+
+function getFulfillmentMethodLabel(order: TrackedOrder) {
+    return isStorePickupOrder(order)
+        ? "Retrait en magasin"
+        : "Livraison à domicile";
+}
+
+function getFulfillmentLocationLabel(order: TrackedOrder) {
+    return isStorePickupOrder(order)
+        ? `Magasin ${order.deliveryCity}`
+        : order.deliveryCity;
+}
+
+function getPaymentMethodLabel(order: TrackedOrder) {
+    if (isStorePickupOrder(order)) {
+        return "Paiement au retrait magasin";
+    }
+
+    if (order.paymentMethod === "CASH_ON_DELIVERY") {
+        return "Paiement à la livraison";
+    }
+
+    return "Paiement à confirmer";
+}
+
+function getFulfillmentDetails(order: TrackedOrder) {
+    if (isStorePickupOrder(order)) {
+        return `Votre commande est prévue en retrait au magasin ${order.deliveryCity}.`;
+    }
+
+    return `${order.deliveryAddress}, ${order.deliveryCity}`;
+}
+
 function getStatusStep(status: string) {
     const steps = ["PENDING", "CONFIRMED", "PREPARING", "SHIPPED", "DELIVERED"];
 
@@ -282,15 +334,12 @@ export default function TrackOrderPage() {
                                         </p>
 
                                         <p className="mt-2 text-sm font-semibold text-neutral-500">
-                                            {order.paymentMethod ===
-                                            "CASH_ON_DELIVERY"
-                                                ? "Paiement à la livraison"
-                                                : "Paiement carte"}
+                                            {getPaymentMethodLabel(order)}
                                         </p>
                                     </div>
                                 </div>
 
-                                <div className="mt-6 grid gap-4 md:grid-cols-3">
+                                <div className="mt-6 grid gap-4 md:grid-cols-4">
                                     <div className="rounded-3xl bg-neutral-50 p-5">
                                         <p className="text-sm text-neutral-500">
                                             Statut commande
@@ -311,16 +360,46 @@ export default function TrackOrderPage() {
                                                 order.paymentStatus,
                                             )}
                                         </p>
+                                        <p className="mt-1 text-sm font-semibold text-neutral-500">
+                                            {getPaymentMethodLabel(order)}
+                                        </p>
                                     </div>
 
                                     <div className="rounded-3xl bg-neutral-50 p-5">
                                         <p className="text-sm text-neutral-500">
-                                            Livraison
+                                            Mode
                                         </p>
                                         <p className="mt-2 text-lg font-black">
-                                            {order.deliveryCity}
+                                            {getFulfillmentMethodLabel(order)}
                                         </p>
                                     </div>
+
+                                    <div className="rounded-3xl bg-neutral-50 p-5">
+                                        <p className="text-sm text-neutral-500">
+                                            {isStorePickupOrder(order)
+                                                ? "Magasin"
+                                                : "Ville"}
+                                        </p>
+                                        <p className="mt-2 text-lg font-black">
+                                            {getFulfillmentLocationLabel(order)}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="mt-4 rounded-3xl bg-neutral-50 p-5">
+                                    <p className="text-sm text-neutral-500">
+                                        {isStorePickupOrder(order)
+                                            ? "Information retrait"
+                                            : "Adresse de livraison"}
+                                    </p>
+                                    <p className="mt-2 font-bold">
+                                        {getFulfillmentDetails(order)}
+                                    </p>
+                                    {order.deliveryNotes && (
+                                        <p className="mt-2 text-sm text-neutral-500">
+                                            Note : {order.deliveryNotes}
+                                        </p>
+                                    )}
                                 </div>
                             </div>
 

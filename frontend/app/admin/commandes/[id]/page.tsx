@@ -103,16 +103,40 @@ function getOrderStatusClassName(status: OrderStatus) {
     return "mt-3 inline-flex rounded-full bg-neutral-100 px-4 py-2 text-sm font-bold text-neutral-700";
 }
 
-function getPaymentMethodLabel(method: string) {
-    if (method === "CASH_ON_DELIVERY") {
+function normalizeOrderText(value: string | null | undefined) {
+    return (value ?? "")
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+}
+
+function isStorePickupOrder(order: AdminOrder) {
+    const deliveryAddress = normalizeOrderText(order.deliveryAddress);
+    const deliveryNotes = normalizeOrderText(order.deliveryNotes);
+
+    return (
+        deliveryAddress.includes("retrait en magasin") ||
+        deliveryNotes.includes("retrait en magasin")
+    );
+}
+
+function getFulfillmentMethodLabel(order: AdminOrder) {
+    return isStorePickupOrder(order)
+        ? "Retrait en magasin"
+        : "Livraison à domicile";
+}
+
+function getPaymentMethodLabel(order: AdminOrder) {
+    if (isStorePickupOrder(order)) {
+        return "Paiement au retrait magasin";
+    }
+
+    if (order.paymentMethod === "CASH_ON_DELIVERY") {
         return "Paiement à la livraison";
     }
 
-    if (method === "CARD") {
-        return "Paiement carte";
-    }
-
-    return method;
+    return "Paiement à confirmer";
 }
 
 export default function AdminOrderDetailPage() {
@@ -379,30 +403,60 @@ export default function AdminOrderDetailPage() {
                                         <MapPin size={28} />
 
                                         <h3 className="text-2xl font-black">
-                                            Livraison
+                                            Expédition
                                         </h3>
                                     </div>
 
-                                    <div className="mt-6 grid gap-4 md:grid-cols-2">
+                                    <div className="mt-6 grid gap-4 md:grid-cols-3">
                                         <div className="rounded-2xl bg-neutral-50 p-5">
                                             <p className="text-sm text-neutral-500">
-                                                Ville
+                                                Mode
                                             </p>
 
                                             <p className="mt-1 font-black">
-                                                {order.deliveryCity}
+                                                {getFulfillmentMethodLabel(
+                                                    order,
+                                                )}
                                             </p>
                                         </div>
 
                                         <div className="rounded-2xl bg-neutral-50 p-5">
                                             <p className="text-sm text-neutral-500">
-                                                Adresse
+                                                {isStorePickupOrder(order)
+                                                    ? "Magasin"
+                                                    : "Ville"}
                                             </p>
 
                                             <p className="mt-1 font-black">
-                                                {order.deliveryAddress}
+                                                {isStorePickupOrder(order)
+                                                    ? `Magasin ${order.deliveryCity}`
+                                                    : order.deliveryCity}
                                             </p>
                                         </div>
+
+                                        <div className="rounded-2xl bg-neutral-50 p-5">
+                                            <p className="text-sm text-neutral-500">
+                                                Frais
+                                            </p>
+
+                                            <p className="mt-1 font-black">
+                                                {formatPrice(order.deliveryFee)}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-4 rounded-2xl bg-neutral-50 p-5">
+                                        <p className="text-sm text-neutral-500">
+                                            {isStorePickupOrder(order)
+                                                ? "Information retrait"
+                                                : "Adresse"}
+                                        </p>
+
+                                        <p className="mt-1 font-black">
+                                            {isStorePickupOrder(order)
+                                                ? `Commande à retirer au magasin ${order.deliveryCity}`
+                                                : order.deliveryAddress}
+                                        </p>
                                     </div>
 
                                     {order.deliveryNotes && (
@@ -553,9 +607,7 @@ export default function AdminOrderDetailPage() {
                                             </p>
 
                                             <p className="mt-1 font-black">
-                                                {getPaymentMethodLabel(
-                                                    order.paymentMethod,
-                                                )}
+                                                {getPaymentMethodLabel(order)}
                                             </p>
                                         </div>
 
