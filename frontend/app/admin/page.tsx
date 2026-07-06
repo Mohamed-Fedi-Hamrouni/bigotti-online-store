@@ -5,26 +5,87 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AuthUser } from "@/types/auth";
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+
+async function fetchAdminProfile(token: string) {
+    const response = await fetch(`${API_BASE_URL}/auth/me`, {
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+        cache: "no-store",
+    });
+
+    if (!response.ok) {
+        throw new Error("Session admin invalide ou expirée.");
+    }
+
+    return response.json() as Promise<AuthUser>;
+}
+
+function clearAdminSession() {
+    window.localStorage.removeItem("bigotti-admin-token");
+    window.localStorage.removeItem("bigotti-admin-user");
+}
+
+function getRoleLabel(role: AuthUser["role"]) {
+    const labels: Record<AuthUser["role"], string> = {
+        SUPER_ADMIN: "Super administrateur",
+        ADMIN: "Administrateur",
+        MANAGER: "Manager",
+    };
+
+    return labels[role] ?? role;
+}
+
 export default function AdminHomePage() {
     const router = useRouter();
+
     const [user, setUser] = useState<AuthUser | null>(null);
+    const [isCheckingSession, setIsCheckingSession] = useState(true);
+    const [sessionError, setSessionError] = useState("");
 
     useEffect(() => {
         const token = window.localStorage.getItem("bigotti-admin-token");
-        const rawUser = window.localStorage.getItem("bigotti-admin-user");
 
-        if (!token || !rawUser) {
-            router.push("/admin/login");
+        if (!token) {
+            clearAdminSession();
+            router.replace("/admin/login");
             return;
         }
 
-        setUser(JSON.parse(rawUser));
+        fetchAdminProfile(token)
+            .then((profile) => {
+                if (!profile.isActive) {
+                    throw new Error("Ce compte administrateur est désactivé.");
+                }
+
+                window.localStorage.setItem(
+                    "bigotti-admin-user",
+                    JSON.stringify(profile),
+                );
+
+                setUser(profile);
+            })
+            .catch((err) => {
+                clearAdminSession();
+                setSessionError(
+                    err instanceof Error
+                        ? err.message
+                        : "Session admin invalide.",
+                );
+
+                setTimeout(() => {
+                    router.replace("/admin/login");
+                }, 800);
+            })
+            .finally(() => {
+                setIsCheckingSession(false);
+            });
     }, [router]);
 
     function logout() {
-        window.localStorage.removeItem("bigotti-admin-token");
-        window.localStorage.removeItem("bigotti-admin-user");
-        router.push("/admin/login");
+        clearAdminSession();
+        router.replace("/admin/login");
     }
 
     const canManageProducts =
@@ -45,6 +106,35 @@ export default function AdminHomePage() {
 
     const canManageCatalog =
         user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
+
+    if (isCheckingSession) {
+        return (
+            <main className="flex min-h-screen items-center justify-center bg-neutral-50 px-6 text-neutral-950">
+                <div className="rounded-[2rem] bg-white p-8 text-center shadow-sm">
+                    <p className="text-sm font-bold uppercase tracking-[0.25em] text-neutral-500">
+                        Administration
+                    </p>
+
+                    <h1 className="mt-3 text-2xl font-black">
+                        Vérification de la session...
+                    </h1>
+                </div>
+            </main>
+        );
+    }
+
+    if (sessionError) {
+        return (
+            <main className="flex min-h-screen items-center justify-center bg-neutral-50 px-6 text-neutral-950">
+                <div className="rounded-[2rem] bg-red-50 p-8 text-center text-red-700 shadow-sm">
+                    <p className="text-sm font-bold">{sessionError}</p>
+                    <p className="mt-2 text-sm">
+                        Redirection vers la page de connexion...
+                    </p>
+                </div>
+            </main>
+        );
+    }
 
     return (
         <main className="min-h-screen bg-neutral-50 text-neutral-950">
@@ -77,7 +167,14 @@ export default function AdminHomePage() {
                     Bonjour {user?.fullName}
                 </h1>
 
-                <p className="mt-3 text-neutral-600">Rôle : {user?.role}</p>
+                {user && (
+                    <p className="mt-3 text-neutral-600">
+                        Rôle :{" "}
+                        <span className="font-bold">
+                            {getRoleLabel(user.role)}
+                        </span>
+                    </p>
+                )}
 
                 <div className="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-4">
                     {canManageOrders && (

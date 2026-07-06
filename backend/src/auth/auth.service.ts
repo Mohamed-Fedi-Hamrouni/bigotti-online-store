@@ -3,6 +3,9 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
+import type { AdminRole, JwtPayload } from './types/jwt-payload.type';
+
+const ADMIN_ROLES: AdminRole[] = ['SUPER_ADMIN', 'ADMIN', 'MANAGER'];
 
 @Injectable()
 export class AuthService {
@@ -12,14 +15,20 @@ export class AuthService {
   ) {}
 
   async login(loginDto: LoginDto) {
+    const email = loginDto.email.toLowerCase().trim();
+
     const user = await this.prisma.user.findUnique({
       where: {
-        email: loginDto.email.toLowerCase().trim(),
+        email,
       },
     });
 
     if (!user || !user.isActive) {
       throw new UnauthorizedException('Email ou mot de passe incorrect.');
+    }
+
+    if (!ADMIN_ROLES.includes(user.role)) {
+      throw new UnauthorizedException('Compte administrateur non autorisé.');
     }
 
     const isPasswordValid = await bcrypt.compare(
@@ -31,10 +40,11 @@ export class AuthService {
       throw new UnauthorizedException('Email ou mot de passe incorrect.');
     }
 
-    const payload = {
+    const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
       role: user.role,
+      tokenType: 'admin',
     };
 
     const accessToken = await this.jwtService.signAsync(payload);
@@ -46,11 +56,17 @@ export class AuthService {
   }
 
   async getProfile(userId: string) {
-    const user = await this.prisma.user.findUniqueOrThrow({
+    const user = await this.prisma.user.findUnique({
       where: {
         id: userId,
       },
     });
+
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException(
+        'Compte administrateur désactivé ou introuvable.',
+      );
+    }
 
     return this.toSafeUser(user);
   }
@@ -59,7 +75,7 @@ export class AuthService {
     id: string;
     fullName: string;
     email: string;
-    role: string;
+    role: AdminRole;
     isActive: boolean;
     createdAt: Date;
     updatedAt: Date;
