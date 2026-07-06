@@ -1,7 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Search, SlidersHorizontal, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+    ChevronLeft,
+    ChevronRight,
+    Search,
+    SlidersHorizontal,
+    X,
+} from "lucide-react";
 import { ProductCard } from "@/components/ProductCard";
 import type { Product } from "@/types/product";
 
@@ -10,6 +16,8 @@ type ProductCatalogProps = {
 };
 
 type SortOption = "newest" | "price-asc" | "price-desc" | "stock-desc";
+
+const PRODUCTS_PER_PAGE = 12;
 
 const sizeOrder = [
     "UNIQUE",
@@ -113,6 +121,24 @@ function resetUrlFiltersIfNeeded() {
     }
 }
 
+function buildPaginationRange(currentPage: number, totalPages: number) {
+    const maxVisiblePages = 5;
+
+    if (totalPages <= maxVisiblePages) {
+        return Array.from({ length: totalPages }, (_, index) => index + 1);
+    }
+
+    const half = Math.floor(maxVisiblePages / 2);
+    let start = Math.max(1, currentPage - half);
+    let end = Math.min(totalPages, start + maxVisiblePages - 1);
+
+    if (end - start + 1 < maxVisiblePages) {
+        start = Math.max(1, end - maxVisiblePages + 1);
+    }
+
+    return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+}
+
 export function ProductCatalog({ products }: ProductCatalogProps) {
     const [search, setSearch] = useState("");
     const [categorySlug, setCategorySlug] = useState("");
@@ -123,6 +149,7 @@ export function ProductCatalog({ products }: ProductCatalogProps) {
     const [maxPrice, setMaxPrice] = useState("");
     const [onlyPromotions, setOnlyPromotions] = useState(false);
     const [sort, setSort] = useState<SortOption>("newest");
+    const [currentPage, setCurrentPage] = useState(1);
 
     const categories = useMemo(() => {
         const map = new Map<string, string>();
@@ -302,6 +329,53 @@ export function ProductCatalog({ products }: ProductCatalogProps) {
         sort,
     ]);
 
+    const totalPages = Math.max(
+        1,
+        Math.ceil(filteredProducts.length / PRODUCTS_PER_PAGE),
+    );
+
+    const paginationRange = useMemo(
+        () => buildPaginationRange(currentPage, totalPages),
+        [currentPage, totalPages],
+    );
+
+    const paginatedProducts = useMemo(() => {
+        const startIndex = (currentPage - 1) * PRODUCTS_PER_PAGE;
+        const endIndex = startIndex + PRODUCTS_PER_PAGE;
+
+        return filteredProducts.slice(startIndex, endIndex);
+    }, [filteredProducts, currentPage]);
+
+    const firstVisibleProductIndex =
+        filteredProducts.length === 0
+            ? 0
+            : (currentPage - 1) * PRODUCTS_PER_PAGE + 1;
+
+    const lastVisibleProductIndex = Math.min(
+        currentPage * PRODUCTS_PER_PAGE,
+        filteredProducts.length,
+    );
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [
+        search,
+        categorySlug,
+        categoryTypeSlug,
+        size,
+        color,
+        minPrice,
+        maxPrice,
+        onlyPromotions,
+        sort,
+    ]);
+
+    useEffect(() => {
+        if (currentPage > totalPages) {
+            setCurrentPage(totalPages);
+        }
+    }, [currentPage, totalPages]);
+
     function resetFilters() {
         setSearch("");
         setCategorySlug("");
@@ -312,8 +386,22 @@ export function ProductCatalog({ products }: ProductCatalogProps) {
         setMaxPrice("");
         setOnlyPromotions(false);
         setSort("newest");
+        setCurrentPage(1);
 
         resetUrlFiltersIfNeeded();
+    }
+
+    function goToPage(page: number) {
+        const nextPage = Math.min(Math.max(page, 1), totalPages);
+
+        setCurrentPage(nextPage);
+
+        if (typeof window !== "undefined") {
+            window.scrollTo({
+                top: 0,
+                behavior: "smooth",
+            });
+        }
     }
 
     const hasActiveFilters =
@@ -588,14 +676,108 @@ export function ProductCatalog({ products }: ProductCatalogProps) {
                             </button>
                         </div>
                     ) : (
-                        <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
-                            {filteredProducts.map((product) => (
-                                <ProductCard
-                                    key={product.id}
-                                    product={product}
-                                />
-                            ))}
-                        </div>
+                        <>
+                            <div className="mb-5 flex flex-col justify-between gap-3 rounded-[1.5rem] bg-white px-5 py-4 text-sm font-semibold text-neutral-600 shadow-sm sm:flex-row sm:items-center">
+                                <span>
+                                    Affichage de {firstVisibleProductIndex} à{" "}
+                                    {lastVisibleProductIndex} sur{" "}
+                                    {filteredProducts.length} produit
+                                    {filteredProducts.length > 1 ? "s" : ""}
+                                </span>
+
+                                <span>
+                                    Page {currentPage} / {totalPages}
+                                </span>
+                            </div>
+
+                            <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+                                {paginatedProducts.map((product) => (
+                                    <ProductCard
+                                        key={product.id}
+                                        product={product}
+                                    />
+                                ))}
+                            </div>
+
+                            {totalPages > 1 && (
+                                <div className="mt-10 flex flex-wrap items-center justify-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            goToPage(currentPage - 1)
+                                        }
+                                        disabled={currentPage === 1}
+                                        className="inline-flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 py-3 text-sm font-black transition hover:border-black disabled:cursor-not-allowed disabled:opacity-40"
+                                    >
+                                        <ChevronLeft size={16} />
+                                        Précédent
+                                    </button>
+
+                                    {paginationRange[0] > 1 && (
+                                        <>
+                                            <button
+                                                type="button"
+                                                onClick={() => goToPage(1)}
+                                                className="h-11 min-w-11 rounded-full border border-neutral-300 bg-white px-4 text-sm font-black transition hover:border-black"
+                                            >
+                                                1
+                                            </button>
+
+                                            <span className="px-2 text-sm font-black text-neutral-400">
+                                                ...
+                                            </span>
+                                        </>
+                                    )}
+
+                                    {paginationRange.map((page) => (
+                                        <button
+                                            key={page}
+                                            type="button"
+                                            onClick={() => goToPage(page)}
+                                            className={
+                                                currentPage === page
+                                                    ? "h-11 min-w-11 rounded-full bg-black px-4 text-sm font-black text-white"
+                                                    : "h-11 min-w-11 rounded-full border border-neutral-300 bg-white px-4 text-sm font-black transition hover:border-black"
+                                            }
+                                        >
+                                            {page}
+                                        </button>
+                                    ))}
+
+                                    {paginationRange[
+                                        paginationRange.length - 1
+                                    ] < totalPages && (
+                                        <>
+                                            <span className="px-2 text-sm font-black text-neutral-400">
+                                                ...
+                                            </span>
+
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    goToPage(totalPages)
+                                                }
+                                                className="h-11 min-w-11 rounded-full border border-neutral-300 bg-white px-4 text-sm font-black transition hover:border-black"
+                                            >
+                                                {totalPages}
+                                            </button>
+                                        </>
+                                    )}
+
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            goToPage(currentPage + 1)
+                                        }
+                                        disabled={currentPage === totalPages}
+                                        className="inline-flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 py-3 text-sm font-black transition hover:border-black disabled:cursor-not-allowed disabled:opacity-40"
+                                    >
+                                        Suivant
+                                        <ChevronRight size={16} />
+                                    </button>
+                                </div>
+                            )}
+                        </>
                     )}
                 </div>
             </div>
