@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { getAdminProducts, updateProductStatus } from "@/lib/api";
 import type { Product, ProductStatus } from "@/types/product";
+
+const PRODUCTS_PER_PAGE = 10;
 
 const PRODUCT_STATUS_OPTIONS: Array<{
     value: ProductStatus;
@@ -61,6 +63,9 @@ function getProductSearchContent(product: Product) {
         product.name,
         product.reference,
         product.category?.name,
+        product.categoryType?.name,
+        product.collection?.name,
+        product.saleCampaign?.name,
         product.variants
             .map((variant) => `${variant.color} ${variant.size}`)
             .join(" "),
@@ -73,6 +78,24 @@ function getProductFinalPrice(product: Product) {
     return Number(product.finalPrice ?? product.price);
 }
 
+function buildPaginationRange(currentPage: number, totalPages: number) {
+    const maxVisiblePages = 5;
+
+    if (totalPages <= maxVisiblePages) {
+        return Array.from({ length: totalPages }, (_, index) => index + 1);
+    }
+
+    const half = Math.floor(maxVisiblePages / 2);
+    let start = Math.max(1, currentPage - half);
+    let end = Math.min(totalPages, start + maxVisiblePages - 1);
+
+    if (end - start + 1 < maxVisiblePages) {
+        start = Math.max(1, end - maxVisiblePages + 1);
+    }
+
+    return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+}
+
 export default function AdminProductsPage() {
     const router = useRouter();
 
@@ -83,6 +106,7 @@ export default function AdminProductsPage() {
     const [stockFilter, setStockFilter] = useState<ProductStockFilter>("ALL");
     const [promoFilter, setPromoFilter] = useState<ProductPromoFilter>("ALL");
     const [sortOption, setSortOption] = useState<ProductSortOption>("DEFAULT");
+    const [currentPage, setCurrentPage] = useState(1);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState("");
     const [updatingProductId, setUpdatingProductId] = useState<string | null>(
@@ -122,8 +146,11 @@ export default function AdminProductsPage() {
 
             const matchesPromo =
                 promoFilter === "ALL" ||
-                (promoFilter === "ON_SALE" && product.isOnSale) ||
-                (promoFilter === "REGULAR" && !product.isOnSale);
+                (promoFilter === "ON_SALE" &&
+                    (product.isOnSale || product.discountPercentage > 0)) ||
+                (promoFilter === "REGULAR" &&
+                    !product.isOnSale &&
+                    product.discountPercentage <= 0);
 
             const matchesStock =
                 stockFilter === "ALL" ||
@@ -165,7 +192,10 @@ export default function AdminProductsPage() {
                 return secondProduct.totalStock - firstProduct.totalStock;
             }
 
-            return 0;
+            return (
+                new Date(secondProduct.createdAt).getTime() -
+                new Date(firstProduct.createdAt).getTime()
+            );
         });
     }, [
         products,
@@ -176,10 +206,58 @@ export default function AdminProductsPage() {
         sortOption,
     ]);
 
+    const totalPages = Math.max(
+        1,
+        Math.ceil(filteredProducts.length / PRODUCTS_PER_PAGE),
+    );
+
+    const paginationRange = useMemo(
+        () => buildPaginationRange(currentPage, totalPages),
+        [currentPage, totalPages],
+    );
+
+    const paginatedProducts = useMemo(() => {
+        const startIndex = (currentPage - 1) * PRODUCTS_PER_PAGE;
+        const endIndex = startIndex + PRODUCTS_PER_PAGE;
+
+        return filteredProducts.slice(startIndex, endIndex);
+    }, [filteredProducts, currentPage]);
+
+    const firstVisibleProductIndex =
+        filteredProducts.length === 0
+            ? 0
+            : (currentPage - 1) * PRODUCTS_PER_PAGE + 1;
+
+    const lastVisibleProductIndex = Math.min(
+        currentPage * PRODUCTS_PER_PAGE,
+        filteredProducts.length,
+    );
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchQuery, statusFilter, stockFilter, promoFilter, sortOption]);
+
+    useEffect(() => {
+        if (currentPage > totalPages) {
+            setCurrentPage(totalPages);
+        }
+    }, [currentPage, totalPages]);
+
     function logout() {
         window.localStorage.removeItem("bigotti-admin-token");
         window.localStorage.removeItem("bigotti-admin-user");
         router.push("/admin/login");
+    }
+
+    function goToPage(page: number) {
+        const nextPage = Math.min(Math.max(page, 1), totalPages);
+
+        setCurrentPage(nextPage);
+
+        window.scrollTo({
+            top: 0,
+            behavior: "smooth",
+        });
     }
 
     async function handleStatusChange(product: Product, status: ProductStatus) {
@@ -256,7 +334,7 @@ export default function AdminProductsPage() {
     ).length;
 
     const onSaleProducts = products.filter(
-        (product) => product.isOnSale,
+        (product) => product.isOnSale || product.discountPercentage > 0,
     ).length;
 
     const lowStockProducts = products.filter(
@@ -397,7 +475,7 @@ export default function AdminProductsPage() {
                                 onChange={(event) =>
                                     setSearchQuery(event.target.value)
                                 }
-                                placeholder="Rechercher nom, référence, catégorie, couleur..."
+                                placeholder="Rechercher nom, référence, catégorie, type, couleur..."
                                 className="w-full rounded-2xl border border-neutral-300 py-3 pl-11 pr-4 text-sm outline-none focus:border-black"
                             />
                         </div>
@@ -458,7 +536,7 @@ export default function AdminProductsPage() {
                             }
                             className="rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-black"
                         >
-                            <option value="DEFAULT">Tri par défaut</option>
+                            <option value="DEFAULT">Plus récents</option>
                             <option value="NAME_ASC">Nom A-Z</option>
                             <option value="PRICE_ASC">Prix croissant</option>
                             <option value="PRICE_DESC">Prix décroissant</option>
@@ -469,9 +547,20 @@ export default function AdminProductsPage() {
                         </select>
                     </div>
 
-                    <p className="mt-4 text-sm text-neutral-500">
-                        {filteredProducts.length} produit(s) affiché(s)
-                    </p>
+                    <div className="mt-4 flex flex-col justify-between gap-3 text-sm text-neutral-500 md:flex-row md:items-center">
+                        <p>{filteredProducts.length} produit(s) trouvé(s)</p>
+
+                        {!isLoading &&
+                            !error &&
+                            filteredProducts.length > 0 && (
+                                <p>
+                                    Affichage de {firstVisibleProductIndex} à{" "}
+                                    {lastVisibleProductIndex} sur{" "}
+                                    {filteredProducts.length} produit(s) — page{" "}
+                                    {currentPage}/{totalPages}
+                                </p>
+                            )}
+                    </div>
                 </div>
 
                 {isLoading && (
@@ -495,7 +584,7 @@ export default function AdminProductsPage() {
                 )}
 
                 <div className="grid gap-5">
-                    {filteredProducts.map((product) => {
+                    {paginatedProducts.map((product) => {
                         const mainImage =
                             product.images.find((image) => image.isMain) ??
                             product.images[0];
@@ -571,9 +660,22 @@ export default function AdminProductsPage() {
                                         Catégorie : {product.category.name}
                                     </p>
 
+                                    {product.categoryType && (
+                                        <p className="mt-1 text-neutral-600">
+                                            Type : {product.categoryType.name}
+                                        </p>
+                                    )}
+
                                     <p className="mt-1 text-neutral-600">
                                         Stock total : {product.totalStock}
                                     </p>
+
+                                    {product.saleCampaign && (
+                                        <p className="mt-1 text-neutral-600">
+                                            Campagne :{" "}
+                                            {product.saleCampaign.name}
+                                        </p>
+                                    )}
 
                                     {isArchived && (
                                         <p className="mt-3 rounded-2xl bg-red-50 p-3 text-sm font-semibold text-red-700">
@@ -597,7 +699,8 @@ export default function AdminProductsPage() {
                                 </div>
 
                                 <div className="space-y-4 text-left md:text-right">
-                                    {product.isOnSale ? (
+                                    {product.isOnSale ||
+                                    product.discountPercentage > 0 ? (
                                         <div>
                                             <p className="text-sm text-neutral-400 line-through">
                                                 {formatPrice(product.price)}
@@ -705,6 +808,78 @@ export default function AdminProductsPage() {
                         );
                     })}
                 </div>
+
+                {!isLoading && !error && filteredProducts.length > 0 && (
+                    <div className="mt-10 flex flex-wrap items-center justify-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => goToPage(currentPage - 1)}
+                            disabled={currentPage === 1}
+                            className="inline-flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 py-3 text-sm font-black transition hover:border-black disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                            <ChevronLeft size={16} />
+                            Précédent
+                        </button>
+
+                        {paginationRange[0] > 1 && (
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={() => goToPage(1)}
+                                    className="h-11 min-w-11 rounded-full border border-neutral-300 bg-white px-4 text-sm font-black transition hover:border-black"
+                                >
+                                    1
+                                </button>
+
+                                <span className="px-2 text-sm font-black text-neutral-400">
+                                    ...
+                                </span>
+                            </>
+                        )}
+
+                        {paginationRange.map((page) => (
+                            <button
+                                key={page}
+                                type="button"
+                                onClick={() => goToPage(page)}
+                                className={
+                                    currentPage === page
+                                        ? "h-11 min-w-11 rounded-full bg-black px-4 text-sm font-black text-white"
+                                        : "h-11 min-w-11 rounded-full border border-neutral-300 bg-white px-4 text-sm font-black transition hover:border-black"
+                                }
+                            >
+                                {page}
+                            </button>
+                        ))}
+
+                        {paginationRange[paginationRange.length - 1] <
+                            totalPages && (
+                            <>
+                                <span className="px-2 text-sm font-black text-neutral-400">
+                                    ...
+                                </span>
+
+                                <button
+                                    type="button"
+                                    onClick={() => goToPage(totalPages)}
+                                    className="h-11 min-w-11 rounded-full border border-neutral-300 bg-white px-4 text-sm font-black transition hover:border-black"
+                                >
+                                    {totalPages}
+                                </button>
+                            </>
+                        )}
+
+                        <button
+                            type="button"
+                            onClick={() => goToPage(currentPage + 1)}
+                            disabled={currentPage === totalPages}
+                            className="inline-flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 py-3 text-sm font-black transition hover:border-black disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                            Suivant
+                            <ChevronRight size={16} />
+                        </button>
+                    </div>
+                )}
             </section>
         </main>
     );
