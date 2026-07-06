@@ -24,19 +24,16 @@ function getAdminToken() {
         return null;
     }
 
-    return (
-        window.localStorage.getItem("bigotti-admin-token") ??
-        window.localStorage.getItem("admin-token") ??
-        window.localStorage.getItem("token")
-    );
+    return window.localStorage.getItem("bigotti-admin-token");
 }
 
-async function fetchAdminCustomer(token: string, customerId: string) {
+async function fetchAdminCustomer(_token: string | null, customerId: string) {
     const response = await fetch(
         `${API_BASE_URL}/customers/admin/${customerId}`,
         {
+            credentials: "include",
             headers: {
-                Authorization: `Bearer ${token}`,
+                "X-Requested-With": "XMLHttpRequest",
             },
         },
     );
@@ -52,7 +49,7 @@ async function fetchAdminCustomer(token: string, customerId: string) {
 }
 
 async function updateCustomerStatus(
-    token: string,
+    _token: string | null,
     customerId: string,
     isActive: boolean,
 ) {
@@ -60,9 +57,10 @@ async function updateCustomerStatus(
         `${API_BASE_URL}/customers/admin/${customerId}/status`,
         {
             method: "PATCH",
+            credentials: "include",
             headers: {
-                Authorization: `Bearer ${token}`,
                 "Content-Type": "application/json",
+                "X-Requested-With": "XMLHttpRequest",
             },
             body: JSON.stringify({ isActive }),
         },
@@ -109,17 +107,6 @@ function getOrderStatusLabel(status: string) {
     return labels[status] ?? status;
 }
 
-function getPaymentStatusLabel(status: string) {
-    const labels: Record<string, string> = {
-        UNPAID: "Non payé",
-        PAID: "Payé",
-        FAILED: "Échoué",
-        REFUNDED: "Remboursé",
-    };
-
-    return labels[status] ?? status;
-}
-
 function getOrderStatusClassName(status: string) {
     if (status === "CANCELLED") {
         return "rounded-full bg-red-50 px-3 py-1 text-xs font-bold text-red-700";
@@ -134,6 +121,17 @@ function getOrderStatusClassName(status: string) {
     }
 
     return "rounded-full bg-neutral-100 px-3 py-1 text-xs font-bold text-neutral-700";
+}
+
+function getPaymentStatusLabel(status: string) {
+    const labels: Record<string, string> = {
+        UNPAID: "Non payé",
+        PAID: "Payé",
+        FAILED: "Échoué",
+        REFUNDED: "Remboursé",
+    };
+
+    return labels[status] ?? status;
 }
 
 function buildPaginationRange(currentPage: number, totalPages: number) {
@@ -159,10 +157,10 @@ export default function AdminCustomerDetailPage() {
     const params = useParams<{ id: string }>();
 
     const [customer, setCustomer] = useState<AdminCustomer | null>(null);
-    const [currentPage, setCurrentPage] = useState(1);
     const [isLoading, setIsLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState(false);
     const [error, setError] = useState("");
+    const [currentPage, setCurrentPage] = useState(1);
 
     useEffect(() => {
         const token = getAdminToken();
@@ -192,36 +190,20 @@ export default function AdminCustomerDetailPage() {
         );
     }, [customer]);
 
-    const totalPages = Math.max(
-        1,
-        Math.ceil(customerOrders.length / ORDERS_PER_PAGE),
-    );
-
-    const paginationRange = useMemo(
-        () => buildPaginationRange(currentPage, totalPages),
-        [currentPage, totalPages],
-    );
-
-    const paginatedOrders = useMemo(() => {
-        const startIndex = (currentPage - 1) * ORDERS_PER_PAGE;
-        const endIndex = startIndex + ORDERS_PER_PAGE;
-
-        return customerOrders.slice(startIndex, endIndex);
-    }, [customerOrders, currentPage]);
-
+    const totalOrders = customerOrders.length;
+    const totalPages = Math.max(1, Math.ceil(totalOrders / ORDERS_PER_PAGE));
+    const paginationRange = buildPaginationRange(currentPage, totalPages);
     const firstVisibleOrderIndex =
-        customerOrders.length === 0
-            ? 0
-            : (currentPage - 1) * ORDERS_PER_PAGE + 1;
-
+        totalOrders === 0 ? 0 : (currentPage - 1) * ORDERS_PER_PAGE + 1;
     const lastVisibleOrderIndex = Math.min(
         currentPage * ORDERS_PER_PAGE,
-        customerOrders.length,
+        totalOrders,
     );
 
-    useEffect(() => {
-        setCurrentPage(1);
-    }, [customer?.id]);
+    const paginatedOrders = customerOrders.slice(
+        (currentPage - 1) * ORDERS_PER_PAGE,
+        currentPage * ORDERS_PER_PAGE,
+    );
 
     useEffect(() => {
         if (currentPage > totalPages) {
@@ -231,13 +213,8 @@ export default function AdminCustomerDetailPage() {
 
     function goToPage(page: number) {
         const nextPage = Math.min(Math.max(page, 1), totalPages);
-
         setCurrentPage(nextPage);
-
-        window.scrollTo({
-            top: 0,
-            behavior: "smooth",
-        });
+        window.scrollTo({ top: 0, behavior: "smooth" });
     }
 
     async function handleToggleStatus() {
@@ -249,6 +226,16 @@ export default function AdminCustomerDetailPage() {
 
         if (!token) {
             router.push("/admin/login");
+            return;
+        }
+
+        const confirmed = window.confirm(
+            customer.isActive
+                ? `Confirmer la désactivation du client "${customer.fullName}" ?\n\nLe client ne sera pas supprimé. Son historique de commandes restera conservé.`
+                : `Réactiver le client "${customer.fullName}" ?\n\nLe client pourra de nouveau utiliser son compte.`,
+        );
+
+        if (!confirmed) {
             return;
         }
 
@@ -437,285 +424,165 @@ export default function AdminCustomerDetailPage() {
                                         </h2>
                                     </div>
 
-                                    {customerOrders.length > 0 && (
-                                        <div className="rounded-full bg-neutral-100 px-5 py-3 text-sm font-bold text-neutral-600">
+                                    {totalOrders > 0 && (
+                                        <p className="text-sm font-semibold text-neutral-500">
                                             Affichage de{" "}
                                             {firstVisibleOrderIndex} à{" "}
                                             {lastVisibleOrderIndex} sur{" "}
-                                            {customerOrders.length} commande
-                                            {customerOrders.length > 1
-                                                ? "s"
-                                                : ""}
-                                        </div>
+                                            {totalOrders} commande
+                                            {totalOrders > 1 ? "s" : ""}
+                                        </p>
                                     )}
                                 </div>
 
-                                {customerOrders.length === 0 ? (
+                                {totalOrders === 0 ? (
                                     <div className="mt-6 rounded-2xl bg-neutral-50 p-5 text-neutral-500">
                                         Ce client n’a pas encore de commande.
                                     </div>
                                 ) : (
-                                    <>
-                                        <div className="mt-6 space-y-4">
-                                            {paginatedOrders.map((order) => (
-                                                <article
-                                                    key={order.id}
-                                                    className="rounded-3xl border border-neutral-200 p-5"
-                                                >
-                                                    <div className="flex flex-col justify-between gap-5 md:flex-row md:items-start">
-                                                        <div>
-                                                            <p className="text-sm uppercase tracking-[0.2em] text-neutral-500">
-                                                                Commande
-                                                            </p>
-
-                                                            <div className="mt-2 flex flex-wrap items-center gap-3">
-                                                                <h3 className="text-2xl font-black">
-                                                                    {
-                                                                        order.orderNumber
-                                                                    }
-                                                                </h3>
-
-                                                                <span
-                                                                    className={getOrderStatusClassName(
-                                                                        order.orderStatus,
-                                                                    )}
-                                                                >
-                                                                    {getOrderStatusLabel(
-                                                                        order.orderStatus,
-                                                                    )}
-                                                                </span>
-                                                            </div>
-
-                                                            <p className="mt-2 text-sm text-neutral-500">
-                                                                {formatDate(
-                                                                    order.createdAt,
-                                                                )}{" "}
-                                                                —{" "}
+                                    <div className="mt-6 space-y-4">
+                                        {paginatedOrders.map((order) => (
+                                            <div
+                                                key={order.id}
+                                                className="rounded-2xl border border-neutral-100 bg-neutral-50 p-5"
+                                            >
+                                                <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
+                                                    <div>
+                                                        <div className="flex flex-wrap items-center gap-3">
+                                                            <h3 className="text-xl font-black">
                                                                 {
-                                                                    order.items
-                                                                        .length
-                                                                }{" "}
-                                                                article(s)
-                                                            </p>
-                                                        </div>
+                                                                    order.orderNumber
+                                                                }
+                                                            </h3>
 
-                                                        <div className="text-left md:text-right">
-                                                            <p className="text-2xl font-black">
-                                                                {formatPrice(
-                                                                    order.total,
+                                                            <span
+                                                                className={getOrderStatusClassName(
+                                                                    order.orderStatus,
                                                                 )}
-                                                            </p>
-
-                                                            <Link
-                                                                href={`/suivi-commande?orderNumber=${encodeURIComponent(
-                                                                    order.orderNumber,
-                                                                )}&phone=${encodeURIComponent(
-                                                                    order.customerPhone,
-                                                                )}`}
-                                                                className="mt-4 inline-flex rounded-full bg-black px-5 py-3 text-sm font-bold text-white"
                                                             >
-                                                                Suivre
-                                                            </Link>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="mt-5 grid gap-3 md:grid-cols-3">
-                                                        <div className="rounded-2xl bg-neutral-50 p-4">
-                                                            <p className="text-xs text-neutral-500">
-                                                                Statut commande
-                                                            </p>
-
-                                                            <p className="mt-1 font-black">
                                                                 {getOrderStatusLabel(
                                                                     order.orderStatus,
                                                                 )}
-                                                            </p>
+                                                            </span>
                                                         </div>
 
-                                                        <div className="rounded-2xl bg-neutral-50 p-4">
-                                                            <p className="text-xs text-neutral-500">
-                                                                Paiement
-                                                            </p>
+                                                        <p className="mt-2 text-sm text-neutral-500">
+                                                            Créée le{" "}
+                                                            {formatDate(
+                                                                order.createdAt,
+                                                            )}{" "}
+                                                            —{" "}
+                                                            {order.items.length}{" "}
+                                                            article(s)
+                                                        </p>
 
-                                                            <p className="mt-1 font-black">
-                                                                {getPaymentStatusLabel(
-                                                                    order.paymentStatus,
-                                                                )}
-                                                            </p>
-                                                        </div>
-
-                                                        <div className="rounded-2xl bg-neutral-50 p-4">
-                                                            <p className="text-xs text-neutral-500">
-                                                                Ville / magasin
-                                                            </p>
-
-                                                            <p className="mt-1 font-black">
-                                                                {
-                                                                    order.deliveryCity
-                                                                }
-                                                            </p>
-                                                        </div>
+                                                        <p className="mt-2 text-sm text-neutral-500">
+                                                            Paiement :{" "}
+                                                            {getPaymentStatusLabel(
+                                                                order.paymentStatus,
+                                                            )}
+                                                        </p>
                                                     </div>
 
-                                                    {order.items.length > 0 && (
-                                                        <div className="mt-5 border-t border-neutral-200 pt-5">
-                                                            <p className="text-sm font-bold uppercase tracking-[0.2em] text-neutral-500">
-                                                                Articles
-                                                            </p>
+                                                    <div className="text-left md:text-right">
+                                                        <p className="text-xl font-black">
+                                                            {formatPrice(
+                                                                order.total,
+                                                            )}
+                                                        </p>
 
-                                                            <div className="mt-3 space-y-3">
-                                                                {order.items.map(
-                                                                    (item) => (
-                                                                        <div
-                                                                            key={
-                                                                                item.id
-                                                                            }
-                                                                            className="flex flex-col justify-between gap-3 rounded-2xl bg-neutral-50 p-4 md:flex-row md:items-center"
-                                                                        >
-                                                                            <div>
-                                                                                <p className="font-black">
-                                                                                    {
-                                                                                        item.productName
-                                                                                    }
-                                                                                </p>
-
-                                                                                <p className="mt-1 text-sm text-neutral-500">
-                                                                                    Réf.{" "}
-                                                                                    {
-                                                                                        item.productReference
-                                                                                    }{" "}
-                                                                                    —{" "}
-                                                                                    {
-                                                                                        item.color
-                                                                                    }{" "}
-                                                                                    /{" "}
-                                                                                    {
-                                                                                        item.size
-                                                                                    }
-                                                                                </p>
-                                                                            </div>
-
-                                                                            <div className="text-left md:text-right">
-                                                                                <p className="font-black">
-                                                                                    {
-                                                                                        item.quantity
-                                                                                    }{" "}
-                                                                                    ×{" "}
-                                                                                    {formatPrice(
-                                                                                        item.unitPrice,
-                                                                                    )}
-                                                                                </p>
-
-                                                                                <p className="mt-1 text-sm text-neutral-500">
-                                                                                    Total
-                                                                                    :{" "}
-                                                                                    {formatPrice(
-                                                                                        item.totalPrice,
-                                                                                    )}
-                                                                                </p>
-                                                                            </div>
-                                                                        </div>
-                                                                    ),
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                </article>
-                                            ))}
-                                        </div>
-
-                                        {totalPages > 1 && (
-                                            <div className="mt-8 flex flex-wrap items-center justify-center gap-2">
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        goToPage(
-                                                            currentPage - 1,
-                                                        )
-                                                    }
-                                                    disabled={currentPage === 1}
-                                                    className="inline-flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 py-3 text-sm font-black transition hover:border-black disabled:cursor-not-allowed disabled:opacity-40"
-                                                >
-                                                    <ChevronLeft size={16} />
-                                                    Précédent
-                                                </button>
-
-                                                {paginationRange[0] > 1 && (
-                                                    <>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() =>
-                                                                goToPage(1)
-                                                            }
-                                                            className="h-11 min-w-11 rounded-full border border-neutral-300 bg-white px-4 text-sm font-black transition hover:border-black"
+                                                        <Link
+                                                            href={`/admin/commandes/${order.id}`}
+                                                            className="mt-3 inline-flex rounded-full bg-black px-5 py-3 text-sm font-bold text-white"
                                                         >
-                                                            1
-                                                        </button>
-
-                                                        <span className="px-2 text-sm font-black text-neutral-400">
-                                                            ...
-                                                        </span>
-                                                    </>
-                                                )}
-
-                                                {paginationRange.map((page) => (
-                                                    <button
-                                                        key={page}
-                                                        type="button"
-                                                        onClick={() =>
-                                                            goToPage(page)
-                                                        }
-                                                        className={
-                                                            currentPage === page
-                                                                ? "h-11 min-w-11 rounded-full bg-black px-4 text-sm font-black text-white"
-                                                                : "h-11 min-w-11 rounded-full border border-neutral-300 bg-white px-4 text-sm font-black transition hover:border-black"
-                                                        }
-                                                    >
-                                                        {page}
-                                                    </button>
-                                                ))}
-
-                                                {paginationRange[
-                                                    paginationRange.length - 1
-                                                ] < totalPages && (
-                                                    <>
-                                                        <span className="px-2 text-sm font-black text-neutral-400">
-                                                            ...
-                                                        </span>
-
-                                                        <button
-                                                            type="button"
-                                                            onClick={() =>
-                                                                goToPage(
-                                                                    totalPages,
-                                                                )
-                                                            }
-                                                            className="h-11 min-w-11 rounded-full border border-neutral-300 bg-white px-4 text-sm font-black transition hover:border-black"
-                                                        >
-                                                            {totalPages}
-                                                        </button>
-                                                    </>
-                                                )}
-
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        goToPage(
-                                                            currentPage + 1,
-                                                        )
-                                                    }
-                                                    disabled={
-                                                        currentPage ===
-                                                        totalPages
-                                                    }
-                                                    className="inline-flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 py-3 text-sm font-black transition hover:border-black disabled:cursor-not-allowed disabled:opacity-40"
-                                                >
-                                                    Suivant
-                                                    <ChevronRight size={16} />
-                                                </button>
+                                                            Voir commande
+                                                        </Link>
+                                                    </div>
+                                                </div>
                                             </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {totalPages > 1 && (
+                                    <div className="mt-8 flex flex-wrap items-center justify-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                goToPage(currentPage - 1)
+                                            }
+                                            disabled={currentPage === 1}
+                                            className="inline-flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 py-3 text-sm font-black transition hover:border-black disabled:cursor-not-allowed disabled:opacity-40"
+                                        >
+                                            <ChevronLeft size={16} />
+                                            Précédent
+                                        </button>
+
+                                        {paginationRange[0] > 1 && (
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => goToPage(1)}
+                                                    className="h-11 min-w-11 rounded-full border border-neutral-300 bg-white px-4 text-sm font-black transition hover:border-black"
+                                                >
+                                                    1
+                                                </button>
+
+                                                <span className="px-2 text-sm font-black text-neutral-400">
+                                                    ...
+                                                </span>
+                                            </>
                                         )}
-                                    </>
+
+                                        {paginationRange.map((page) => (
+                                            <button
+                                                key={page}
+                                                type="button"
+                                                onClick={() => goToPage(page)}
+                                                className={
+                                                    currentPage === page
+                                                        ? "h-11 min-w-11 rounded-full bg-black px-4 text-sm font-black text-white"
+                                                        : "h-11 min-w-11 rounded-full border border-neutral-300 bg-white px-4 text-sm font-black transition hover:border-black"
+                                                }
+                                            >
+                                                {page}
+                                            </button>
+                                        ))}
+
+                                        {paginationRange[
+                                            paginationRange.length - 1
+                                        ] < totalPages && (
+                                            <>
+                                                <span className="px-2 text-sm font-black text-neutral-400">
+                                                    ...
+                                                </span>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        goToPage(totalPages)
+                                                    }
+                                                    className="h-11 min-w-11 rounded-full border border-neutral-300 bg-white px-4 text-sm font-black transition hover:border-black"
+                                                >
+                                                    {totalPages}
+                                                </button>
+                                            </>
+                                        )}
+
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                goToPage(currentPage + 1)
+                                            }
+                                            disabled={
+                                                currentPage === totalPages
+                                            }
+                                            className="inline-flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 py-3 text-sm font-black transition hover:border-black disabled:cursor-not-allowed disabled:opacity-40"
+                                        >
+                                            Suivant
+                                            <ChevronRight size={16} />
+                                        </button>
+                                    </div>
                                 )}
                             </div>
                         </div>

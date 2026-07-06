@@ -31,18 +31,14 @@ function getAdminToken() {
         return null;
     }
 
-    return (
-        window.localStorage.getItem("bigotti-admin-token") ??
-        window.localStorage.getItem("admin-token") ??
-        window.localStorage.getItem("token")
-    );
+    return window.localStorage.getItem("bigotti-admin-token");
 }
 
-async function fetchAdminCustomers(token: string) {
+async function fetchAdminCustomers(_token: string | null) {
     const response = await fetch(`${API_BASE_URL}/customers/admin`, {
         credentials: "include",
         headers: {
-            Authorization: `Bearer ${token}`,
+            "X-Requested-With": "XMLHttpRequest",
         },
     });
 
@@ -58,7 +54,7 @@ async function fetchAdminCustomers(token: string) {
 }
 
 async function updateCustomerStatus(
-    token: string,
+    _token: string | null,
     customerId: string,
     isActive: boolean,
 ) {
@@ -68,8 +64,8 @@ async function updateCustomerStatus(
             method: "PATCH",
             credentials: "include",
             headers: {
-                Authorization: `Bearer ${token}`,
                 "Content-Type": "application/json",
+                "X-Requested-With": "XMLHttpRequest",
             },
             body: JSON.stringify({ isActive }),
         },

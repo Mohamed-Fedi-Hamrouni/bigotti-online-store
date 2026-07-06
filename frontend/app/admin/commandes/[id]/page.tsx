@@ -40,18 +40,14 @@ function getAdminToken() {
         return null;
     }
 
-    return (
-        window.localStorage.getItem("bigotti-admin-token") ??
-        window.localStorage.getItem("admin-token") ??
-        window.localStorage.getItem("token")
-    );
+    return window.localStorage.getItem("bigotti-admin-token");
 }
 
-async function fetchAdminOrder(token: string, orderId: string) {
+async function fetchAdminOrder(_token: string | null, orderId: string) {
     const response = await fetch(`${API_BASE_URL}/orders/admin/${orderId}`, {
         credentials: "include",
         headers: {
-            Authorization: `Bearer ${token}`,
+            "X-Requested-With": "XMLHttpRequest",
         },
     });
 
