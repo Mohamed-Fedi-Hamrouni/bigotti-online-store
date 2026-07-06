@@ -11,7 +11,10 @@ import { ChangeCustomerPasswordDto } from './dto/change-customer-password.dto';
 import { LoginCustomerDto } from './dto/login-customer.dto';
 import { RegisterCustomerDto } from './dto/register-customer.dto';
 import { UpdateCustomerProfileDto } from './dto/update-customer-profile.dto';
-import type { CustomerTokenPayload } from './types/customer-token-payload.type';
+import type {
+  AnyCustomerTokenPayload,
+  CustomerTokenPayload,
+} from './types/customer-token-payload.type';
 
 @Injectable()
 export class CustomerAuthService {
@@ -21,10 +24,11 @@ export class CustomerAuthService {
   ) {}
 
   async register(dto: RegisterCustomerDto) {
-    const email = dto.email.trim().toLowerCase();
-    const phone = dto.phone.trim();
+    const fullName = this.normalizeFullName(dto.fullName);
+    const email = this.normalizeEmail(dto.email);
+    const phone = this.normalizePhone(dto.phone);
 
-    const existingAccount = await this.prisma.customer.findFirst({
+    const registeredWithEmail = await this.prisma.customer.findFirst({
       where: {
         email,
         passwordHash: {
@@ -33,27 +37,43 @@ export class CustomerAuthService {
       },
     });
 
-    if (existingAccount) {
+    if (registeredWithEmail) {
       throw new ConflictException(
         'Un compte client existe déjà avec cet email.',
       );
     }
 
+    const registeredWithPhone = await this.prisma.customer.findFirst({
+      where: {
+        phone,
+        passwordHash: {
+          not: null,
+        },
+      },
+    });
+
+    if (registeredWithPhone) {
+      throw new ConflictException(
+        'Un compte client existe déjà avec ce numéro de téléphone.',
+      );
+    }
+
     const passwordHash = await hash(dto.password, 10);
 
-    const existingCustomer = await this.prisma.customer.findFirst({
+    const existingGuestCustomer = await this.prisma.customer.findFirst({
       where: {
+        passwordHash: null,
         OR: [{ email }, { phone }],
       },
     });
 
-    const customer = existingCustomer
+    const customer = existingGuestCustomer
       ? await this.prisma.customer.update({
           where: {
-            id: existingCustomer.id,
+            id: existingGuestCustomer.id,
           },
           data: {
-            fullName: dto.fullName.trim(),
+            fullName,
             phone,
             email,
             passwordHash,
@@ -62,7 +82,7 @@ export class CustomerAuthService {
         })
       : await this.prisma.customer.create({
           data: {
-            fullName: dto.fullName.trim(),
+            fullName,
             phone,
             email,
             passwordHash,
@@ -71,13 +91,13 @@ export class CustomerAuthService {
         });
 
     return {
-      accessToken: this.signCustomerToken(customer.id, email),
+      accessToken: await this.signCustomerToken(customer.id, email),
       customer: this.sanitizeCustomer(customer),
     };
   }
 
   async login(dto: LoginCustomerDto) {
-    const email = dto.email.trim().toLowerCase();
+    const email = this.normalizeEmail(dto.email);
 
     const customer = await this.prisma.customer.findFirst({
       where: {
@@ -93,7 +113,9 @@ export class CustomerAuthService {
     }
 
     if (!customer.isActive) {
-      throw new UnauthorizedException('Compte client désactivé.');
+      throw new UnauthorizedException(
+        'Compte client désactivé. Veuillez contacter la boutique.',
+      );
     }
 
     const isPasswordValid = await compare(dto.password, customer.passwordHash);
@@ -103,42 +125,23 @@ export class CustomerAuthService {
     }
 
     return {
-      accessToken: this.signCustomerToken(customer.id, email),
+      accessToken: await this.signCustomerToken(customer.id, email),
       customer: this.sanitizeCustomer(customer),
     };
   }
 
   async me(authorization?: string) {
-    const payload = this.verifyAuthorizationHeader(authorization);
-
-    const customer = await this.prisma.customer.findUnique({
-      where: {
-        id: payload.sub,
-      },
-    });
-
-    if (!customer || !customer.passwordHash || !customer.isActive) {
-      throw new UnauthorizedException('Session client invalide.');
-    }
+    const customer = await this.getAuthenticatedCustomer(authorization);
 
     return this.sanitizeCustomer(customer);
   }
 
   async updateProfile(dto: UpdateCustomerProfileDto, authorization?: string) {
-    const payload = this.verifyAuthorizationHeader(authorization);
+    const customer = await this.getAuthenticatedCustomer(authorization);
 
-    const customer = await this.prisma.customer.findUnique({
-      where: {
-        id: payload.sub,
-      },
-    });
-
-    if (!customer || !customer.passwordHash || !customer.isActive) {
-      throw new UnauthorizedException('Session client invalide.');
-    }
-
-    const email = dto.email.trim().toLowerCase();
-    const phone = dto.phone.trim();
+    const fullName = this.normalizeFullName(dto.fullName);
+    const email = this.normalizeEmail(dto.email);
+    const phone = this.normalizePhone(dto.phone);
 
     const existingEmail = await this.prisma.customer.findFirst({
       where: {
@@ -158,12 +161,30 @@ export class CustomerAuthService {
       );
     }
 
+    const existingPhone = await this.prisma.customer.findFirst({
+      where: {
+        phone,
+        id: {
+          not: customer.id,
+        },
+        passwordHash: {
+          not: null,
+        },
+      },
+    });
+
+    if (existingPhone) {
+      throw new ConflictException(
+        'Ce numéro de téléphone est déjà utilisé par un autre compte.',
+      );
+    }
+
     const updatedCustomer = await this.prisma.customer.update({
       where: {
         id: customer.id,
       },
       data: {
-        fullName: dto.fullName.trim(),
+        fullName,
         phone,
         email,
       },
@@ -173,15 +194,9 @@ export class CustomerAuthService {
   }
 
   async changePassword(dto: ChangeCustomerPasswordDto, authorization?: string) {
-    const payload = this.verifyAuthorizationHeader(authorization);
+    const customer = await this.getAuthenticatedCustomer(authorization);
 
-    const customer = await this.prisma.customer.findUnique({
-      where: {
-        id: payload.sub,
-      },
-    });
-
-    if (!customer || !customer.passwordHash || !customer.isActive) {
+    if (!customer.passwordHash) {
       throw new UnauthorizedException('Session client invalide.');
     }
 
@@ -217,17 +232,7 @@ export class CustomerAuthService {
   }
 
   async getCustomerOrders(authorization?: string) {
-    const payload = this.verifyAuthorizationHeader(authorization);
-
-    const customer = await this.prisma.customer.findUnique({
-      where: {
-        id: payload.sub,
-      },
-    });
-
-    if (!customer || !customer.passwordHash || !customer.isActive) {
-      throw new UnauthorizedException('Session client invalide.');
-    }
+    const customer = await this.getAuthenticatedCustomer(authorization);
 
     const orderFilters: any[] = [
       {
@@ -263,34 +268,84 @@ export class CustomerAuthService {
     }));
   }
 
-  private signCustomerToken(customerId: string, email: string) {
+  private async getAuthenticatedCustomer(authorization?: string) {
+    const payload = this.verifyAuthorizationHeader(authorization);
+
+    const customer = await this.prisma.customer.findUnique({
+      where: {
+        id: payload.sub,
+      },
+    });
+
+    if (!customer || !customer.passwordHash) {
+      throw new UnauthorizedException('Session client invalide.');
+    }
+
+    if (!customer.isActive) {
+      throw new UnauthorizedException(
+        'Compte client désactivé. Veuillez contacter la boutique.',
+      );
+    }
+
+    return customer;
+  }
+
+  private async signCustomerToken(customerId: string, email: string) {
     const payload: CustomerTokenPayload = {
       sub: customerId,
       email,
-      type: 'CUSTOMER',
+      tokenType: 'customer',
     };
 
-    return this.jwtService.sign(payload);
+    return this.jwtService.signAsync(payload, {
+      expiresIn: '7d',
+    });
   }
 
   private verifyAuthorizationHeader(authorization?: string) {
-    if (!authorization?.startsWith('Bearer ')) {
+    if (!authorization) {
       throw new UnauthorizedException('Token client manquant.');
     }
 
-    const token = authorization.replace('Bearer ', '').trim();
+    const [type, token] = authorization.split(' ');
+
+    if (type !== 'Bearer' || !token) {
+      throw new UnauthorizedException('Token client manquant.');
+    }
 
     try {
-      const payload = this.jwtService.verify<CustomerTokenPayload>(token);
+      const payload = this.jwtService.verify<AnyCustomerTokenPayload>(token);
 
-      if (payload.type !== 'CUSTOMER') {
+      const isCurrentCustomerToken =
+        'tokenType' in payload && payload.tokenType === 'customer';
+
+      const isLegacyCustomerToken =
+        'type' in payload && payload.type === 'CUSTOMER';
+
+      if (!payload.sub || !payload.email) {
+        throw new UnauthorizedException('Token client invalide.');
+      }
+
+      if (!isCurrentCustomerToken && !isLegacyCustomerToken) {
         throw new UnauthorizedException('Token client invalide.');
       }
 
       return payload;
     } catch {
-      throw new UnauthorizedException('Token client invalide.');
+      throw new UnauthorizedException('Token client invalide ou expiré.');
     }
+  }
+
+  private normalizeFullName(value: string) {
+    return value.trim().replace(/\s+/g, ' ');
+  }
+
+  private normalizeEmail(value: string) {
+    return value.trim().toLowerCase();
+  }
+
+  private normalizePhone(value: string) {
+    return value.trim().replace(/\s+/g, '');
   }
 
   private sanitizeCustomer<T extends { passwordHash?: string | null }>(

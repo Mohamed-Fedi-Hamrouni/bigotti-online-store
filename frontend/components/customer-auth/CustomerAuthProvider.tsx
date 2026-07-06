@@ -28,6 +28,26 @@ const CustomerAuthContext = createContext<CustomerAuthContextValue | undefined>(
 const TOKEN_KEY = "bigotti-customer-token";
 const CUSTOMER_KEY = "bigotti-customer";
 
+function clearStoredCustomerSession() {
+    window.localStorage.removeItem(TOKEN_KEY);
+    window.localStorage.removeItem(CUSTOMER_KEY);
+}
+
+function readStoredCustomer() {
+    const storedCustomer = window.localStorage.getItem(CUSTOMER_KEY);
+
+    if (!storedCustomer) {
+        return null;
+    }
+
+    try {
+        return JSON.parse(storedCustomer) as Customer;
+    } catch {
+        window.localStorage.removeItem(CUSTOMER_KEY);
+        return null;
+    }
+}
+
 export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     const [customer, setCustomer] = useState<Customer | null>(null);
     const [token, setToken] = useState<string | null>(null);
@@ -35,25 +55,27 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
 
     useEffect(() => {
         const storedToken = window.localStorage.getItem(TOKEN_KEY);
-        const storedCustomer = window.localStorage.getItem(CUSTOMER_KEY);
 
         if (!storedToken) {
+            clearStoredCustomerSession();
             setIsLoading(false);
             return;
         }
 
         setToken(storedToken);
 
-        if (storedCustomer) {
-            try {
-                setCustomer(JSON.parse(storedCustomer));
-            } catch {
-                window.localStorage.removeItem(CUSTOMER_KEY);
-            }
+        const storedCustomer = readStoredCustomer();
+
+        if (storedCustomer?.isActive) {
+            setCustomer(storedCustomer);
         }
 
         getCustomerMe(storedToken)
             .then((freshCustomer) => {
+                if (!freshCustomer.isActive) {
+                    throw new Error("Compte client désactivé.");
+                }
+
                 setCustomer(freshCustomer);
                 window.localStorage.setItem(
                     CUSTOMER_KEY,
@@ -61,8 +83,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
                 );
             })
             .catch(() => {
-                window.localStorage.removeItem(TOKEN_KEY);
-                window.localStorage.removeItem(CUSTOMER_KEY);
+                clearStoredCustomerSession();
                 setToken(null);
                 setCustomer(null);
             })
@@ -70,6 +91,13 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     }, []);
 
     function saveCustomerSession(response: CustomerAuthResponse) {
+        if (!response.accessToken || !response.customer?.isActive) {
+            clearStoredCustomerSession();
+            setToken(null);
+            setCustomer(null);
+            return;
+        }
+
         window.localStorage.setItem(TOKEN_KEY, response.accessToken);
         window.localStorage.setItem(
             CUSTOMER_KEY,
@@ -81,6 +109,13 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     }
 
     function updateCustomerSession(updatedCustomer: Customer) {
+        if (!updatedCustomer.isActive) {
+            clearStoredCustomerSession();
+            setToken(null);
+            setCustomer(null);
+            return;
+        }
+
         window.localStorage.setItem(
             CUSTOMER_KEY,
             JSON.stringify(updatedCustomer),
@@ -90,8 +125,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     }
 
     function logoutCustomer() {
-        window.localStorage.removeItem(TOKEN_KEY);
-        window.localStorage.removeItem(CUSTOMER_KEY);
+        clearStoredCustomerSession();
 
         setToken(null);
         setCustomer(null);
@@ -102,7 +136,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
             customer,
             token,
             isLoading,
-            isAuthenticated: Boolean(customer && token),
+            isAuthenticated: Boolean(customer && token && customer.isActive),
             saveCustomerSession,
             updateCustomerSession,
             logoutCustomer,

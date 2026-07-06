@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LogIn } from "lucide-react";
+import { Eye, EyeOff, LogIn } from "lucide-react";
 import { useCustomerAuth } from "@/components/customer-auth/CustomerAuthProvider";
 import { PublicFooter } from "@/components/layout/PublicFooter";
 import { PublicHeader } from "@/components/layout/PublicHeader";
@@ -11,29 +11,52 @@ import { loginCustomer } from "@/lib/api";
 
 export default function CustomerLoginPage() {
     const router = useRouter();
-    const { saveCustomerSession } = useCustomerAuth();
+    const { saveCustomerSession, isAuthenticated, isLoading } =
+        useCustomerAuth();
 
+    const [email, setEmail] = useState("");
+    const [password, setPassword] = useState("");
+    const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    useEffect(() => {
+        if (!isLoading && isAuthenticated) {
+            router.replace("/compte");
+        }
+    }, [isLoading, isAuthenticated, router]);
+
     async function handleSubmit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
+
+        const normalizedEmail = email.trim().toLowerCase();
+
         setError("");
 
-        const formData = new FormData(event.currentTarget);
+        if (!normalizedEmail || !password) {
+            setError("Veuillez saisir votre email et votre mot de passe.");
+            return;
+        }
 
-        const payload = {
-            email: String(formData.get("email") ?? "")
-                .trim()
-                .toLowerCase(),
-            password: String(formData.get("password") ?? ""),
-        };
+        if (password.length < 6) {
+            setError("Le mot de passe doit contenir au moins 6 caractères.");
+            return;
+        }
 
         try {
             setIsSubmitting(true);
-            const response = await loginCustomer(payload);
+
+            const response = await loginCustomer({
+                email: normalizedEmail,
+                password,
+            });
+
+            if (!response.customer.isActive) {
+                throw new Error("Ce compte client est désactivé.");
+            }
+
             saveCustomerSession(response);
-            router.push("/compte");
+            router.replace("/compte");
         } catch (err) {
             setError(
                 err instanceof Error
@@ -60,8 +83,8 @@ export default function CustomerLoginPage() {
                     </h1>
 
                     <p className="mt-6 max-w-2xl text-lg leading-8 text-neutral-300">
-                        Connectez-vous pour accéder à votre espace client et
-                        retrouver vos informations.
+                        Connectez-vous pour accéder à votre espace client,
+                        retrouver vos informations et suivre vos commandes.
                     </p>
                 </div>
 
@@ -94,10 +117,16 @@ export default function CustomerLoginPage() {
                     <div className="mt-6 space-y-5">
                         <div>
                             <label className="text-sm font-bold">Email</label>
+
                             <input
                                 name="email"
                                 required
                                 type="email"
+                                autoComplete="email"
+                                value={email}
+                                onChange={(event) =>
+                                    setEmail(event.target.value)
+                                }
                                 placeholder="client@email.com"
                                 className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
                             />
@@ -107,21 +136,48 @@ export default function CustomerLoginPage() {
                             <label className="text-sm font-bold">
                                 Mot de passe
                             </label>
-                            <input
-                                name="password"
-                                required
-                                type="password"
-                                minLength={6}
-                                placeholder="Votre mot de passe"
-                                className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
-                            />
+
+                            <div className="mt-2 flex items-center rounded-2xl border border-neutral-300 px-4 focus-within:border-black">
+                                <input
+                                    name="password"
+                                    required
+                                    type={showPassword ? "text" : "password"}
+                                    minLength={6}
+                                    autoComplete="current-password"
+                                    value={password}
+                                    onChange={(event) =>
+                                        setPassword(event.target.value)
+                                    }
+                                    placeholder="Votre mot de passe"
+                                    className="w-full py-3 outline-none"
+                                />
+
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        setShowPassword((current) => !current)
+                                    }
+                                    className="text-neutral-500 hover:text-black"
+                                    aria-label={
+                                        showPassword
+                                            ? "Masquer le mot de passe"
+                                            : "Afficher le mot de passe"
+                                    }
+                                >
+                                    {showPassword ? (
+                                        <EyeOff size={18} />
+                                    ) : (
+                                        <Eye size={18} />
+                                    )}
+                                </button>
+                            </div>
                         </div>
                     </div>
 
                     <button
                         type="submit"
                         disabled={isSubmitting}
-                        className="mt-8 w-full rounded-full bg-black px-6 py-4 text-sm font-black uppercase tracking-[0.12em] text-white transition hover:bg-neutral-800 disabled:bg-neutral-300"
+                        className="mt-8 w-full rounded-full bg-black px-6 py-4 text-sm font-black uppercase tracking-[0.12em] text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
                     >
                         {isSubmitting ? "Connexion..." : "Se connecter"}
                     </button>
