@@ -3,8 +3,11 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { getAdminOrders, updateOrderStatus } from "@/lib/api";
 import type { AdminOrder, OrderStatus, PaymentStatus } from "@/types/order";
+
+const ORDERS_PER_PAGE = 10;
 
 const ORDER_STATUS_OPTIONS: Array<{
     value: OrderStatus;
@@ -119,6 +122,24 @@ function getPaymentMethodLabel(order: AdminOrder) {
     return "Paiement à confirmer";
 }
 
+function buildPaginationRange(currentPage: number, totalPages: number) {
+    const maxVisiblePages = 5;
+
+    if (totalPages <= maxVisiblePages) {
+        return Array.from({ length: totalPages }, (_, index) => index + 1);
+    }
+
+    const half = Math.floor(maxVisiblePages / 2);
+    let start = Math.max(1, currentPage - half);
+    let end = Math.min(totalPages, start + maxVisiblePages - 1);
+
+    if (end - start + 1 < maxVisiblePages) {
+        start = Math.max(1, end - maxVisiblePages + 1);
+    }
+
+    return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+}
+
 export default function AdminOrdersPage() {
     const router = useRouter();
 
@@ -128,6 +149,7 @@ export default function AdminOrdersPage() {
         useState<OrderStatusFilter>("ALL");
     const [paymentStatusFilter, setPaymentStatusFilter] =
         useState<PaymentStatusFilter>("ALL");
+    const [currentPage, setCurrentPage] = useState(1);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState("");
     const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
@@ -187,6 +209,43 @@ export default function AdminOrdersPage() {
         });
     }, [orders, searchQuery, orderStatusFilter, paymentStatusFilter]);
 
+    const totalPages = Math.max(
+        1,
+        Math.ceil(filteredOrders.length / ORDERS_PER_PAGE),
+    );
+
+    const paginationRange = useMemo(
+        () => buildPaginationRange(currentPage, totalPages),
+        [currentPage, totalPages],
+    );
+
+    const paginatedOrders = useMemo(() => {
+        const startIndex = (currentPage - 1) * ORDERS_PER_PAGE;
+        const endIndex = startIndex + ORDERS_PER_PAGE;
+
+        return filteredOrders.slice(startIndex, endIndex);
+    }, [filteredOrders, currentPage]);
+
+    const firstVisibleOrderIndex =
+        filteredOrders.length === 0
+            ? 0
+            : (currentPage - 1) * ORDERS_PER_PAGE + 1;
+
+    const lastVisibleOrderIndex = Math.min(
+        currentPage * ORDERS_PER_PAGE,
+        filteredOrders.length,
+    );
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchQuery, orderStatusFilter, paymentStatusFilter]);
+
+    useEffect(() => {
+        if (currentPage > totalPages) {
+            setCurrentPage(totalPages);
+        }
+    }, [currentPage, totalPages]);
+
     const totalOrders = orders.length;
 
     const pendingOrders = orders.filter(
@@ -204,6 +263,17 @@ export default function AdminOrdersPage() {
     const totalRevenue = orders
         .filter((order) => order.orderStatus !== "CANCELLED")
         .reduce((sum, order) => sum + Number(order.total), 0);
+
+    function goToPage(page: number) {
+        const nextPage = Math.min(Math.max(page, 1), totalPages);
+
+        setCurrentPage(nextPage);
+
+        window.scrollTo({
+            top: 0,
+            behavior: "smooth",
+        });
+    }
 
     async function handleStatusChange(
         order: AdminOrder,
@@ -430,9 +500,18 @@ export default function AdminOrdersPage() {
                         </select>
                     </div>
 
-                    <p className="mt-4 text-sm text-neutral-500">
-                        {filteredOrders.length} commande(s) affichée(s)
-                    </p>
+                    <div className="mt-4 flex flex-col justify-between gap-3 text-sm text-neutral-500 md:flex-row md:items-center">
+                        <p>{filteredOrders.length} commande(s) trouvée(s)</p>
+
+                        {!isLoading && !error && filteredOrders.length > 0 && (
+                            <p>
+                                Affichage de {firstVisibleOrderIndex} à{" "}
+                                {lastVisibleOrderIndex} sur{" "}
+                                {filteredOrders.length} commande(s) — page{" "}
+                                {currentPage}/{totalPages}
+                            </p>
+                        )}
+                    </div>
                 </div>
 
                 {isLoading && (
@@ -456,7 +535,7 @@ export default function AdminOrdersPage() {
                 )}
 
                 <div className="space-y-5">
-                    {filteredOrders.map((order) => {
+                    {paginatedOrders.map((order) => {
                         const isCancelled = order.orderStatus === "CANCELLED";
                         const isUpdating = updatingOrderId === order.id;
 
@@ -492,6 +571,12 @@ export default function AdminOrdersPage() {
                                                         order.paymentStatus
                                                     ]
                                                 }
+                                            </span>
+
+                                            <span className="rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700">
+                                                {getFulfillmentMethodLabel(
+                                                    order,
+                                                )}
                                             </span>
                                         </div>
 
@@ -643,6 +728,81 @@ export default function AdminOrdersPage() {
                         );
                     })}
                 </div>
+
+                {!isLoading &&
+                    !error &&
+                    filteredOrders.length > 0 &&
+                    totalPages > 1 && (
+                        <div className="mt-10 flex flex-wrap items-center justify-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => goToPage(currentPage - 1)}
+                                disabled={currentPage === 1}
+                                className="inline-flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 py-3 text-sm font-black transition hover:border-black disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                                <ChevronLeft size={16} />
+                                Précédent
+                            </button>
+
+                            {paginationRange[0] > 1 && (
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={() => goToPage(1)}
+                                        className="h-11 min-w-11 rounded-full border border-neutral-300 bg-white px-4 text-sm font-black transition hover:border-black"
+                                    >
+                                        1
+                                    </button>
+
+                                    <span className="px-2 text-sm font-black text-neutral-400">
+                                        ...
+                                    </span>
+                                </>
+                            )}
+
+                            {paginationRange.map((page) => (
+                                <button
+                                    key={page}
+                                    type="button"
+                                    onClick={() => goToPage(page)}
+                                    className={
+                                        currentPage === page
+                                            ? "h-11 min-w-11 rounded-full bg-black px-4 text-sm font-black text-white"
+                                            : "h-11 min-w-11 rounded-full border border-neutral-300 bg-white px-4 text-sm font-black transition hover:border-black"
+                                    }
+                                >
+                                    {page}
+                                </button>
+                            ))}
+
+                            {paginationRange[paginationRange.length - 1] <
+                                totalPages && (
+                                <>
+                                    <span className="px-2 text-sm font-black text-neutral-400">
+                                        ...
+                                    </span>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => goToPage(totalPages)}
+                                        className="h-11 min-w-11 rounded-full border border-neutral-300 bg-white px-4 text-sm font-black transition hover:border-black"
+                                    >
+                                        {totalPages}
+                                    </button>
+                                </>
+                            )}
+
+                            <button
+                                type="button"
+                                onClick={() => goToPage(currentPage + 1)}
+                                disabled={currentPage === totalPages}
+                                className="inline-flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 py-3 text-sm font-black transition hover:border-black disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                                Suivant
+                                <ChevronRight size={16} />
+                            </button>
+                        </div>
+                    )}
             </section>
         </main>
     );
