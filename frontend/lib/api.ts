@@ -38,6 +38,67 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
 export const COOKIE_SESSION_MARKER = "cookie-session";
 
+const ADMIN_SESSION_MARKER_KEY = "bigotti-admin-token";
+const CUSTOMER_SESSION_MARKER_KEY = "bigotti-customer-token";
+const LEGACY_ADMIN_TOKEN_KEYS = ["admin-token", "token"] as const;
+const LEGACY_CUSTOMER_TOKEN_KEYS = ["customer-token"] as const;
+
+export function sanitizeLegacyAuthStorage() {
+    if (typeof window === "undefined") {
+        return;
+    }
+
+    sanitizeSessionMarker(ADMIN_SESSION_MARKER_KEY);
+    sanitizeSessionMarker(CUSTOMER_SESSION_MARKER_KEY);
+
+    const hasLegacyAdminToken = LEGACY_ADMIN_TOKEN_KEYS.some((key) =>
+        Boolean(window.localStorage.getItem(key)),
+    );
+
+    const hasLegacyCustomerToken = LEGACY_CUSTOMER_TOKEN_KEYS.some((key) =>
+        Boolean(window.localStorage.getItem(key)),
+    );
+
+    if (
+        hasLegacyAdminToken &&
+        !window.localStorage.getItem(ADMIN_SESSION_MARKER_KEY)
+    ) {
+        window.localStorage.setItem(
+            ADMIN_SESSION_MARKER_KEY,
+            COOKIE_SESSION_MARKER,
+        );
+    }
+
+    if (
+        hasLegacyCustomerToken &&
+        !window.localStorage.getItem(CUSTOMER_SESSION_MARKER_KEY)
+    ) {
+        window.localStorage.setItem(
+            CUSTOMER_SESSION_MARKER_KEY,
+            COOKIE_SESSION_MARKER,
+        );
+    }
+
+    for (const key of [
+        ...LEGACY_ADMIN_TOKEN_KEYS,
+        ...LEGACY_CUSTOMER_TOKEN_KEYS,
+    ]) {
+        window.localStorage.removeItem(key);
+    }
+}
+
+function sanitizeSessionMarker(key: string) {
+    const value = window.localStorage.getItem(key);
+
+    if (!value) {
+        return;
+    }
+
+    if (value !== COOKIE_SESSION_MARKER) {
+        window.localStorage.setItem(key, COOKIE_SESSION_MARKER);
+    }
+}
+
 const REQUEST_SECURITY_HEADERS = {
     "X-Requested-With": "XMLHttpRequest",
 };
