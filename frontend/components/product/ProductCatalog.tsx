@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Search, SlidersHorizontal, X } from "lucide-react";
 import { ProductCard } from "@/components/ProductCard";
 import type { Product } from "@/types/product";
@@ -11,41 +11,118 @@ type ProductCatalogProps = {
 
 type SortOption = "newest" | "price-asc" | "price-desc" | "stock-desc";
 
-function getInitialQueryParam(name: string) {
-    if (typeof window === "undefined") {
-        return "";
+const sizeOrder = [
+    "UNIQUE",
+    "ONE SIZE",
+    "TU",
+
+    "XS",
+    "S",
+    "M",
+    "L",
+    "XL",
+    "XXL",
+    "2XL",
+    "3XL",
+    "XXXL",
+    "4XL",
+
+    "30",
+    "32",
+    "34",
+    "36",
+    "38",
+
+    "40",
+    "41",
+    "42",
+    "43",
+    "44",
+    "45",
+
+    "46",
+    "48",
+    "50",
+    "52",
+    "54",
+    "56",
+
+    "80",
+    "85",
+    "90",
+    "95",
+    "100",
+    "105",
+    "110",
+    "115",
+    "120",
+
+    "SLIM",
+    "CLASSIQUE",
+    "LARGE",
+];
+
+function normalizeText(value: string | null | undefined) {
+    return (value ?? "")
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+}
+
+function normalizeSize(value: string | null | undefined) {
+    return (value ?? "").trim().toUpperCase();
+}
+
+function compareSizes(sizeA: string, sizeB: string) {
+    const normalizedSizeA = normalizeSize(sizeA);
+    const normalizedSizeB = normalizeSize(sizeB);
+
+    const indexA = sizeOrder.indexOf(normalizedSizeA);
+    const indexB = sizeOrder.indexOf(normalizedSizeB);
+
+    if (indexA !== -1 && indexB !== -1) {
+        return indexA - indexB;
     }
 
-    return new URLSearchParams(window.location.search).get(name) ?? "";
+    if (indexA !== -1) {
+        return -1;
+    }
+
+    if (indexB !== -1) {
+        return 1;
+    }
+
+    const numericA = Number(normalizedSizeA);
+    const numericB = Number(normalizedSizeB);
+
+    if (Number.isFinite(numericA) && Number.isFinite(numericB)) {
+        return numericA - numericB;
+    }
+
+    return normalizedSizeA.localeCompare(normalizedSizeB);
+}
+
+function resetUrlFiltersIfNeeded() {
+    if (typeof window === "undefined") {
+        return;
+    }
+
+    if (window.location.search) {
+        window.location.href = "/boutique";
+    }
 }
 
 export function ProductCatalog({ products }: ProductCatalogProps) {
     const [search, setSearch] = useState("");
     const [categorySlug, setCategorySlug] = useState("");
+    const [categoryTypeSlug, setCategoryTypeSlug] = useState("");
     const [size, setSize] = useState("");
     const [color, setColor] = useState("");
     const [minPrice, setMinPrice] = useState("");
     const [maxPrice, setMaxPrice] = useState("");
     const [onlyPromotions, setOnlyPromotions] = useState(false);
     const [sort, setSort] = useState<SortOption>("newest");
-
-    useEffect(() => {
-        const initialCategory = getInitialQueryParam("category");
-        const initialSearch = getInitialQueryParam("search");
-        const initialPromo = getInitialQueryParam("promo");
-
-        if (initialCategory) {
-            setCategorySlug(initialCategory);
-        }
-
-        if (initialSearch) {
-            setSearch(initialSearch);
-        }
-
-        if (initialPromo === "true") {
-            setOnlyPromotions(true);
-        }
-    }, []);
 
     const categories = useMemo(() => {
         const map = new Map<string, string>();
@@ -62,6 +139,37 @@ export function ProductCatalog({ products }: ProductCatalogProps) {
             .sort((a, b) => a.name.localeCompare(b.name));
     }, [products]);
 
+    const categoryTypes = useMemo(() => {
+        const map = new Map<
+            string,
+            {
+                slug: string;
+                name: string;
+                categorySlug: string;
+            }
+        >();
+
+        products.forEach((product) => {
+            if (!product.categoryType) {
+                return;
+            }
+
+            if (categorySlug && product.category.slug !== categorySlug) {
+                return;
+            }
+
+            map.set(product.categoryType.slug, {
+                slug: product.categoryType.slug,
+                name: product.categoryType.name,
+                categorySlug: product.category.slug,
+            });
+        });
+
+        return Array.from(map.values()).sort((a, b) =>
+            a.name.localeCompare(b.name),
+        );
+    }, [products, categorySlug]);
+
     const sizes = useMemo(() => {
         const values = new Set<string>();
 
@@ -73,9 +181,7 @@ export function ProductCatalog({ products }: ProductCatalogProps) {
             });
         });
 
-        return Array.from(values).sort((a, b) =>
-            a.localeCompare(b, undefined, { numeric: true }),
-        );
+        return Array.from(values).sort(compareSizes);
     }, [products]);
 
     const colors = useMemo(() => {
@@ -96,20 +202,40 @@ export function ProductCatalog({ products }: ProductCatalogProps) {
         categories.find((category) => category.slug === categorySlug)?.name ??
         "";
 
+    const selectedCategoryTypeName =
+        categoryTypes.find((type) => type.slug === categoryTypeSlug)?.name ??
+        "";
+
     const filteredProducts = useMemo(() => {
-        const normalizedSearch = search.trim().toLowerCase();
+        const normalizedSearch = normalizeText(search);
         const min = minPrice ? Number(minPrice) : null;
         const max = maxPrice ? Number(maxPrice) : null;
 
         const filtered = products.filter((product) => {
+            const searchableValue = normalizeText(
+                [
+                    product.name,
+                    product.reference,
+                    product.shortDescription,
+                    product.description,
+                    product.category.name,
+                    product.categoryType?.name,
+                    product.collection?.name,
+                    product.saleCampaign?.name,
+                ]
+                    .filter(Boolean)
+                    .join(" "),
+            );
+
             const matchesSearch =
-                !normalizedSearch ||
-                product.name.toLowerCase().includes(normalizedSearch) ||
-                product.reference.toLowerCase().includes(normalizedSearch) ||
-                product.category.name.toLowerCase().includes(normalizedSearch);
+                !normalizedSearch || searchableValue.includes(normalizedSearch);
 
             const matchesCategory =
                 !categorySlug || product.category.slug === categorySlug;
+
+            const matchesCategoryType =
+                !categoryTypeSlug ||
+                product.categoryType?.slug === categoryTypeSlug;
 
             const matchesSize =
                 !size ||
@@ -129,11 +255,14 @@ export function ProductCatalog({ products }: ProductCatalogProps) {
             const matchesMaxPrice = max === null || product.finalPrice <= max;
 
             const matchesPromotions =
-                !onlyPromotions || product.isOnSale === true;
+                !onlyPromotions ||
+                product.isOnSale === true ||
+                product.discountPercentage > 0;
 
             return (
                 matchesSearch &&
                 matchesCategory &&
+                matchesCategoryType &&
                 matchesSize &&
                 matchesColor &&
                 matchesMinPrice &&
@@ -164,6 +293,7 @@ export function ProductCatalog({ products }: ProductCatalogProps) {
         products,
         search,
         categorySlug,
+        categoryTypeSlug,
         size,
         color,
         minPrice,
@@ -175,6 +305,7 @@ export function ProductCatalog({ products }: ProductCatalogProps) {
     function resetFilters() {
         setSearch("");
         setCategorySlug("");
+        setCategoryTypeSlug("");
         setSize("");
         setColor("");
         setMinPrice("");
@@ -182,14 +313,13 @@ export function ProductCatalog({ products }: ProductCatalogProps) {
         setOnlyPromotions(false);
         setSort("newest");
 
-        if (typeof window !== "undefined") {
-            window.history.replaceState(null, "", "/boutique");
-        }
+        resetUrlFiltersIfNeeded();
     }
 
     const hasActiveFilters =
         search ||
         categorySlug ||
+        categoryTypeSlug ||
         size ||
         color ||
         minPrice ||
@@ -206,13 +336,17 @@ export function ProductCatalog({ products }: ProductCatalogProps) {
                     </p>
 
                     <h1 className="mt-3 text-5xl font-black uppercase tracking-tight">
-                        {selectedCategoryName || "Tous les produits"}
+                        {selectedCategoryTypeName ||
+                            selectedCategoryName ||
+                            "Tous les produits"}
                     </h1>
 
                     <p className="mt-4 max-w-2xl text-neutral-600">
-                        {selectedCategoryName
-                            ? `Découvrez tous les articles disponibles dans la catégorie ${selectedCategoryName}.`
-                            : "Recherchez un article, filtrez par catégorie, taille, couleur, prix ou promotion."}
+                        {selectedCategoryTypeName
+                            ? `Découvrez tous les articles disponibles dans le type ${selectedCategoryTypeName}.`
+                            : selectedCategoryName
+                              ? `Découvrez tous les articles disponibles dans la catégorie ${selectedCategoryName}.`
+                              : "Recherchez un article, filtrez par catégorie, taille, couleur, prix ou promotion."}
                     </p>
                 </div>
 
@@ -254,6 +388,7 @@ export function ProductCatalog({ products }: ProductCatalogProps) {
                                     size={18}
                                     className="text-neutral-400"
                                 />
+
                                 <input
                                     value={search}
                                     onChange={(event) =>
@@ -272,9 +407,10 @@ export function ProductCatalog({ products }: ProductCatalogProps) {
 
                             <select
                                 value={categorySlug}
-                                onChange={(event) =>
-                                    setCategorySlug(event.target.value)
-                                }
+                                onChange={(event) => {
+                                    setCategorySlug(event.target.value);
+                                    setCategoryTypeSlug("");
+                                }}
                                 className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-black"
                             >
                                 <option value="">Toutes les catégories</option>
@@ -289,6 +425,33 @@ export function ProductCatalog({ products }: ProductCatalogProps) {
                                 ))}
                             </select>
                         </div>
+
+                        {categoryTypes.length > 0 && (
+                            <div>
+                                <label className="text-sm font-bold">
+                                    Type
+                                </label>
+
+                                <select
+                                    value={categoryTypeSlug}
+                                    onChange={(event) =>
+                                        setCategoryTypeSlug(event.target.value)
+                                    }
+                                    className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-black"
+                                >
+                                    <option value="">Tous les types</option>
+
+                                    {categoryTypes.map((type) => (
+                                        <option
+                                            key={type.slug}
+                                            value={type.slug}
+                                        >
+                                            {type.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
 
                         <div>
                             <label className="text-sm font-bold">Taille</label>
@@ -374,6 +537,7 @@ export function ProductCatalog({ products }: ProductCatalogProps) {
                                     setOnlyPromotions(event.target.checked)
                                 }
                             />
+
                             <span className="text-sm font-bold">
                                 Promotions seulement
                             </span>
