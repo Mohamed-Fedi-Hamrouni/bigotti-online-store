@@ -13,6 +13,7 @@ import { CurrentUser } from './decorators/current-user.decorator';
 import { LoginDto } from './dto/login.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { AuthCookieService } from './services/auth-cookie.service';
+import type { AuthRequestContext } from './services/auth-session.service';
 import type { JwtPayload } from './types/jwt-payload.type';
 
 type RequestLike = {
@@ -37,6 +38,15 @@ function getClientIp(request: RequestLike) {
   return request.ip || request.socket?.remoteAddress || 'unknown';
 }
 
+function getRequestContext(request: RequestLike): AuthRequestContext {
+  const userAgent = request.headers['user-agent'];
+
+  return {
+    ipAddress: getClientIp(request),
+    userAgent: Array.isArray(userAgent) ? userAgent[0] : userAgent,
+  };
+}
+
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -50,9 +60,37 @@ export class AuthController {
     @Req() request: RequestLike,
     @Res({ passthrough: true }) response: Response,
   ) {
-    const result = await this.authService.login(loginDto, getClientIp(request));
+    const result = await this.authService.login(
+      loginDto,
+      getRequestContext(request),
+    );
 
-    this.authCookieService.setAdminAccessToken(response, result.accessToken);
+    this.authCookieService.setAdminAuthCookies(
+      response,
+      result.accessToken,
+      result.refreshToken,
+    );
+
+    return {
+      user: result.user,
+    };
+  }
+
+  @Post('refresh')
+  async refresh(
+    @Req() request: RequestLike,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const result = await this.authService.refresh(
+      this.authCookieService.getAdminRefreshToken(request),
+      getRequestContext(request),
+    );
+
+    this.authCookieService.setAdminAuthCookies(
+      response,
+      result.accessToken,
+      result.refreshToken,
+    );
 
     return {
       user: result.user,
@@ -60,12 +98,17 @@ export class AuthController {
   }
 
   @Post('logout')
-  logout(@Res({ passthrough: true }) response: Response) {
-    this.authCookieService.clearAdminAccessToken(response);
+  async logout(
+    @Req() request: RequestLike,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const result = await this.authService.logout(
+      this.authCookieService.getAdminRefreshToken(request),
+    );
 
-    return {
-      message: 'Déconnexion administrateur effectuée.',
-    };
+    this.authCookieService.clearAdminAuthCookies(response);
+
+    return result;
   }
 
   @UseGuards(JwtAuthGuard)

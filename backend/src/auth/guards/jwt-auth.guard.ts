@@ -6,23 +6,23 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { PrismaService } from '../../prisma/prisma.service';
 import { AUTH_COOKIE_NAMES } from '../services/auth-cookie.service';
+import { AuthSessionService } from '../services/auth-session.service';
 import { JwtPayload } from '../types/jwt-payload.type';
+
+const ADMIN_ROLES = ['SUPER_ADMIN', 'ADMIN', 'MANAGER'] as const;
 
 type RequestWithUser = {
   headers: Record<string, string | string[] | undefined>;
   user?: JwtPayload;
 };
 
-const ADMIN_ROLES = ['SUPER_ADMIN', 'ADMIN', 'MANAGER'] as const;
-
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   constructor(
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
-    private readonly prisma: PrismaService,
+    private readonly authSessionService: AuthSessionService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -39,25 +39,21 @@ export class JwtAuthGuard implements CanActivate {
       !payload.sub ||
       !payload.email ||
       !payload.role ||
+      !payload.sessionId ||
       payload.tokenType !== 'admin' ||
       !ADMIN_ROLES.includes(payload.role)
     ) {
       throw new UnauthorizedException('Session admin invalide.');
     }
 
-    const user = await this.prisma.user.findUnique({
-      where: {
-        id: payload.sub,
-      },
-    });
+    const session = await this.authSessionService.getActiveAdminSession(
+      payload.sessionId,
+    );
 
-    if (!user || !user.isActive) {
-      throw new UnauthorizedException(
-        'Compte administrateur désactivé ou introuvable.',
-      );
-    }
+    const user = session.user;
 
     if (
+      user.id !== payload.sub ||
       user.email.toLowerCase() !== payload.email.toLowerCase() ||
       user.role !== payload.role
     ) {
@@ -69,7 +65,8 @@ export class JwtAuthGuard implements CanActivate {
     request.user = {
       sub: user.id,
       email: user.email,
-      role: user.role,
+      role: user.role as JwtPayload['role'],
+      sessionId: session.id,
       tokenType: 'admin',
       iat: payload.iat,
       exp: payload.exp,

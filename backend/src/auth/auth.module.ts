@@ -7,6 +7,7 @@ import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { AuthCookieService } from './services/auth-cookie.service';
+import { AuthSessionService } from './services/auth-session.service';
 import { LoginAttemptsService } from './services/login-attempts.service';
 
 @Global()
@@ -18,7 +19,7 @@ import { LoginAttemptsService } from './services/login-attempts.service';
       useFactory: (configService: ConfigService) => ({
         secret: configService.get<string>('JWT_SECRET'),
         signOptions: {
-          expiresIn: '1d',
+          expiresIn: '15m',
         },
       }),
     }),
@@ -30,6 +31,7 @@ import { LoginAttemptsService } from './services/login-attempts.service';
     RolesGuard,
     LoginAttemptsService,
     AuthCookieService,
+    AuthSessionService,
   ],
   exports: [
     AuthService,
@@ -37,6 +39,7 @@ import { LoginAttemptsService } from './services/login-attempts.service';
     RolesGuard,
     LoginAttemptsService,
     AuthCookieService,
+    AuthSessionService,
     JwtModule,
   ],
 })

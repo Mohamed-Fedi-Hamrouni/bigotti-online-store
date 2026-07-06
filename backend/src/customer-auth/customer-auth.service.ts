@@ -7,6 +7,10 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { compare, hash } from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  AuthRequestContext,
+  AuthSessionService,
+} from '../auth/services/auth-session.service';
 import { LoginAttemptsService } from '../auth/services/login-attempts.service';
 import { ChangeCustomerPasswordDto } from './dto/change-customer-password.dto';
 import { LoginCustomerDto } from './dto/login-customer.dto';
@@ -23,9 +27,10 @@ export class CustomerAuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly loginAttempts: LoginAttemptsService,
+    private readonly authSessionService: AuthSessionService,
   ) {}
 
-  async register(dto: RegisterCustomerDto) {
+  async register(dto: RegisterCustomerDto, context: AuthRequestContext = {}) {
     const fullName = this.normalizeFullName(dto.fullName);
     const email = this.normalizeEmail(dto.email);
     const phone = this.normalizePhone(dto.phone);
@@ -92,14 +97,23 @@ export class CustomerAuthService {
           },
         });
 
+    const { session, refreshToken } =
+      await this.authSessionService.createCustomerSession(customer.id, context);
+
     return {
-      accessToken: await this.signCustomerToken(customer.id, email),
+      accessToken: await this.signCustomerAccessToken(
+        customer.id,
+        email,
+        session.id,
+      ),
+      refreshToken,
       customer: this.sanitizeCustomer(customer),
     };
   }
 
-  async login(dto: LoginCustomerDto, clientIp = 'unknown') {
+  async login(dto: LoginCustomerDto, context: AuthRequestContext = {}) {
     const email = this.normalizeEmail(dto.email);
+    const clientIp = context.ipAddress ?? 'unknown';
 
     this.loginAttempts.assertCanAttempt('customer', email, clientIp);
 
@@ -133,9 +147,46 @@ export class CustomerAuthService {
 
     this.loginAttempts.reset('customer', email, clientIp);
 
+    const { session, refreshToken } =
+      await this.authSessionService.createCustomerSession(customer.id, context);
+
     return {
-      accessToken: await this.signCustomerToken(customer.id, email),
+      accessToken: await this.signCustomerAccessToken(
+        customer.id,
+        customer.email ?? email,
+        session.id,
+      ),
+      refreshToken,
       customer: this.sanitizeCustomer(customer),
+    };
+  }
+
+  async refresh(refreshToken: string | undefined, context: AuthRequestContext) {
+    if (!refreshToken) {
+      throw new UnauthorizedException('Session client expirée.');
+    }
+
+    const result = await this.authSessionService.rotateCustomerSession(
+      refreshToken,
+      context,
+    );
+
+    return {
+      accessToken: await this.signCustomerAccessToken(
+        result.customer.id,
+        result.customer.email ?? '',
+        result.session.id,
+      ),
+      refreshToken: result.refreshToken,
+      customer: this.sanitizeCustomer(result.customer),
+    };
+  }
+
+  async logout(refreshToken?: string) {
+    await this.authSessionService.revokeCustomerSession(refreshToken);
+
+    return {
+      message: 'Déconnexion client effectuée.',
     };
   }
 
@@ -280,27 +331,17 @@ export class CustomerAuthService {
   private async getAuthenticatedCustomer(authorization?: string) {
     const payload = this.verifyAuthorizationHeader(authorization);
 
-    const customer = await this.prisma.customer.findUnique({
-      where: {
-        id: payload.sub,
-      },
-    });
-
-    if (!customer || !customer.passwordHash) {
+    if (!('sessionId' in payload) || !payload.sessionId) {
       throw new UnauthorizedException('Session client invalide.');
     }
 
-    if (!customer.isActive) {
-      throw new UnauthorizedException(
-        'Compte client désactivé. Veuillez contacter la boutique.',
-      );
-    }
+    const session = await this.authSessionService.getActiveCustomerSession(
+      payload.sessionId,
+    );
 
-    if (
-      payload.email &&
-      customer.email &&
-      payload.email.toLowerCase() !== customer.email.toLowerCase()
-    ) {
+    const customer = session.customer;
+
+    if (customer.id !== payload.sub) {
       throw new UnauthorizedException(
         'Session client expirée. Veuillez vous reconnecter.',
       );
@@ -309,15 +350,20 @@ export class CustomerAuthService {
     return customer;
   }
 
-  private async signCustomerToken(customerId: string, email: string) {
+  private async signCustomerAccessToken(
+    customerId: string,
+    email: string,
+    sessionId: string,
+  ) {
     const payload: CustomerTokenPayload = {
       sub: customerId,
       email,
+      sessionId,
       tokenType: 'customer',
     };
 
     return this.jwtService.signAsync(payload, {
-      expiresIn: '7d',
+      expiresIn: '30m',
     });
   }
 
@@ -338,14 +384,7 @@ export class CustomerAuthService {
       const isCurrentCustomerToken =
         'tokenType' in payload && payload.tokenType === 'customer';
 
-      const isLegacyCustomerToken =
-        'type' in payload && payload.type === 'CUSTOMER';
-
-      if (!payload.sub || !payload.email) {
-        throw new UnauthorizedException('Token client invalide.');
-      }
-
-      if (!isCurrentCustomerToken && !isLegacyCustomerToken) {
+      if (!payload.sub || !payload.email || !isCurrentCustomerToken) {
         throw new UnauthorizedException('Token client invalide.');
       }
 

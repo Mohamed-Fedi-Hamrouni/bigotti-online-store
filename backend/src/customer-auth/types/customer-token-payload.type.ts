@@ -1,6 +1,7 @@
 export type CustomerTokenPayload = {
   sub: string;
   email: string;
+  sessionId: string;
   tokenType: 'customer';
   iat?: number;
   exp?: number;

@@ -3,6 +3,10 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
+import {
+  AuthRequestContext,
+  AuthSessionService,
+} from './services/auth-session.service';
 import { LoginAttemptsService } from './services/login-attempts.service';
 import type { AdminRole, JwtPayload } from './types/jwt-payload.type';
 
@@ -14,10 +18,12 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly loginAttempts: LoginAttemptsService,
+    private readonly authSessionService: AuthSessionService,
   ) {}
 
-  async login(loginDto: LoginDto, clientIp = 'unknown') {
+  async login(loginDto: LoginDto, context: AuthRequestContext = {}) {
     const email = loginDto.email.toLowerCase().trim();
+    const clientIp = context.ipAddress ?? 'unknown';
 
     this.loginAttempts.assertCanAttempt('admin', email, clientIp);
 
@@ -32,7 +38,7 @@ export class AuthService {
       throw new UnauthorizedException('Email ou mot de passe incorrect.');
     }
 
-    if (!ADMIN_ROLES.includes(user.role)) {
+    if (!ADMIN_ROLES.includes(user.role as AdminRole)) {
       this.loginAttempts.recordFailure('admin', email, clientIp);
       throw new UnauthorizedException('Compte administrateur non autorisé.');
     }
@@ -49,18 +55,43 @@ export class AuthService {
 
     this.loginAttempts.reset('admin', email, clientIp);
 
-    const payload: JwtPayload = {
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-      tokenType: 'admin',
-    };
+    const { session, refreshToken } =
+      await this.authSessionService.createAdminSession(user.id, context);
 
-    const accessToken = await this.jwtService.signAsync(payload);
+    const accessToken = await this.signAdminAccessToken(user, session.id);
 
     return {
       accessToken,
+      refreshToken,
       user: this.toSafeUser(user),
+    };
+  }
+
+  async refresh(refreshToken: string | undefined, context: AuthRequestContext) {
+    if (!refreshToken) {
+      throw new UnauthorizedException('Session administrateur expirée.');
+    }
+
+    const result = await this.authSessionService.rotateAdminSession(
+      refreshToken,
+      context,
+    );
+
+    return {
+      accessToken: await this.signAdminAccessToken(
+        result.user,
+        result.session.id,
+      ),
+      refreshToken: result.refreshToken,
+      user: this.toSafeUser(result.user),
+    };
+  }
+
+  async logout(refreshToken?: string) {
+    await this.authSessionService.revokeAdminSession(refreshToken);
+
+    return {
+      message: 'Déconnexion administrateur effectuée.',
     };
   }
 
@@ -80,11 +111,32 @@ export class AuthService {
     return this.toSafeUser(user);
   }
 
+  private async signAdminAccessToken(
+    user: {
+      id: string;
+      email: string;
+      role: string;
+    },
+    sessionId: string,
+  ) {
+    const payload: JwtPayload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role as AdminRole,
+      sessionId,
+      tokenType: 'admin',
+    };
+
+    return this.jwtService.signAsync(payload, {
+      expiresIn: '15m',
+    });
+  }
+
   private toSafeUser(user: {
     id: string;
     fullName: string;
     email: string;
-    role: AdminRole;
+    role: string;
     isActive: boolean;
     createdAt: Date;
     updatedAt: Date;
@@ -93,7 +145,7 @@ export class AuthService {
       id: user.id,
       fullName: user.fullName,
       email: user.email,
-      role: user.role,
+      role: user.role as AdminRole,
       isActive: user.isActive,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,

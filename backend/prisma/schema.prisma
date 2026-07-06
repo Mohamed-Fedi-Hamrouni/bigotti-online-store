@@ -77,7 +77,31 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
+  sessions AdminSession[]
+
   @@map("users")
+}
+
+
+model AdminSession {
+  id String @id @default(uuid())
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  refreshTokenHash String @unique @map("refresh_token_hash")
+  userAgent        String? @map("user_agent")
+  ipAddress        String? @map("ip_address")
+  expiresAt        DateTime @map("expires_at")
+  revokedAt        DateTime? @map("revoked_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([revokedAt])
+  @@map("admin_sessions")
 }
 
 model Category {
@@ -272,13 +296,36 @@ model Customer {
   passwordHash String?
   isActive     Boolean @default(true)
 
-  orders Order[]
+  orders   Order[]
+  sessions CustomerSession[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([phone])
   @@map("customers")
+}
+
+
+model CustomerSession {
+  id String @id @default(uuid())
+
+  customerId String   @map("customer_id")
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  refreshTokenHash String @unique @map("refresh_token_hash")
+  userAgent        String? @map("user_agent")
+  ipAddress        String? @map("ip_address")
+  expiresAt        DateTime @map("expires_at")
+  revokedAt        DateTime? @map("revoked_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([customerId])
+  @@index([expiresAt])
+  @@index([revokedAt])
+  @@map("customer_sessions")
 }
 
 model Order {

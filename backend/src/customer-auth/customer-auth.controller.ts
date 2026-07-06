@@ -9,10 +9,8 @@ import {
   Res,
 } from '@nestjs/common';
 import type { Response } from 'express';
-import {
-  AuthCookieService,
-  AUTH_COOKIE_NAMES,
-} from '../auth/services/auth-cookie.service';
+import { AuthCookieService } from '../auth/services/auth-cookie.service';
+import type { AuthRequestContext } from '../auth/services/auth-session.service';
 import { CustomerAuthService } from './customer-auth.service';
 import { ChangeCustomerPasswordDto } from './dto/change-customer-password.dto';
 import { LoginCustomerDto } from './dto/login-customer.dto';
@@ -41,31 +39,21 @@ function getClientIp(request: RequestLike) {
   return request.ip || request.socket?.remoteAddress || 'unknown';
 }
 
-function getCookieValue(request: RequestLike, cookieName: string) {
-  const cookieHeader = request.headers.cookie;
+function getRequestContext(request: RequestLike): AuthRequestContext {
+  const userAgent = request.headers['user-agent'];
 
-  if (!cookieHeader || Array.isArray(cookieHeader)) {
-    return undefined;
-  }
-
-  const cookies = cookieHeader.split(';');
-
-  for (const cookie of cookies) {
-    const [rawName, ...rawValueParts] = cookie.trim().split('=');
-
-    if (rawName === cookieName) {
-      return decodeURIComponent(rawValueParts.join('='));
-    }
-  }
-
-  return undefined;
+  return {
+    ipAddress: getClientIp(request),
+    userAgent: Array.isArray(userAgent) ? userAgent[0] : userAgent,
+  };
 }
 
 function getCustomerAuthorization(
+  authCookieService: AuthCookieService,
   request: RequestLike,
   authorization?: string,
 ) {
-  const cookieToken = getCookieValue(request, AUTH_COOKIE_NAMES.customer);
+  const cookieToken = authCookieService.getCustomerAccessToken(request);
 
   if (cookieToken) {
     return `Bearer ${cookieToken}`;
@@ -84,11 +72,19 @@ export class CustomerAuthController {
   @Post('register')
   async register(
     @Body() dto: RegisterCustomerDto,
+    @Req() request: RequestLike,
     @Res({ passthrough: true }) response: Response,
   ) {
-    const result = await this.customerAuthService.register(dto);
+    const result = await this.customerAuthService.register(
+      dto,
+      getRequestContext(request),
+    );
 
-    this.authCookieService.setCustomerAccessToken(response, result.accessToken);
+    this.authCookieService.setCustomerAuthCookies(
+      response,
+      result.accessToken,
+      result.refreshToken,
+    );
 
     return {
       customer: result.customer,
@@ -103,10 +99,35 @@ export class CustomerAuthController {
   ) {
     const result = await this.customerAuthService.login(
       dto,
-      getClientIp(request),
+      getRequestContext(request),
     );
 
-    this.authCookieService.setCustomerAccessToken(response, result.accessToken);
+    this.authCookieService.setCustomerAuthCookies(
+      response,
+      result.accessToken,
+      result.refreshToken,
+    );
+
+    return {
+      customer: result.customer,
+    };
+  }
+
+  @Post('refresh')
+  async refresh(
+    @Req() request: RequestLike,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const result = await this.customerAuthService.refresh(
+      this.authCookieService.getCustomerRefreshToken(request),
+      getRequestContext(request),
+    );
+
+    this.authCookieService.setCustomerAuthCookies(
+      response,
+      result.accessToken,
+      result.refreshToken,
+    );
 
     return {
       customer: result.customer,
@@ -114,12 +135,17 @@ export class CustomerAuthController {
   }
 
   @Post('logout')
-  logout(@Res({ passthrough: true }) response: Response) {
-    this.authCookieService.clearCustomerAccessToken(response);
+  async logout(
+    @Req() request: RequestLike,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const result = await this.customerAuthService.logout(
+      this.authCookieService.getCustomerRefreshToken(request),
+    );
 
-    return {
-      message: 'Déconnexion client effectuée.',
-    };
+    this.authCookieService.clearCustomerAuthCookies(response);
+
+    return result;
   }
 
   @Get('me')
@@ -128,7 +154,7 @@ export class CustomerAuthController {
     @Headers('authorization') authorization?: string,
   ) {
     return this.customerAuthService.me(
-      getCustomerAuthorization(request, authorization),
+      getCustomerAuthorization(this.authCookieService, request, authorization),
     );
   }
 
@@ -140,7 +166,7 @@ export class CustomerAuthController {
   ) {
     return this.customerAuthService.updateProfile(
       dto,
-      getCustomerAuthorization(request, authorization),
+      getCustomerAuthorization(this.authCookieService, request, authorization),
     );
   }
 
@@ -152,7 +178,7 @@ export class CustomerAuthController {
   ) {
     return this.customerAuthService.changePassword(
       dto,
-      getCustomerAuthorization(request, authorization),
+      getCustomerAuthorization(this.authCookieService, request, authorization),
     );
   }
 
@@ -162,7 +188,7 @@ export class CustomerAuthController {
     @Headers('authorization') authorization?: string,
   ) {
     return this.customerAuthService.getCustomerOrders(
-      getCustomerAuthorization(request, authorization),
+      getCustomerAuthorization(this.authCookieService, request, authorization),
     );
   }
 }
