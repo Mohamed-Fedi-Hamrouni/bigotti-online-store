@@ -7,6 +7,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { compare, hash } from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
+import { LoginAttemptsService } from '../auth/services/login-attempts.service';
 import { ChangeCustomerPasswordDto } from './dto/change-customer-password.dto';
 import { LoginCustomerDto } from './dto/login-customer.dto';
 import { RegisterCustomerDto } from './dto/register-customer.dto';
@@ -21,6 +22,7 @@ export class CustomerAuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
+    private readonly loginAttempts: LoginAttemptsService,
   ) {}
 
   async register(dto: RegisterCustomerDto) {
@@ -96,8 +98,10 @@ export class CustomerAuthService {
     };
   }
 
-  async login(dto: LoginCustomerDto) {
+  async login(dto: LoginCustomerDto, clientIp = 'unknown') {
     const email = this.normalizeEmail(dto.email);
+
+    this.loginAttempts.assertCanAttempt('customer', email, clientIp);
 
     const customer = await this.prisma.customer.findFirst({
       where: {
@@ -109,10 +113,12 @@ export class CustomerAuthService {
     });
 
     if (!customer || !customer.passwordHash) {
+      this.loginAttempts.recordFailure('customer', email, clientIp);
       throw new UnauthorizedException('Email ou mot de passe incorrect.');
     }
 
     if (!customer.isActive) {
+      this.loginAttempts.recordFailure('customer', email, clientIp);
       throw new UnauthorizedException(
         'Compte client désactivé. Veuillez contacter la boutique.',
       );
@@ -121,8 +127,11 @@ export class CustomerAuthService {
     const isPasswordValid = await compare(dto.password, customer.passwordHash);
 
     if (!isPasswordValid) {
+      this.loginAttempts.recordFailure('customer', email, clientIp);
       throw new UnauthorizedException('Email ou mot de passe incorrect.');
     }
+
+    this.loginAttempts.reset('customer', email, clientIp);
 
     return {
       accessToken: await this.signCustomerToken(customer.id, email),
@@ -284,6 +293,16 @@ export class CustomerAuthService {
     if (!customer.isActive) {
       throw new UnauthorizedException(
         'Compte client désactivé. Veuillez contacter la boutique.',
+      );
+    }
+
+    if (
+      payload.email &&
+      customer.email &&
+      payload.email.toLowerCase() !== customer.email.toLowerCase()
+    ) {
+      throw new UnauthorizedException(
+        'Session client expirée. Veuillez vous reconnecter.',
       );
     }
 

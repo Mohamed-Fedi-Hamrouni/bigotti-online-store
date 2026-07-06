@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
+import { LoginAttemptsService } from './services/login-attempts.service';
 import type { AdminRole, JwtPayload } from './types/jwt-payload.type';
 
 const ADMIN_ROLES: AdminRole[] = ['SUPER_ADMIN', 'ADMIN', 'MANAGER'];
@@ -12,10 +13,13 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
+    private readonly loginAttempts: LoginAttemptsService,
   ) {}
 
-  async login(loginDto: LoginDto) {
+  async login(loginDto: LoginDto, clientIp = 'unknown') {
     const email = loginDto.email.toLowerCase().trim();
+
+    this.loginAttempts.assertCanAttempt('admin', email, clientIp);
 
     const user = await this.prisma.user.findUnique({
       where: {
@@ -24,10 +28,12 @@ export class AuthService {
     });
 
     if (!user || !user.isActive) {
+      this.loginAttempts.recordFailure('admin', email, clientIp);
       throw new UnauthorizedException('Email ou mot de passe incorrect.');
     }
 
     if (!ADMIN_ROLES.includes(user.role)) {
+      this.loginAttempts.recordFailure('admin', email, clientIp);
       throw new UnauthorizedException('Compte administrateur non autorisé.');
     }
 
@@ -37,8 +43,11 @@ export class AuthService {
     );
 
     if (!isPasswordValid) {
+      this.loginAttempts.recordFailure('admin', email, clientIp);
       throw new UnauthorizedException('Email ou mot de passe incorrect.');
     }
+
+    this.loginAttempts.reset('admin', email, clientIp);
 
     const payload: JwtPayload = {
       sub: user.id,
