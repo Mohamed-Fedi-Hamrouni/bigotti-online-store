@@ -49,6 +49,7 @@ function getAdminToken() {
 
 async function fetchAdminOrder(token: string, orderId: string) {
     const response = await fetch(`${API_BASE_URL}/orders/admin/${orderId}`, {
+        credentials: "include",
         headers: {
             Authorization: `Bearer ${token}`,
         },

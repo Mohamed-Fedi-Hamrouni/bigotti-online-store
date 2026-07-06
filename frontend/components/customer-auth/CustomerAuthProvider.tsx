@@ -8,7 +8,11 @@ import {
     useState,
     type ReactNode,
 } from "react";
-import { getCustomerMe } from "@/lib/api";
+import {
+    COOKIE_SESSION_MARKER,
+    getCustomerMe,
+    logoutCustomerSession,
+} from "@/lib/api";
 import type { Customer, CustomerAuthResponse } from "@/types/customer";
 
 type CustomerAuthContextValue = {
@@ -54,33 +58,27 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        const storedToken = window.localStorage.getItem(TOKEN_KEY);
-
-        if (!storedToken) {
-            clearStoredCustomerSession();
-            setIsLoading(false);
-            return;
-        }
-
-        setToken(storedToken);
-
         const storedCustomer = readStoredCustomer();
 
         if (storedCustomer?.isActive) {
             setCustomer(storedCustomer);
+            setToken(COOKIE_SESSION_MARKER);
         }
 
-        getCustomerMe(storedToken)
+        getCustomerMe()
             .then((freshCustomer) => {
                 if (!freshCustomer.isActive) {
                     throw new Error("Compte client désactivé.");
                 }
 
-                setCustomer(freshCustomer);
                 window.localStorage.setItem(
                     CUSTOMER_KEY,
                     JSON.stringify(freshCustomer),
                 );
+                window.localStorage.setItem(TOKEN_KEY, COOKIE_SESSION_MARKER);
+
+                setCustomer(freshCustomer);
+                setToken(COOKIE_SESSION_MARKER);
             })
             .catch(() => {
                 clearStoredCustomerSession();
@@ -91,20 +89,20 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     }, []);
 
     function saveCustomerSession(response: CustomerAuthResponse) {
-        if (!response.accessToken || !response.customer?.isActive) {
+        if (!response.customer?.isActive) {
             clearStoredCustomerSession();
             setToken(null);
             setCustomer(null);
             return;
         }
 
-        window.localStorage.setItem(TOKEN_KEY, response.accessToken);
+        window.localStorage.setItem(TOKEN_KEY, COOKIE_SESSION_MARKER);
         window.localStorage.setItem(
             CUSTOMER_KEY,
             JSON.stringify(response.customer),
         );
 
-        setToken(response.accessToken);
+        setToken(COOKIE_SESSION_MARKER);
         setCustomer(response.customer);
     }
 
@@ -120,13 +118,15 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
             CUSTOMER_KEY,
             JSON.stringify(updatedCustomer),
         );
+        window.localStorage.setItem(TOKEN_KEY, COOKIE_SESSION_MARKER);
 
+        setToken(COOKIE_SESSION_MARKER);
         setCustomer(updatedCustomer);
     }
 
     function logoutCustomer() {
+        logoutCustomerSession().catch(() => undefined);
         clearStoredCustomerSession();
-
         setToken(null);
         setCustomer(null);
     }

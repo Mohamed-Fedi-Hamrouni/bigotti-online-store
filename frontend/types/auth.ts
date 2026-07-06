@@ -11,6 +11,6 @@ export type AuthUser = {
 };
 
 export type LoginResponse = {
-    accessToken: string;
+    accessToken?: string;
     user: AuthUser;
 };

@@ -96,8 +96,8 @@ export class JwtAuthGuard implements CanActivate {
 
   private extractToken(request: RequestWithUser): string | undefined {
     return (
-      this.extractBearerToken(request) ??
-      this.extractCookieToken(request, AUTH_COOKIE_NAMES.admin)
+      this.extractCookieToken(request, AUTH_COOKIE_NAMES.admin) ??
+      this.extractBearerToken(request)
     );
   }
 

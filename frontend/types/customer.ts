@@ -11,7 +11,7 @@ export type Customer = {
 };
 
 export type CustomerAuthResponse = {
-    accessToken: string;
+    accessToken?: string;
     customer: Customer;
 };
 

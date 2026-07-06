@@ -4,8 +4,18 @@ import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff, LockKeyhole } from "lucide-react";
-import { login } from "@/lib/api";
+import { COOKIE_SESSION_MARKER, getAdminMe, login } from "@/lib/api";
 import type { AuthUser } from "@/types/auth";
+
+function clearAdminSession() {
+    window.localStorage.removeItem("bigotti-admin-token");
+    window.localStorage.removeItem("bigotti-admin-user");
+}
+
+function saveAdminSessionMarker(user: AuthUser) {
+    window.localStorage.setItem("bigotti-admin-token", COOKIE_SESSION_MARKER);
+    window.localStorage.setItem("bigotti-admin-user", JSON.stringify(user));
+}
 
 function getAdminRedirectPath(user: AuthUser) {
     if (user.role === "MANAGER") {
@@ -25,20 +35,18 @@ export default function AdminLoginPage() {
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
-        const token = window.localStorage.getItem("bigotti-admin-token");
-        const rawUser = window.localStorage.getItem("bigotti-admin-user");
+        getAdminMe()
+            .then((user) => {
+                if (!user.isActive) {
+                    throw new Error("Compte admin désactivé.");
+                }
 
-        if (!token || !rawUser) {
-            return;
-        }
-
-        try {
-            const user = JSON.parse(rawUser) as AuthUser;
-            router.replace(getAdminRedirectPath(user));
-        } catch {
-            window.localStorage.removeItem("bigotti-admin-token");
-            window.localStorage.removeItem("bigotti-admin-user");
-        }
+                saveAdminSessionMarker(user);
+                router.replace(getAdminRedirectPath(user));
+            })
+            .catch(() => {
+                clearAdminSession();
+            });
     }, [router]);
 
     async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -79,20 +87,10 @@ export default function AdminLoginPage() {
                 throw new Error("Ce compte n’a pas accès à l’administration.");
             }
 
-            window.localStorage.setItem(
-                "bigotti-admin-token",
-                response.accessToken,
-            );
-
-            window.localStorage.setItem(
-                "bigotti-admin-user",
-                JSON.stringify(response.user),
-            );
-
+            saveAdminSessionMarker(response.user);
             router.replace(getAdminRedirectPath(response.user));
         } catch (err) {
-            window.localStorage.removeItem("bigotti-admin-token");
-            window.localStorage.removeItem("bigotti-admin-user");
+            clearAdminSession();
 
             setError(
                 err instanceof Error

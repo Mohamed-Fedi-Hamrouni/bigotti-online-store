@@ -40,6 +40,7 @@ function getAdminToken() {
 
 async function fetchAdminCustomers(token: string) {
     const response = await fetch(`${API_BASE_URL}/customers/admin`, {
+        credentials: "include",
         headers: {
             Authorization: `Bearer ${token}`,
         },
@@ -65,6 +66,7 @@ async function updateCustomerStatus(
         `${API_BASE_URL}/customers/admin/${customerId}/status`,
         {
             method: "PATCH",
+            credentials: "include",
             headers: {
                 Authorization: `Bearer ${token}`,
                 "Content-Type": "application/json",

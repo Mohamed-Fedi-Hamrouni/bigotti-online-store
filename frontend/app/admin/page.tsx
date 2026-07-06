@@ -3,28 +3,17 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { COOKIE_SESSION_MARKER, getAdminMe, logoutAdmin } from "@/lib/api";
 import type { AuthUser } from "@/types/auth";
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
-
-async function fetchAdminProfile(token: string) {
-    const response = await fetch(`${API_BASE_URL}/auth/me`, {
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
-        cache: "no-store",
-    });
-
-    if (!response.ok) {
-        throw new Error("Session admin invalide ou expirée.");
-    }
-
-    return response.json() as Promise<AuthUser>;
-}
 
 function clearAdminSession() {
     window.localStorage.removeItem("bigotti-admin-token");
     window.localStorage.removeItem("bigotti-admin-user");
+}
+
+function saveAdminSessionMarker(user: AuthUser) {
+    window.localStorage.setItem("bigotti-admin-token", COOKIE_SESSION_MARKER);
+    window.localStorage.setItem("bigotti-admin-user", JSON.stringify(user));
 }
 
 function getRoleLabel(role: AuthUser["role"]) {
@@ -45,25 +34,13 @@ export default function AdminHomePage() {
     const [sessionError, setSessionError] = useState("");
 
     useEffect(() => {
-        const token = window.localStorage.getItem("bigotti-admin-token");
-
-        if (!token) {
-            clearAdminSession();
-            router.replace("/admin/login");
-            return;
-        }
-
-        fetchAdminProfile(token)
+        getAdminMe()
             .then((profile) => {
                 if (!profile.isActive) {
                     throw new Error("Ce compte administrateur est désactivé.");
                 }
 
-                window.localStorage.setItem(
-                    "bigotti-admin-user",
-                    JSON.stringify(profile),
-                );
-
+                saveAdminSessionMarker(profile);
                 setUser(profile);
             })
             .catch((err) => {
@@ -84,6 +61,7 @@ export default function AdminHomePage() {
     }, [router]);
 
     function logout() {
+        logoutAdmin().catch(() => undefined);
         clearAdminSession();
         router.replace("/admin/login");
     }

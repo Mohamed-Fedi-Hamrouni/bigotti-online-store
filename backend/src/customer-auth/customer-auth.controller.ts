@@ -65,17 +65,13 @@ function getCustomerAuthorization(
   request: RequestLike,
   authorization?: string,
 ) {
-  if (authorization) {
-    return authorization;
-  }
-
   const cookieToken = getCookieValue(request, AUTH_COOKIE_NAMES.customer);
 
-  if (!cookieToken) {
-    return undefined;
+  if (cookieToken) {
+    return `Bearer ${cookieToken}`;
   }
 
-  return `Bearer ${cookieToken}`;
+  return authorization;
 }
 
 @Controller('customer-auth')

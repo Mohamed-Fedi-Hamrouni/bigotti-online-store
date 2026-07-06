@@ -3,9 +3,8 @@
 import Link from "next/link";
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { COOKIE_SESSION_MARKER, getAdminMe } from "@/lib/api";
 import type { AuthUser, UserRole } from "@/types/auth";
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
 type AdminLayoutProps = {
     children: ReactNode;
@@ -24,27 +23,9 @@ function clearAdminSession() {
     window.localStorage.removeItem("bigotti-admin-user");
 }
 
-async function fetchAdminProfile(token: string) {
-    const response = await fetch(`${API_BASE_URL}/auth/me`, {
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
-        cache: "no-store",
-    });
-
-    if (!response.ok) {
-        throw new Error("Session admin invalide ou expirée.");
-    }
-
-    return response.json() as Promise<AuthUser>;
-}
-
-function getAdminToken() {
-    if (typeof window === "undefined") {
-        return null;
-    }
-
-    return window.localStorage.getItem("bigotti-admin-token");
+function saveAdminSessionMarker(user: AuthUser) {
+    window.localStorage.setItem("bigotti-admin-token", COOKIE_SESSION_MARKER);
+    window.localStorage.setItem("bigotti-admin-user", JSON.stringify(user));
 }
 
 function getFallbackPathForRole(role: UserRole) {
@@ -118,30 +99,16 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             return;
         }
 
-        const token = getAdminToken();
-
-        if (!token) {
-            clearAdminSession();
-            setSessionState("invalid");
-            setMessage("Vous devez vous connecter pour accéder à cette page.");
-            router.replace("/admin/login");
-            return;
-        }
-
         setSessionState("checking");
         setMessage("");
 
-        fetchAdminProfile(token)
+        getAdminMe()
             .then((profile) => {
                 if (!profile.isActive) {
                     throw new Error("Ce compte administrateur est désactivé.");
                 }
 
-                window.localStorage.setItem(
-                    "bigotti-admin-user",
-                    JSON.stringify(profile),
-                );
-
+                saveAdminSessionMarker(profile);
                 setUser(profile);
 
                 if (allowedRoles && !allowedRoles.includes(profile.role)) {
@@ -189,7 +156,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                     </h1>
 
                     <p className="mt-2 text-sm text-neutral-500">
-                        Contrôle du token et des permissions.
+                        Contrôle du cookie sécurisé et des permissions.
                     </p>
                 </div>
             </main>

@@ -1,4 +1,4 @@
-import type { LoginResponse } from "@/types/auth";
+import type { AuthUser, LoginResponse } from "@/types/auth";
 import type { ManagerDashboard } from "@/types/dashboard";
 import type {
     AdminOrder,
@@ -36,12 +36,25 @@ import type {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
+export const COOKIE_SESSION_MARKER = "cookie-session";
+
+function buildAuthHeaders(token?: string | null) {
+    if (!token || token === COOKIE_SESSION_MARKER) {
+        return {};
+    }
+
+    return {
+        Authorization: `Bearer ${token}`,
+    };
+}
+
 async function fetchJson<T>(
     path: string,
     options: RequestInit = {},
 ): Promise<T> {
     const response = await fetch(`${API_URL}${path}`, {
         cache: "no-store",
+        credentials: "include",
         ...options,
         headers: {
             "Content-Type": "application/json",
@@ -417,11 +430,7 @@ export async function createOrder(
 ) {
     return fetchJson<CreatedOrder>("/orders", {
         method: "POST",
-        headers: customerToken
-            ? {
-                  Authorization: `Bearer ${customerToken}`,
-              }
-            : undefined,
+        headers: buildAuthHeaders(customerToken),
         body: JSON.stringify(payload),
     });
 }
@@ -433,11 +442,19 @@ export async function login(payload: { email: string; password: string }) {
     });
 }
 
+export async function getAdminMe() {
+    return fetchJson<AuthUser>("/auth/me");
+}
+
+export async function logoutAdmin() {
+    return fetchJson<{ message: string }>("/auth/logout", {
+        method: "POST",
+    });
+}
+
 export async function getAdminOrders(token: string) {
     return fetchJson<AdminOrder[]>("/orders/admin", {
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
+        headers: buildAuthHeaders(token),
     });
 }
 
@@ -448,18 +465,14 @@ export async function updateOrderStatus(
 ) {
     return fetchJson<AdminOrder>(`/orders/admin/${orderId}/status`, {
         method: "PATCH",
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
+        headers: buildAuthHeaders(token),
         body: JSON.stringify({ orderStatus }),
     });
 }
 
 export async function getAdminProducts(token: string) {
     const products = await fetchJson<Product[]>("/products/admin/all", {
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
+        headers: buildAuthHeaders(token),
     });
 
     return products.map((product) => normalizeProduct(product));
@@ -467,9 +480,7 @@ export async function getAdminProducts(token: string) {
 
 export async function getAdminProduct(token: string, productId: string) {
     const product = await fetchJson<Product>(`/products/admin/${productId}`, {
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
+        headers: buildAuthHeaders(token),
     });
 
     return normalizeProduct(product);
@@ -481,9 +492,7 @@ export async function createProduct(
 ) {
     const product = await fetchJson<Product>("/products", {
         method: "POST",
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
+        headers: buildAuthHeaders(token),
         body: JSON.stringify(payload),
     });
 
@@ -497,9 +506,7 @@ export async function updateProduct(
 ) {
     const product = await fetchJson<Product>(`/products/${productId}`, {
         method: "PATCH",
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
+        headers: buildAuthHeaders(token),
         body: JSON.stringify(payload),
     });
 
@@ -513,9 +520,7 @@ export async function updateProductStatus(
 ) {
     const product = await fetchJson<Product>(`/products/${productId}/status`, {
         method: "PATCH",
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
+        headers: buildAuthHeaders(token),
         body: JSON.stringify({ status }),
     });
 
@@ -524,9 +529,7 @@ export async function updateProductStatus(
 
 export async function getAdminCategories(token: string) {
     const categories = await fetchJson<Category[]>("/categories/admin", {
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
+        headers: buildAuthHeaders(token),
     });
 
     return categories.map((category) => normalizeCategory(category));
@@ -538,9 +541,7 @@ export async function createCategory(
 ) {
     const category = await fetchJson<Category>("/categories", {
         method: "POST",
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
+        headers: buildAuthHeaders(token),
         body: JSON.stringify(payload),
     });
 
@@ -554,9 +555,7 @@ export async function updateCategory(
 ) {
     const category = await fetchJson<Category>(`/categories/${categoryId}`, {
         method: "PATCH",
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
+        headers: buildAuthHeaders(token),
         body: JSON.stringify(payload),
     });
 
@@ -572,9 +571,7 @@ export async function updateCategoryStatus(
         `/categories/${categoryId}/status`,
         {
             method: "PATCH",
-            headers: {
-                Authorization: `Bearer ${token}`,
-            },
+            headers: buildAuthHeaders(token),
             body: JSON.stringify({ isActive }),
         },
     );
@@ -584,9 +581,7 @@ export async function updateCategoryStatus(
 
 export async function getAdminCollections(token: string) {
     return fetchJson<Collection[]>("/collections/admin", {
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
+        headers: buildAuthHeaders(token),
     });
 }
 
@@ -596,9 +591,7 @@ export async function createCollection(
 ) {
     return fetchJson<Collection>("/collections", {
         method: "POST",
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
+        headers: buildAuthHeaders(token),
         body: JSON.stringify(payload),
     });
 }
@@ -610,9 +603,7 @@ export async function updateCollection(
 ) {
     return fetchJson<Collection>(`/collections/${collectionId}`, {
         method: "PATCH",
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
+        headers: buildAuthHeaders(token),
         body: JSON.stringify(payload),
     });
 }
@@ -624,18 +615,14 @@ export async function updateCollectionStatus(
 ) {
     return fetchJson<Collection>(`/collections/${collectionId}/status`, {
         method: "PATCH",
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
+        headers: buildAuthHeaders(token),
         body: JSON.stringify({ isActive }),
     });
 }
 
 export async function getAdminSaleCampaigns(token: string) {
     const campaigns = await fetchJson<SaleCampaign[]>("/sale-campaigns/admin", {
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
+        headers: buildAuthHeaders(token),
     });
 
     return campaigns.map((campaign) => normalizeSaleCampaign(campaign)!);
@@ -647,9 +634,7 @@ export async function createSaleCampaign(
 ) {
     const campaign = await fetchJson<SaleCampaign>("/sale-campaigns", {
         method: "POST",
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
+        headers: buildAuthHeaders(token),
         body: JSON.stringify(payload),
     });
 
@@ -665,9 +650,7 @@ export async function updateSaleCampaign(
         `/sale-campaigns/${campaignId}`,
         {
             method: "PATCH",
-            headers: {
-                Authorization: `Bearer ${token}`,
-            },
+            headers: buildAuthHeaders(token),
             body: JSON.stringify(payload),
         },
     );
@@ -684,9 +667,7 @@ export async function updateSaleCampaignStatus(
         `/sale-campaigns/${campaignId}/status`,
         {
             method: "PATCH",
-            headers: {
-                Authorization: `Bearer ${token}`,
-            },
+            headers: buildAuthHeaders(token),
             body: JSON.stringify({ isActive }),
         },
     );
@@ -706,9 +687,8 @@ export async function uploadProductImage(token: string, file: File) {
 
     const response = await fetch(`${API_URL}/uploads/products`, {
         method: "POST",
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
+        credentials: "include",
+        headers: buildAuthHeaders(token),
         body: formData,
     });
 
@@ -737,9 +717,8 @@ export async function uploadCampaignMedia(token: string, file: File) {
 
     const response = await fetch(`${API_URL}/uploads/campaigns`, {
         method: "POST",
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
+        credentials: "include",
+        headers: buildAuthHeaders(token),
         body: formData,
     });
 
@@ -757,9 +736,7 @@ export async function uploadCampaignMedia(token: string, file: File) {
 
 export async function getManagerDashboard(token: string) {
     return fetchJson<ManagerDashboard>("/dashboard/manager", {
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
+        headers: buildAuthHeaders(token),
     });
 }
 
@@ -786,49 +763,47 @@ export async function loginCustomer(payload: LoginCustomerPayload) {
     });
 }
 
-export async function getCustomerMe(token: string) {
+export async function getCustomerMe(token?: string | null) {
     return fetchJson<Customer>("/customer-auth/me", {
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
+        headers: buildAuthHeaders(token),
     });
 }
 
-export async function getCustomerOrders(token: string) {
+export async function getCustomerOrders(token?: string | null) {
     return fetchJson<AdminOrder[]>("/customer-auth/orders", {
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
+        headers: buildAuthHeaders(token),
     });
 }
 
 export async function updateCustomerProfile(
-    token: string,
+    token: string | null | undefined,
     payload: UpdateCustomerProfilePayload,
 ) {
     return fetchJson<Customer>("/customer-auth/profile", {
         method: "PATCH",
-        headers: {
-            Authorization: `Bearer ${token}`,
-        },
+        headers: buildAuthHeaders(token),
         body: JSON.stringify(payload),
     });
 }
 
 export async function changeCustomerPassword(
-    token: string,
+    token: string | null | undefined,
     payload: ChangeCustomerPasswordPayload,
 ) {
     return fetchJson<ChangeCustomerPasswordResponse>(
         "/customer-auth/password",
         {
             method: "PATCH",
-            headers: {
-                Authorization: `Bearer ${token}`,
-            },
+            headers: buildAuthHeaders(token),
             body: JSON.stringify(payload),
         },
     );
+}
+
+export async function logoutCustomerSession() {
+    return fetchJson<{ message: string }>("/customer-auth/logout", {
+        method: "POST",
+    });
 }
 
 export async function getCategories() {
