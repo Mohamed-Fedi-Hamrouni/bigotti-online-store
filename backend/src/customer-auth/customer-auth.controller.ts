@@ -6,7 +6,13 @@ import {
   Patch,
   Post,
   Req,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
+import {
+  AuthCookieService,
+  AUTH_COOKIE_NAMES,
+} from '../auth/services/auth-cookie.service';
 import { CustomerAuthService } from './customer-auth.service';
 import { ChangeCustomerPasswordDto } from './dto/change-customer-password.dto';
 import { LoginCustomerDto } from './dto/login-customer.dto';
@@ -35,43 +41,132 @@ function getClientIp(request: RequestLike) {
   return request.ip || request.socket?.remoteAddress || 'unknown';
 }
 
+function getCookieValue(request: RequestLike, cookieName: string) {
+  const cookieHeader = request.headers.cookie;
+
+  if (!cookieHeader || Array.isArray(cookieHeader)) {
+    return undefined;
+  }
+
+  const cookies = cookieHeader.split(';');
+
+  for (const cookie of cookies) {
+    const [rawName, ...rawValueParts] = cookie.trim().split('=');
+
+    if (rawName === cookieName) {
+      return decodeURIComponent(rawValueParts.join('='));
+    }
+  }
+
+  return undefined;
+}
+
+function getCustomerAuthorization(
+  request: RequestLike,
+  authorization?: string,
+) {
+  if (authorization) {
+    return authorization;
+  }
+
+  const cookieToken = getCookieValue(request, AUTH_COOKIE_NAMES.customer);
+
+  if (!cookieToken) {
+    return undefined;
+  }
+
+  return `Bearer ${cookieToken}`;
+}
+
 @Controller('customer-auth')
 export class CustomerAuthController {
-  constructor(private readonly customerAuthService: CustomerAuthService) {}
+  constructor(
+    private readonly customerAuthService: CustomerAuthService,
+    private readonly authCookieService: AuthCookieService,
+  ) {}
 
   @Post('register')
-  register(@Body() dto: RegisterCustomerDto) {
-    return this.customerAuthService.register(dto);
+  async register(
+    @Body() dto: RegisterCustomerDto,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const result = await this.customerAuthService.register(dto);
+
+    this.authCookieService.setCustomerAccessToken(response, result.accessToken);
+
+    return {
+      customer: result.customer,
+    };
   }
 
   @Post('login')
-  login(@Body() dto: LoginCustomerDto, @Req() request: RequestLike) {
-    return this.customerAuthService.login(dto, getClientIp(request));
+  async login(
+    @Body() dto: LoginCustomerDto,
+    @Req() request: RequestLike,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const result = await this.customerAuthService.login(
+      dto,
+      getClientIp(request),
+    );
+
+    this.authCookieService.setCustomerAccessToken(response, result.accessToken);
+
+    return {
+      customer: result.customer,
+    };
+  }
+
+  @Post('logout')
+  logout(@Res({ passthrough: true }) response: Response) {
+    this.authCookieService.clearCustomerAccessToken(response);
+
+    return {
+      message: 'Déconnexion client effectuée.',
+    };
   }
 
   @Get('me')
-  me(@Headers('authorization') authorization?: string) {
-    return this.customerAuthService.me(authorization);
+  me(
+    @Req() request: RequestLike,
+    @Headers('authorization') authorization?: string,
+  ) {
+    return this.customerAuthService.me(
+      getCustomerAuthorization(request, authorization),
+    );
   }
 
   @Patch('profile')
   updateProfile(
+    @Req() request: RequestLike,
     @Body() dto: UpdateCustomerProfileDto,
     @Headers('authorization') authorization?: string,
   ) {
-    return this.customerAuthService.updateProfile(dto, authorization);
+    return this.customerAuthService.updateProfile(
+      dto,
+      getCustomerAuthorization(request, authorization),
+    );
   }
 
   @Patch('password')
   changePassword(
+    @Req() request: RequestLike,
     @Body() dto: ChangeCustomerPasswordDto,
     @Headers('authorization') authorization?: string,
   ) {
-    return this.customerAuthService.changePassword(dto, authorization);
+    return this.customerAuthService.changePassword(
+      dto,
+      getCustomerAuthorization(request, authorization),
+    );
   }
 
   @Get('orders')
-  orders(@Headers('authorization') authorization?: string) {
-    return this.customerAuthService.getCustomerOrders(authorization);
+  orders(
+    @Req() request: RequestLike,
+    @Headers('authorization') authorization?: string,
+  ) {
+    return this.customerAuthService.getCustomerOrders(
+      getCustomerAuthorization(request, authorization),
+    );
   }
 }

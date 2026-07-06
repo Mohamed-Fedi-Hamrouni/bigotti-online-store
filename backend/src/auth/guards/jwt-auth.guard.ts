@@ -7,10 +7,11 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AUTH_COOKIE_NAMES } from '../services/auth-cookie.service';
 import { JwtPayload } from '../types/jwt-payload.type';
 
 type RequestWithUser = {
-  headers: Record<string, string | undefined>;
+  headers: Record<string, string | string[] | undefined>;
   user?: JwtPayload;
 };
 
@@ -26,7 +27,7 @@ export class JwtAuthGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<RequestWithUser>();
-    const token = this.extractTokenFromHeader(request);
+    const token = this.extractToken(request);
 
     if (!token) {
       throw new UnauthorizedException('Session admin manquante.');
@@ -93,10 +94,17 @@ export class JwtAuthGuard implements CanActivate {
     }
   }
 
-  private extractTokenFromHeader(request: RequestWithUser): string | undefined {
+  private extractToken(request: RequestWithUser): string | undefined {
+    return (
+      this.extractBearerToken(request) ??
+      this.extractCookieToken(request, AUTH_COOKIE_NAMES.admin)
+    );
+  }
+
+  private extractBearerToken(request: RequestWithUser): string | undefined {
     const authorization = request.headers.authorization;
 
-    if (!authorization) {
+    if (!authorization || Array.isArray(authorization)) {
       return undefined;
     }
 
@@ -107,5 +115,28 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     return token;
+  }
+
+  private extractCookieToken(
+    request: RequestWithUser,
+    cookieName: string,
+  ): string | undefined {
+    const cookieHeader = request.headers.cookie;
+
+    if (!cookieHeader || Array.isArray(cookieHeader)) {
+      return undefined;
+    }
+
+    const cookies = cookieHeader.split(';');
+
+    for (const cookie of cookies) {
+      const [rawName, ...rawValueParts] = cookie.trim().split('=');
+
+      if (rawName === cookieName) {
+        return decodeURIComponent(rawValueParts.join('='));
+      }
+    }
+
+    return undefined;
   }
 }
