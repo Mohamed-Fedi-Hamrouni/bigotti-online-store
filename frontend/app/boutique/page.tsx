@@ -4,12 +4,14 @@ import { PublicHeader } from "@/components/layout/PublicHeader";
 import { getProducts } from "@/lib/api";
 import type { Product } from "@/types/product";
 
+type BoutiqueSearchParams = {
+    category?: string | string[];
+    categoryType?: string | string[];
+    search?: string | string[];
+};
+
 type BoutiquePageProps = {
-    searchParams?: {
-        category?: string | string[];
-        categoryType?: string | string[];
-        search?: string | string[];
-    };
+    searchParams?: Promise<BoutiqueSearchParams>;
 };
 
 function getFirstSearchParam(value?: string | string[]) {
@@ -139,18 +141,20 @@ function getFilterDescription(params: {
 export default async function BoutiquePage({
     searchParams,
 }: BoutiquePageProps) {
+    const resolvedSearchParams = await searchParams;
+
     const products = await getProducts();
 
     const categorySlug = normalizeText(
-        getFirstSearchParam(searchParams?.category),
+        getFirstSearchParam(resolvedSearchParams?.category),
     );
 
     const categoryTypeSlug = normalizeText(
-        getFirstSearchParam(searchParams?.categoryType),
+        getFirstSearchParam(resolvedSearchParams?.categoryType),
     );
 
     const searchQuery = normalizeText(
-        getFirstSearchParam(searchParams?.search),
+        getFirstSearchParam(resolvedSearchParams?.search),
     );
 
     const filteredProducts = filterProducts({
