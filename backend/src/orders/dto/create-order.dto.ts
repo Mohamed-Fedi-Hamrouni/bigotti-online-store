@@ -11,7 +11,15 @@ import {
 } from 'class-validator';
 import { CreateOrderItemDto } from './create-order-item.dto';
 
-export const PAYMENT_METHODS = ['CASH_ON_DELIVERY', 'CARD'] as const;
+export const PAYMENT_METHODS = ['CASH_ON_DELIVERY'] as const;
+export const FULFILLMENT_METHODS = ['DELIVERY', 'STORE_PICKUP'] as const;
+export const PICKUP_STORES = [
+  'NABEUL',
+  'SFAX',
+  'LAC_2',
+  'LAFAYETTE',
+  'SOUKRA',
+] as const;
 
 export class CreateOrderDto {
   @IsString()
@@ -26,20 +34,30 @@ export class CreateOrderDto {
   @IsEmail()
   customerEmail?: string;
 
+  @IsOptional()
+  @IsIn(FULFILLMENT_METHODS)
+  fulfillmentMethod?: (typeof FULFILLMENT_METHODS)[number];
+
+  @IsOptional()
+  @IsIn(PICKUP_STORES)
+  pickupStore?: (typeof PICKUP_STORES)[number];
+
+  @IsOptional()
   @IsString()
   @MinLength(3)
-  deliveryAddress!: string;
+  deliveryAddress?: string;
 
+  @IsOptional()
   @IsString()
   @MinLength(2)
-  deliveryCity!: string;
+  deliveryCity?: string;
 
   @IsOptional()
   @IsString()
   deliveryNotes?: string;
 
   @IsIn(PAYMENT_METHODS)
-  paymentMethod!: 'CASH_ON_DELIVERY' | 'CARD';
+  paymentMethod!: 'CASH_ON_DELIVERY';
 
   @IsArray()
   @ArrayMinSize(1)

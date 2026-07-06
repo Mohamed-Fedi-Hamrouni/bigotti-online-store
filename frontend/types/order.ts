@@ -1,4 +1,8 @@
-export type PaymentMethod = "CASH_ON_DELIVERY" | "CARD";
+export type PaymentMethod = "CASH_ON_DELIVERY";
+
+export type FulfillmentMethod = "DELIVERY" | "STORE_PICKUP";
+
+export type PickupStore = "NABEUL" | "SFAX" | "LAC_2" | "LAFAYETTE" | "SOUKRA";
 
 export type PaymentStatus = "UNPAID" | "PAID" | "FAILED" | "REFUNDED";
 
@@ -19,8 +23,10 @@ export type CreateOrderPayload = {
     customerName: string;
     customerPhone: string;
     customerEmail?: string;
-    deliveryAddress: string;
-    deliveryCity: string;
+    fulfillmentMethod: FulfillmentMethod;
+    pickupStore?: PickupStore;
+    deliveryAddress?: string;
+    deliveryCity?: string;
     deliveryNotes?: string;
     paymentMethod: PaymentMethod;
     items: CreateOrderItemPayload[];
