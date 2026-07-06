@@ -1,9 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { KeyRound, LogOut, PackageCheck, Save, UserRound } from "lucide-react";
+import {
+    ChevronLeft,
+    ChevronRight,
+    KeyRound,
+    LogOut,
+    PackageCheck,
+    Save,
+    UserRound,
+} from "lucide-react";
 import { useCustomerAuth } from "@/components/customer-auth/CustomerAuthProvider";
 import { PublicFooter } from "@/components/layout/PublicFooter";
 import { PublicHeader } from "@/components/layout/PublicHeader";
@@ -13,6 +21,8 @@ import {
     updateCustomerProfile,
 } from "@/lib/api";
 import type { AdminOrder } from "@/types/order";
+
+const ORDERS_PER_PAGE = 5;
 
 function formatPrice(value: number | string | null | undefined) {
     const numericValue = Number(value);
@@ -37,6 +47,24 @@ function getOrderStatusLabel(status: string) {
     return labels[status] ?? status;
 }
 
+function buildPaginationRange(currentPage: number, totalPages: number) {
+    const maxVisiblePages = 5;
+
+    if (totalPages <= maxVisiblePages) {
+        return Array.from({ length: totalPages }, (_, index) => index + 1);
+    }
+
+    const half = Math.floor(maxVisiblePages / 2);
+    let start = Math.max(1, currentPage - half);
+    let end = Math.min(totalPages, start + maxVisiblePages - 1);
+
+    if (end - start + 1 < maxVisiblePages) {
+        start = Math.max(1, end - maxVisiblePages + 1);
+    }
+
+    return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+}
+
 export default function CustomerAccountPage() {
     const router = useRouter();
     const {
@@ -49,6 +77,7 @@ export default function CustomerAccountPage() {
     } = useCustomerAuth();
 
     const [orders, setOrders] = useState<AdminOrder[]>([]);
+    const [currentOrdersPage, setCurrentOrdersPage] = useState(1);
     const [ordersLoading, setOrdersLoading] = useState(false);
     const [ordersError, setOrdersError] = useState("");
 
@@ -99,6 +128,58 @@ export default function CustomerAccountPage() {
             })
             .finally(() => setOrdersLoading(false));
     }, [token, isAuthenticated]);
+
+    const sortedOrders = useMemo(() => {
+        return [...orders].sort(
+            (firstOrder, secondOrder) =>
+                new Date(secondOrder.createdAt).getTime() -
+                new Date(firstOrder.createdAt).getTime(),
+        );
+    }, [orders]);
+
+    const totalOrdersPages = Math.max(
+        1,
+        Math.ceil(sortedOrders.length / ORDERS_PER_PAGE),
+    );
+
+    const ordersPaginationRange = useMemo(
+        () => buildPaginationRange(currentOrdersPage, totalOrdersPages),
+        [currentOrdersPage, totalOrdersPages],
+    );
+
+    const paginatedOrders = useMemo(() => {
+        const startIndex = (currentOrdersPage - 1) * ORDERS_PER_PAGE;
+        const endIndex = startIndex + ORDERS_PER_PAGE;
+
+        return sortedOrders.slice(startIndex, endIndex);
+    }, [sortedOrders, currentOrdersPage]);
+
+    const firstVisibleOrderIndex =
+        sortedOrders.length === 0
+            ? 0
+            : (currentOrdersPage - 1) * ORDERS_PER_PAGE + 1;
+
+    const lastVisibleOrderIndex = Math.min(
+        currentOrdersPage * ORDERS_PER_PAGE,
+        sortedOrders.length,
+    );
+
+    useEffect(() => {
+        if (currentOrdersPage > totalOrdersPages) {
+            setCurrentOrdersPage(totalOrdersPages);
+        }
+    }, [currentOrdersPage, totalOrdersPages]);
+
+    function goToOrdersPage(page: number) {
+        const nextPage = Math.min(Math.max(page, 1), totalOrdersPages);
+
+        setCurrentOrdersPage(nextPage);
+
+        document.getElementById("customer-orders")?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+        });
+    }
 
     async function handleUpdateProfile(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
@@ -497,7 +578,10 @@ export default function CustomerAccountPage() {
                                 </Link>
                             </div>
 
-                            <div className="rounded-[2rem] bg-white p-8 shadow-sm">
+                            <div
+                                id="customer-orders"
+                                className="rounded-[2rem] bg-white p-8 shadow-sm"
+                            >
                                 <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
                                     <div>
                                         <p className="text-sm uppercase tracking-[0.25em] text-neutral-500">
@@ -509,12 +593,26 @@ export default function CustomerAccountPage() {
                                         </h2>
                                     </div>
 
-                                    <Link
-                                        href="/boutique"
-                                        className="rounded-full bg-black px-5 py-3 text-sm font-bold text-white"
-                                    >
-                                        Commander encore
-                                    </Link>
+                                    <div className="flex flex-col gap-3 md:items-end">
+                                        {sortedOrders.length > 0 && (
+                                            <div className="rounded-full bg-neutral-100 px-5 py-3 text-sm font-bold text-neutral-600">
+                                                Affichage de{" "}
+                                                {firstVisibleOrderIndex} à{" "}
+                                                {lastVisibleOrderIndex} sur{" "}
+                                                {sortedOrders.length} commande
+                                                {sortedOrders.length > 1
+                                                    ? "s"
+                                                    : ""}
+                                            </div>
+                                        )}
+
+                                        <Link
+                                            href="/boutique"
+                                            className="rounded-full bg-black px-5 py-3 text-sm font-bold text-white"
+                                        >
+                                            Commander encore
+                                        </Link>
+                                    </div>
                                 </div>
 
                                 {ordersLoading && (
@@ -539,70 +637,188 @@ export default function CustomerAccountPage() {
 
                                 {!ordersLoading &&
                                     !ordersError &&
-                                    orders.length > 0 && (
-                                        <div className="mt-6 space-y-4">
-                                            {orders.map((order) => (
-                                                <div
-                                                    key={order.id}
-                                                    className="rounded-3xl border border-neutral-200 p-5"
-                                                >
-                                                    <div className="flex flex-col justify-between gap-5 md:flex-row md:items-center">
-                                                        <div>
-                                                            <p className="text-sm uppercase tracking-[0.2em] text-neutral-500">
-                                                                Commande
-                                                            </p>
+                                    sortedOrders.length > 0 && (
+                                        <>
+                                            <div className="mt-6 space-y-4">
+                                                {paginatedOrders.map(
+                                                    (order) => (
+                                                        <div
+                                                            key={order.id}
+                                                            className="rounded-3xl border border-neutral-200 p-5"
+                                                        >
+                                                            <div className="flex flex-col justify-between gap-5 md:flex-row md:items-center">
+                                                                <div>
+                                                                    <p className="text-sm uppercase tracking-[0.2em] text-neutral-500">
+                                                                        Commande
+                                                                    </p>
 
-                                                            <h3 className="mt-1 text-2xl font-black">
-                                                                {
-                                                                    order.orderNumber
+                                                                    <h3 className="mt-1 text-2xl font-black">
+                                                                        {
+                                                                            order.orderNumber
+                                                                        }
+                                                                    </h3>
+
+                                                                    <p className="mt-2 text-sm text-neutral-500">
+                                                                        {
+                                                                            order
+                                                                                .items
+                                                                                .length
+                                                                        }{" "}
+                                                                        article(s)
+                                                                        — Statut
+                                                                        :{" "}
+                                                                        <span className="font-bold text-neutral-950">
+                                                                            {getOrderStatusLabel(
+                                                                                order.orderStatus,
+                                                                            )}
+                                                                        </span>
+                                                                    </p>
+                                                                </div>
+
+                                                                <div className="text-left md:text-right">
+                                                                    <p className="text-2xl font-black">
+                                                                        {formatPrice(
+                                                                            order.total,
+                                                                        )}
+                                                                    </p>
+
+                                                                    <p className="mt-1 text-sm text-neutral-500">
+                                                                        {new Date(
+                                                                            order.createdAt,
+                                                                        ).toLocaleDateString(
+                                                                            "fr-FR",
+                                                                        )}
+                                                                    </p>
+
+                                                                    <Link
+                                                                        href={`/suivi-commande?orderNumber=${encodeURIComponent(
+                                                                            order.orderNumber,
+                                                                        )}&phone=${encodeURIComponent(
+                                                                            order.customerPhone,
+                                                                        )}`}
+                                                                        className="mt-4 inline-flex rounded-full bg-black px-5 py-3 text-sm font-bold text-white"
+                                                                    >
+                                                                        Suivre
+                                                                    </Link>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ),
+                                                )}
+                                            </div>
+
+                                            {totalOrdersPages > 1 && (
+                                                <div className="mt-8 flex flex-wrap items-center justify-center gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            goToOrdersPage(
+                                                                currentOrdersPage -
+                                                                    1,
+                                                            )
+                                                        }
+                                                        disabled={
+                                                            currentOrdersPage ===
+                                                            1
+                                                        }
+                                                        className="inline-flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 py-3 text-sm font-black transition hover:border-black disabled:cursor-not-allowed disabled:opacity-40"
+                                                    >
+                                                        <ChevronLeft
+                                                            size={16}
+                                                        />
+                                                        Précédent
+                                                    </button>
+
+                                                    {ordersPaginationRange[0] >
+                                                        1 && (
+                                                        <>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() =>
+                                                                    goToOrdersPage(
+                                                                        1,
+                                                                    )
                                                                 }
-                                                            </h3>
-
-                                                            <p className="mt-2 text-sm text-neutral-500">
-                                                                {
-                                                                    order.items
-                                                                        .length
-                                                                }{" "}
-                                                                article(s) —
-                                                                Statut :{" "}
-                                                                <span className="font-bold text-neutral-950">
-                                                                    {getOrderStatusLabel(
-                                                                        order.orderStatus,
-                                                                    )}
-                                                                </span>
-                                                            </p>
-                                                        </div>
-
-                                                        <div className="text-left md:text-right">
-                                                            <p className="text-2xl font-black">
-                                                                {formatPrice(
-                                                                    order.total,
-                                                                )}
-                                                            </p>
-
-                                                            <p className="mt-1 text-sm text-neutral-500">
-                                                                {new Date(
-                                                                    order.createdAt,
-                                                                ).toLocaleDateString(
-                                                                    "fr-FR",
-                                                                )}
-                                                            </p>
-
-                                                            <Link
-                                                                href={`/suivi-commande?orderNumber=${encodeURIComponent(
-                                                                    order.orderNumber,
-                                                                )}&phone=${encodeURIComponent(
-                                                                    order.customerPhone,
-                                                                )}`}
-                                                                className="mt-4 inline-flex rounded-full bg-black px-5 py-3 text-sm font-bold text-white"
+                                                                className="h-11 min-w-11 rounded-full border border-neutral-300 bg-white px-4 text-sm font-black transition hover:border-black"
                                                             >
-                                                                Suivre
-                                                            </Link>
-                                                        </div>
-                                                    </div>
+                                                                1
+                                                            </button>
+
+                                                            <span className="px-2 text-sm font-black text-neutral-400">
+                                                                ...
+                                                            </span>
+                                                        </>
+                                                    )}
+
+                                                    {ordersPaginationRange.map(
+                                                        (page) => (
+                                                            <button
+                                                                key={page}
+                                                                type="button"
+                                                                onClick={() =>
+                                                                    goToOrdersPage(
+                                                                        page,
+                                                                    )
+                                                                }
+                                                                className={
+                                                                    currentOrdersPage ===
+                                                                    page
+                                                                        ? "h-11 min-w-11 rounded-full bg-black px-4 text-sm font-black text-white"
+                                                                        : "h-11 min-w-11 rounded-full border border-neutral-300 bg-white px-4 text-sm font-black transition hover:border-black"
+                                                                }
+                                                            >
+                                                                {page}
+                                                            </button>
+                                                        ),
+                                                    )}
+
+                                                    {ordersPaginationRange[
+                                                        ordersPaginationRange.length -
+                                                            1
+                                                    ] < totalOrdersPages && (
+                                                        <>
+                                                            <span className="px-2 text-sm font-black text-neutral-400">
+                                                                ...
+                                                            </span>
+
+                                                            <button
+                                                                type="button"
+                                                                onClick={() =>
+                                                                    goToOrdersPage(
+                                                                        totalOrdersPages,
+                                                                    )
+                                                                }
+                                                                className="h-11 min-w-11 rounded-full border border-neutral-300 bg-white px-4 text-sm font-black transition hover:border-black"
+                                                            >
+                                                                {
+                                                                    totalOrdersPages
+                                                                }
+                                                            </button>
+                                                        </>
+                                                    )}
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            goToOrdersPage(
+                                                                currentOrdersPage +
+                                                                    1,
+                                                            )
+                                                        }
+                                                        disabled={
+                                                            currentOrdersPage ===
+                                                            totalOrdersPages
+                                                        }
+                                                        className="inline-flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 py-3 text-sm font-black transition hover:border-black disabled:cursor-not-allowed disabled:opacity-40"
+                                                    >
+                                                        Suivant
+                                                        <ChevronRight
+                                                            size={16}
+                                                        />
+                                                    </button>
                                                 </div>
-                                            ))}
-                                        </div>
+                                            )}
+                                        </>
                                     )}
                             </div>
                         </div>

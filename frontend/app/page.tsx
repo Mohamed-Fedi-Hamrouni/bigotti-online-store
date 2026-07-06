@@ -1,5 +1,6 @@
 import { AnimatedHero } from "@/components/home/AnimatedHero";
 import { CategoryShowcase } from "@/components/home/CategoryShowcase";
+import { HomeProductGrid } from "@/components/home/HomeProductGrid";
 import { ProductCarousel } from "@/components/home/ProductCarousel";
 import { PublicFooter } from "@/components/layout/PublicFooter";
 import { PublicHeader } from "@/components/layout/PublicHeader";
@@ -341,23 +342,7 @@ export default async function HomePage() {
                     </p>
                 </div>
 
-                {products.length === 0 ? (
-                    <div className="rounded-3xl border border-dashed border-neutral-300 bg-white p-10 text-center">
-                        <h3 className="text-xl font-semibold">
-                            Aucun produit disponible pour le moment.
-                        </h3>
-
-                        <p className="mt-2 text-neutral-500">
-                            Revenez bientôt pour découvrir la collection.
-                        </p>
-                    </div>
-                ) : (
-                    <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                        {products.map((product) => (
-                            <ProductCard key={product.id} product={product} />
-                        ))}
-                    </div>
-                )}
+                <HomeProductGrid products={products} />
             </section>
 
             <PublicFooter />

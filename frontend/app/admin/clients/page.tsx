@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
+    ChevronLeft,
+    ChevronRight,
     Mail,
     PackageCheck,
     Phone,
@@ -14,6 +16,8 @@ import {
 import type { AdminCustomer } from "@/types/customer";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+
+const CUSTOMERS_PER_PAGE = 10;
 
 type CustomerStatusFilter = "ALL" | "ACTIVE" | "INACTIVE";
 type CustomerSortOption =
@@ -119,6 +123,24 @@ function getOrderStatusLabel(status: string) {
     return labels[status] ?? status;
 }
 
+function buildPaginationRange(currentPage: number, totalPages: number) {
+    const maxVisiblePages = 5;
+
+    if (totalPages <= maxVisiblePages) {
+        return Array.from({ length: totalPages }, (_, index) => index + 1);
+    }
+
+    const half = Math.floor(maxVisiblePages / 2);
+    let start = Math.max(1, currentPage - half);
+    let end = Math.min(totalPages, start + maxVisiblePages - 1);
+
+    if (end - start + 1 < maxVisiblePages) {
+        start = Math.max(1, end - maxVisiblePages + 1);
+    }
+
+    return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+}
+
 export default function AdminCustomersPage() {
     const [customers, setCustomers] = useState<AdminCustomer[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
@@ -126,6 +148,7 @@ export default function AdminCustomersPage() {
         useState<CustomerStatusFilter>("ALL");
     const [sortOption, setSortOption] =
         useState<CustomerSortOption>("RECENT_ORDER");
+    const [currentPage, setCurrentPage] = useState(1);
     const [isLoading, setIsLoading] = useState(true);
     const [actionLoadingId, setActionLoadingId] = useState("");
     const [error, setError] = useState("");
@@ -201,6 +224,43 @@ export default function AdminCustomersPage() {
         });
     }, [customers, searchQuery, statusFilter, sortOption]);
 
+    const totalPages = Math.max(
+        1,
+        Math.ceil(filteredCustomers.length / CUSTOMERS_PER_PAGE),
+    );
+
+    const paginationRange = useMemo(
+        () => buildPaginationRange(currentPage, totalPages),
+        [currentPage, totalPages],
+    );
+
+    const paginatedCustomers = useMemo(() => {
+        const startIndex = (currentPage - 1) * CUSTOMERS_PER_PAGE;
+        const endIndex = startIndex + CUSTOMERS_PER_PAGE;
+
+        return filteredCustomers.slice(startIndex, endIndex);
+    }, [filteredCustomers, currentPage]);
+
+    const firstVisibleCustomerIndex =
+        filteredCustomers.length === 0
+            ? 0
+            : (currentPage - 1) * CUSTOMERS_PER_PAGE + 1;
+
+    const lastVisibleCustomerIndex = Math.min(
+        currentPage * CUSTOMERS_PER_PAGE,
+        filteredCustomers.length,
+    );
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchQuery, statusFilter, sortOption]);
+
+    useEffect(() => {
+        if (currentPage > totalPages) {
+            setCurrentPage(totalPages);
+        }
+    }, [currentPage, totalPages]);
+
     const totalCustomers = customers.length;
 
     const activeCustomers = customers.filter(
@@ -213,6 +273,17 @@ export default function AdminCustomersPage() {
         (sum, customer) => sum + Number(customer.totalSpent),
         0,
     );
+
+    function goToPage(page: number) {
+        const nextPage = Math.min(Math.max(page, 1), totalPages);
+
+        setCurrentPage(nextPage);
+
+        window.scrollTo({
+            top: 0,
+            behavior: "smooth",
+        });
+    }
 
     async function handleToggleStatus(customer: AdminCustomer) {
         const token = getAdminToken();
@@ -362,8 +433,19 @@ export default function AdminCustomersPage() {
                             </h2>
 
                             <p className="mt-1 text-neutral-500">
-                                {filteredCustomers.length} client(s) affiché(s)
+                                {filteredCustomers.length} client(s) trouvé(s)
                             </p>
+
+                            {!isLoading &&
+                                !error &&
+                                filteredCustomers.length > 0 && (
+                                    <p className="mt-1 text-sm text-neutral-500">
+                                        Affichage de {firstVisibleCustomerIndex}{" "}
+                                        à {lastVisibleCustomerIndex} sur{" "}
+                                        {filteredCustomers.length} client(s) —
+                                        page {currentPage}/{totalPages}
+                                    </p>
+                                )}
                         </div>
 
                         <div className="grid w-full gap-3 lg:max-w-3xl lg:grid-cols-[1fr_180px_210px]">
@@ -442,7 +524,7 @@ export default function AdminCustomersPage() {
 
                     {!isLoading && filteredCustomers.length > 0 && (
                         <div className="mt-6 space-y-5">
-                            {filteredCustomers.map((customer) => {
+                            {paginatedCustomers.map((customer) => {
                                 const isInactive = !customer.isActive;
                                 const isUpdating =
                                     actionLoadingId === customer.id;
@@ -640,6 +722,81 @@ export default function AdminCustomersPage() {
                             })}
                         </div>
                     )}
+
+                    {!isLoading &&
+                        !error &&
+                        filteredCustomers.length > 0 &&
+                        totalPages > 1 && (
+                            <div className="mt-10 flex flex-wrap items-center justify-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => goToPage(currentPage - 1)}
+                                    disabled={currentPage === 1}
+                                    className="inline-flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 py-3 text-sm font-black transition hover:border-black disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                    <ChevronLeft size={16} />
+                                    Précédent
+                                </button>
+
+                                {paginationRange[0] > 1 && (
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={() => goToPage(1)}
+                                            className="h-11 min-w-11 rounded-full border border-neutral-300 bg-white px-4 text-sm font-black transition hover:border-black"
+                                        >
+                                            1
+                                        </button>
+
+                                        <span className="px-2 text-sm font-black text-neutral-400">
+                                            ...
+                                        </span>
+                                    </>
+                                )}
+
+                                {paginationRange.map((page) => (
+                                    <button
+                                        key={page}
+                                        type="button"
+                                        onClick={() => goToPage(page)}
+                                        className={
+                                            currentPage === page
+                                                ? "h-11 min-w-11 rounded-full bg-black px-4 text-sm font-black text-white"
+                                                : "h-11 min-w-11 rounded-full border border-neutral-300 bg-white px-4 text-sm font-black transition hover:border-black"
+                                        }
+                                    >
+                                        {page}
+                                    </button>
+                                ))}
+
+                                {paginationRange[paginationRange.length - 1] <
+                                    totalPages && (
+                                    <>
+                                        <span className="px-2 text-sm font-black text-neutral-400">
+                                            ...
+                                        </span>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => goToPage(totalPages)}
+                                            className="h-11 min-w-11 rounded-full border border-neutral-300 bg-white px-4 text-sm font-black transition hover:border-black"
+                                        >
+                                            {totalPages}
+                                        </button>
+                                    </>
+                                )}
+
+                                <button
+                                    type="button"
+                                    onClick={() => goToPage(currentPage + 1)}
+                                    disabled={currentPage === totalPages}
+                                    className="inline-flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 py-3 text-sm font-black transition hover:border-black disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                    Suivant
+                                    <ChevronRight size={16} />
+                                </button>
+                            </div>
+                        )}
                 </div>
             </section>
         </main>

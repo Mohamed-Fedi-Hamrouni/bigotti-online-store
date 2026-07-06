@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
+    ChevronLeft,
+    ChevronRight,
     Edit3,
     ImageIcon,
     Plus,
@@ -62,6 +64,8 @@ type CampaignFormState = {
 
     position: string;
 };
+
+const CAMPAIGNS_PER_PAGE = 8;
 
 const emptyForm: CampaignFormState = {
     name: "",
@@ -231,6 +235,24 @@ function getMediaTypeFromFile(file: File): CampaignMediaType {
     return file.type.startsWith("video/") ? "VIDEO" : "IMAGE";
 }
 
+function buildPaginationRange(currentPage: number, totalPages: number) {
+    const maxVisiblePages = 5;
+
+    if (totalPages <= maxVisiblePages) {
+        return Array.from({ length: totalPages }, (_, index) => index + 1);
+    }
+
+    const half = Math.floor(maxVisiblePages / 2);
+    let start = Math.max(1, currentPage - half);
+    let end = Math.min(totalPages, start + maxVisiblePages - 1);
+
+    if (end - start + 1 < maxVisiblePages) {
+        start = Math.max(1, end - maxVisiblePages + 1);
+    }
+
+    return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+}
+
 export default function AdminPromotionsPage() {
     const router = useRouter();
 
@@ -240,6 +262,7 @@ export default function AdminPromotionsPage() {
     const [searchQuery, setSearchQuery] = useState("");
     const [statusFilter, setStatusFilter] =
         useState<CampaignStatusFilter>("ALL");
+    const [currentPage, setCurrentPage] = useState(1);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
@@ -302,6 +325,43 @@ export default function AdminPromotionsPage() {
         });
     }, [campaigns, searchQuery, statusFilter]);
 
+    const totalPages = Math.max(
+        1,
+        Math.ceil(filteredCampaigns.length / CAMPAIGNS_PER_PAGE),
+    );
+
+    const paginationRange = useMemo(
+        () => buildPaginationRange(currentPage, totalPages),
+        [currentPage, totalPages],
+    );
+
+    const paginatedCampaigns = useMemo(() => {
+        const startIndex = (currentPage - 1) * CAMPAIGNS_PER_PAGE;
+        const endIndex = startIndex + CAMPAIGNS_PER_PAGE;
+
+        return filteredCampaigns.slice(startIndex, endIndex);
+    }, [filteredCampaigns, currentPage]);
+
+    const firstVisibleCampaignIndex =
+        filteredCampaigns.length === 0
+            ? 0
+            : (currentPage - 1) * CAMPAIGNS_PER_PAGE + 1;
+
+    const lastVisibleCampaignIndex = Math.min(
+        currentPage * CAMPAIGNS_PER_PAGE,
+        filteredCampaigns.length,
+    );
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchQuery, statusFilter]);
+
+    useEffect(() => {
+        if (currentPage > totalPages) {
+            setCurrentPage(totalPages);
+        }
+    }, [currentPage, totalPages]);
+
     const activeCampaigns = campaigns.filter(
         (campaign) => campaign.isActive,
     ).length;
@@ -343,6 +403,17 @@ export default function AdminPromotionsPage() {
         setEditingId(null);
         setError("");
         setSuccess("");
+    }
+
+    function goToPage(page: number) {
+        const nextPage = Math.min(Math.max(page, 1), totalPages);
+
+        setCurrentPage(nextPage);
+
+        window.scrollTo({
+            top: 0,
+            behavior: "smooth",
+        });
     }
 
     function startEdit(campaign: SaleCampaign) {
@@ -1208,9 +1279,21 @@ export default function AdminPromotionsPage() {
                             </select>
                         </div>
 
-                        <p className="mt-4 text-sm text-neutral-500">
-                            {filteredCampaigns.length} campagne(s) affichée(s)
-                        </p>
+                        <div className="mt-4 flex flex-col justify-between gap-3 text-sm text-neutral-500 md:flex-row md:items-center">
+                            <p>
+                                {filteredCampaigns.length} campagne(s)
+                                trouvée(s)
+                            </p>
+
+                            {!isLoading && filteredCampaigns.length > 0 && (
+                                <p>
+                                    Affichage de {firstVisibleCampaignIndex} à{" "}
+                                    {lastVisibleCampaignIndex} sur{" "}
+                                    {filteredCampaigns.length} campagne(s) —
+                                    page {currentPage}/{totalPages}
+                                </p>
+                            )}
+                        </div>
 
                         {isLoading && (
                             <div className="mt-6 rounded-2xl bg-neutral-50 p-5 text-neutral-500">
@@ -1225,7 +1308,7 @@ export default function AdminPromotionsPage() {
                         )}
 
                         <div className="mt-6 space-y-4">
-                            {filteredCampaigns.map((campaign) => {
+                            {paginatedCampaigns.map((campaign) => {
                                 const isInactive = !campaign.isActive;
                                 const isUpdating =
                                     actionLoadingId === campaign.id;
@@ -1389,6 +1472,87 @@ export default function AdminPromotionsPage() {
                                 );
                             })}
                         </div>
+
+                        {!isLoading &&
+                            filteredCampaigns.length > 0 &&
+                            totalPages > 1 && (
+                                <div className="mt-8 flex flex-wrap items-center justify-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            goToPage(currentPage - 1)
+                                        }
+                                        disabled={currentPage === 1}
+                                        className="inline-flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 py-3 text-sm font-black transition hover:border-black disabled:cursor-not-allowed disabled:opacity-40"
+                                    >
+                                        <ChevronLeft size={16} />
+                                        Précédent
+                                    </button>
+
+                                    {paginationRange[0] > 1 && (
+                                        <>
+                                            <button
+                                                type="button"
+                                                onClick={() => goToPage(1)}
+                                                className="h-11 min-w-11 rounded-full border border-neutral-300 bg-white px-4 text-sm font-black transition hover:border-black"
+                                            >
+                                                1
+                                            </button>
+
+                                            <span className="px-2 text-sm font-black text-neutral-400">
+                                                ...
+                                            </span>
+                                        </>
+                                    )}
+
+                                    {paginationRange.map((page) => (
+                                        <button
+                                            key={page}
+                                            type="button"
+                                            onClick={() => goToPage(page)}
+                                            className={
+                                                currentPage === page
+                                                    ? "h-11 min-w-11 rounded-full bg-black px-4 text-sm font-black text-white"
+                                                    : "h-11 min-w-11 rounded-full border border-neutral-300 bg-white px-4 text-sm font-black transition hover:border-black"
+                                            }
+                                        >
+                                            {page}
+                                        </button>
+                                    ))}
+
+                                    {paginationRange[
+                                        paginationRange.length - 1
+                                    ] < totalPages && (
+                                        <>
+                                            <span className="px-2 text-sm font-black text-neutral-400">
+                                                ...
+                                            </span>
+
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    goToPage(totalPages)
+                                                }
+                                                className="h-11 min-w-11 rounded-full border border-neutral-300 bg-white px-4 text-sm font-black transition hover:border-black"
+                                            >
+                                                {totalPages}
+                                            </button>
+                                        </>
+                                    )}
+
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            goToPage(currentPage + 1)
+                                        }
+                                        disabled={currentPage === totalPages}
+                                        className="inline-flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 py-3 text-sm font-black transition hover:border-black disabled:cursor-not-allowed disabled:opacity-40"
+                                    >
+                                        Suivant
+                                        <ChevronRight size={16} />
+                                    </button>
+                                </div>
+                            )}
                     </div>
                 </div>
             </section>

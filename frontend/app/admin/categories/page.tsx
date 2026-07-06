@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+    ChevronLeft,
+    ChevronRight,
     Edit3,
     Plus,
     Search,
@@ -25,6 +27,8 @@ import type {
 
 type CategoryStatusFilter = "ALL" | "ACTIVE" | "INACTIVE";
 type CategoryGroupFilter = "ALL" | CategoryMenuGroup;
+
+const CATEGORIES_PER_PAGE = 8;
 
 type EditableCategoryType = {
     id?: string;
@@ -165,6 +169,27 @@ function normalizeText(value: string) {
     return value.trim().toLowerCase();
 }
 
+function buildPaginationRange(currentPage: number, totalPages: number) {
+    const maxVisiblePages = 5;
+
+    if (totalPages <= maxVisiblePages) {
+        return Array.from({ length: totalPages }, (_item, index) => index + 1);
+    }
+
+    const half = Math.floor(maxVisiblePages / 2);
+    let start = Math.max(1, currentPage - half);
+    let end = Math.min(totalPages, start + maxVisiblePages - 1);
+
+    if (end - start + 1 < maxVisiblePages) {
+        start = Math.max(1, end - maxVisiblePages + 1);
+    }
+
+    return Array.from(
+        { length: end - start + 1 },
+        (_item, index) => start + index,
+    );
+}
+
 export default function AdminCategoriesPage() {
     const router = useRouter();
 
@@ -176,6 +201,7 @@ export default function AdminCategoriesPage() {
     const [statusFilter, setStatusFilter] =
         useState<CategoryStatusFilter>("ALL");
     const [groupFilter, setGroupFilter] = useState<CategoryGroupFilter>("ALL");
+    const [currentPage, setCurrentPage] = useState(1);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
@@ -235,6 +261,43 @@ export default function AdminCategoriesPage() {
             return matchesSearch && matchesStatus && matchesGroup;
         });
     }, [categories, searchQuery, statusFilter, groupFilter]);
+
+    const totalPages = Math.max(
+        1,
+        Math.ceil(filteredCategories.length / CATEGORIES_PER_PAGE),
+    );
+
+    const paginationRange = useMemo(
+        () => buildPaginationRange(currentPage, totalPages),
+        [currentPage, totalPages],
+    );
+
+    const paginatedCategories = useMemo(() => {
+        const startIndex = (currentPage - 1) * CATEGORIES_PER_PAGE;
+        const endIndex = startIndex + CATEGORIES_PER_PAGE;
+
+        return filteredCategories.slice(startIndex, endIndex);
+    }, [filteredCategories, currentPage]);
+
+    const firstVisibleCategoryIndex =
+        filteredCategories.length === 0
+            ? 0
+            : (currentPage - 1) * CATEGORIES_PER_PAGE + 1;
+
+    const lastVisibleCategoryIndex = Math.min(
+        currentPage * CATEGORIES_PER_PAGE,
+        filteredCategories.length,
+    );
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchQuery, statusFilter, groupFilter]);
+
+    useEffect(() => {
+        if (currentPage > totalPages) {
+            setCurrentPage(totalPages);
+        }
+    }, [currentPage, totalPages]);
 
     const activeCategories = categories.filter(
         (category) => category.isActive,
@@ -516,6 +579,17 @@ export default function AdminCategoriesPage() {
         } finally {
             setActionLoadingId(null);
         }
+    }
+
+    function goToPage(page: number) {
+        const nextPage = Math.min(Math.max(page, 1), totalPages);
+
+        setCurrentPage(nextPage);
+
+        window.scrollTo({
+            top: 0,
+            behavior: "smooth",
+        });
     }
 
     return (
@@ -955,9 +1029,21 @@ export default function AdminCategoriesPage() {
                             </select>
                         </div>
 
-                        <p className="mt-4 text-sm text-neutral-500">
-                            {filteredCategories.length} catégorie(s) affichée(s)
-                        </p>
+                        <div className="mt-4 flex flex-col justify-between gap-3 text-sm text-neutral-500 md:flex-row md:items-center">
+                            <p>
+                                {filteredCategories.length} catégorie(s)
+                                trouvée(s)
+                            </p>
+
+                            {!isLoading && filteredCategories.length > 0 && (
+                                <p>
+                                    Affichage de {firstVisibleCategoryIndex} à{" "}
+                                    {lastVisibleCategoryIndex} sur{" "}
+                                    {filteredCategories.length} catégorie(s) —
+                                    page {currentPage}/{totalPages}
+                                </p>
+                            )}
+                        </div>
 
                         {isLoading && (
                             <div className="mt-6 rounded-2xl bg-neutral-50 p-5 text-neutral-500">
@@ -972,7 +1058,7 @@ export default function AdminCategoriesPage() {
                         )}
 
                         <div className="mt-6 space-y-4">
-                            {filteredCategories.map((category) => {
+                            {paginatedCategories.map((category) => {
                                 const menuGroup = category.menuGroup ?? "AUTRE";
                                 const isInactive = !category.isActive;
                                 const isUpdating =
@@ -1110,6 +1196,87 @@ export default function AdminCategoriesPage() {
                                 );
                             })}
                         </div>
+
+                        {!isLoading &&
+                            filteredCategories.length > 0 &&
+                            totalPages > 1 && (
+                                <div className="mt-8 flex flex-wrap items-center justify-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            goToPage(currentPage - 1)
+                                        }
+                                        disabled={currentPage === 1}
+                                        className="inline-flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 py-3 text-sm font-black transition hover:border-black disabled:cursor-not-allowed disabled:opacity-40"
+                                    >
+                                        <ChevronLeft size={16} />
+                                        Précédent
+                                    </button>
+
+                                    {paginationRange[0] > 1 && (
+                                        <>
+                                            <button
+                                                type="button"
+                                                onClick={() => goToPage(1)}
+                                                className="h-11 min-w-11 rounded-full border border-neutral-300 bg-white px-4 text-sm font-black transition hover:border-black"
+                                            >
+                                                1
+                                            </button>
+
+                                            <span className="px-2 text-sm font-black text-neutral-400">
+                                                ...
+                                            </span>
+                                        </>
+                                    )}
+
+                                    {paginationRange.map((page) => (
+                                        <button
+                                            key={page}
+                                            type="button"
+                                            onClick={() => goToPage(page)}
+                                            className={
+                                                currentPage === page
+                                                    ? "h-11 min-w-11 rounded-full bg-black px-4 text-sm font-black text-white"
+                                                    : "h-11 min-w-11 rounded-full border border-neutral-300 bg-white px-4 text-sm font-black transition hover:border-black"
+                                            }
+                                        >
+                                            {page}
+                                        </button>
+                                    ))}
+
+                                    {paginationRange[
+                                        paginationRange.length - 1
+                                    ] < totalPages && (
+                                        <>
+                                            <span className="px-2 text-sm font-black text-neutral-400">
+                                                ...
+                                            </span>
+
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    goToPage(totalPages)
+                                                }
+                                                className="h-11 min-w-11 rounded-full border border-neutral-300 bg-white px-4 text-sm font-black transition hover:border-black"
+                                            >
+                                                {totalPages}
+                                            </button>
+                                        </>
+                                    )}
+
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            goToPage(currentPage + 1)
+                                        }
+                                        disabled={currentPage === totalPages}
+                                        className="inline-flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 py-3 text-sm font-black transition hover:border-black disabled:cursor-not-allowed disabled:opacity-40"
+                                    >
+                                        Suivant
+                                        <ChevronRight size={16} />
+                                    </button>
+                                </div>
+                            )}
                     </div>
                 </div>
             </section>
