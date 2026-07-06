@@ -38,6 +38,10 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
 export const COOKIE_SESSION_MARKER = "cookie-session";
 
+const REQUEST_SECURITY_HEADERS = {
+    "X-Requested-With": "XMLHttpRequest",
+};
+
 function buildAuthHeaders(token?: string | null) {
     if (!token || token === COOKIE_SESSION_MARKER) {
         return {};
@@ -58,6 +62,7 @@ async function fetchJson<T>(
         ...options,
         headers: {
             "Content-Type": "application/json",
+            ...REQUEST_SECURITY_HEADERS,
             ...(options.headers as Record<string, string> | undefined),
         },
     });
@@ -688,7 +693,10 @@ export async function uploadProductImage(token: string, file: File) {
     const response = await fetch(`${API_URL}/uploads/products`, {
         method: "POST",
         credentials: "include",
-        headers: buildAuthHeaders(token),
+        headers: {
+            ...REQUEST_SECURITY_HEADERS,
+            ...buildAuthHeaders(token),
+        },
         body: formData,
     });
 
@@ -718,7 +726,10 @@ export async function uploadCampaignMedia(token: string, file: File) {
     const response = await fetch(`${API_URL}/uploads/campaigns`, {
         method: "POST",
         credentials: "include",
-        headers: buildAuthHeaders(token),
+        headers: {
+            ...REQUEST_SECURITY_HEADERS,
+            ...buildAuthHeaders(token),
+        },
         body: formData,
     });
 
