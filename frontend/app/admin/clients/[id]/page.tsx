@@ -14,9 +14,8 @@ import {
     ShieldOff,
     UserRound,
 } from "lucide-react";
+import { getAdminCustomer, updateAdminCustomerStatus } from "@/lib/api";
 import type { AdminCustomer } from "@/types/customer";
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 const ORDERS_PER_PAGE = 5;
 
 function getAdminToken() {
@@ -28,24 +27,7 @@ function getAdminToken() {
 }
 
 async function fetchAdminCustomer(_token: string | null, customerId: string) {
-    const response = await fetch(
-        `${API_BASE_URL}/customers/admin/${customerId}`,
-        {
-            credentials: "include",
-            headers: {
-                "X-Requested-With": "XMLHttpRequest",
-            },
-        },
-    );
-
-    if (!response.ok) {
-        const errorPayload = await response.json().catch(() => null);
-        throw new Error(
-            errorPayload?.message ?? "Erreur lors du chargement du client.",
-        );
-    }
-
-    return response.json() as Promise<AdminCustomer>;
+    return getAdminCustomer(_token, customerId);
 }
 
 async function updateCustomerStatus(
@@ -53,27 +35,7 @@ async function updateCustomerStatus(
     customerId: string,
     isActive: boolean,
 ) {
-    const response = await fetch(
-        `${API_BASE_URL}/customers/admin/${customerId}/status`,
-        {
-            method: "PATCH",
-            credentials: "include",
-            headers: {
-                "Content-Type": "application/json",
-                "X-Requested-With": "XMLHttpRequest",
-            },
-            body: JSON.stringify({ isActive }),
-        },
-    );
-
-    if (!response.ok) {
-        const errorPayload = await response.json().catch(() => null);
-        throw new Error(
-            errorPayload?.message ?? "Erreur lors de la mise à jour du client.",
-        );
-    }
-
-    return response.json() as Promise<AdminCustomer>;
+    return updateAdminCustomerStatus(_token, customerId, isActive);
 }
 
 function formatPrice(value: number | string | null | undefined) {

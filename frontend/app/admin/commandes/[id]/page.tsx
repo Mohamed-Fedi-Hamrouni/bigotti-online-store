@@ -11,10 +11,8 @@ import {
     Phone,
     UserRound,
 } from "lucide-react";
-import { updateOrderStatus } from "@/lib/api";
+import { getAdminOrder, updateOrderStatus } from "@/lib/api";
 import type { AdminOrder, OrderStatus } from "@/types/order";
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
 const ORDER_STATUS_OPTIONS: Array<{
     value: OrderStatus;
@@ -44,23 +42,7 @@ function getAdminToken() {
 }
 
 async function fetchAdminOrder(_token: string | null, orderId: string) {
-    const response = await fetch(`${API_BASE_URL}/orders/admin/${orderId}`, {
-        credentials: "include",
-        headers: {
-            "X-Requested-With": "XMLHttpRequest",
-        },
-    });
-
-    if (!response.ok) {
-        const errorPayload = await response.json().catch(() => null);
-
-        throw new Error(
-            errorPayload?.message ??
-                "Erreur lors du chargement de la commande.",
-        );
-    }
-
-    return response.json() as Promise<AdminOrder>;
+    return getAdminOrder(_token, orderId);
 }
 
 function formatPrice(value: number | string | null | undefined) {

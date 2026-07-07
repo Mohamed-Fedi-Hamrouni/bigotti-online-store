@@ -25,6 +25,7 @@ import type {
 } from "@/types/product";
 
 import type {
+    AdminCustomer,
     ChangeCustomerPasswordPayload,
     ChangeCustomerPasswordResponse,
     Customer,
@@ -42,6 +43,11 @@ const ADMIN_SESSION_MARKER_KEY = "bigotti-admin-token";
 const CUSTOMER_SESSION_MARKER_KEY = "bigotti-customer-token";
 const LEGACY_ADMIN_TOKEN_KEYS = ["admin-token", "token"] as const;
 const LEGACY_CUSTOMER_TOKEN_KEYS = ["customer-token"] as const;
+
+type AuthRefreshScope = "admin" | "customer" | null;
+
+let adminRefreshPromise: Promise<boolean> | null = null;
+let customerRefreshPromise: Promise<boolean> | null = null;
 
 export function sanitizeLegacyAuthStorage() {
     if (typeof window === "undefined") {
@@ -113,17 +119,141 @@ function buildAuthHeaders(token?: string | null) {
     };
 }
 
-async function fetchJson<T>(
+function getRequestMethod(options: RequestInit) {
+    return String(options.method ?? "GET").toUpperCase();
+}
+
+function inferAuthRefreshScope(
+    path: string,
+    options: RequestInit,
+): AuthRefreshScope {
+    const method = getRequestMethod(options);
+
+    if (
+        path === "/auth/login" ||
+        path === "/auth/refresh" ||
+        path === "/customer-auth/login" ||
+        path === "/customer-auth/register" ||
+        path === "/customer-auth/refresh"
+    ) {
+        return null;
+    }
+
+    if (path.startsWith("/auth/")) {
+        return "admin";
+    }
+
+    if (path.startsWith("/customer-auth/")) {
+        return "customer";
+    }
+
+    if (
+        path.includes("/admin") ||
+        path.startsWith("/dashboard/manager") ||
+        path.startsWith("/uploads/")
+    ) {
+        return "admin";
+    }
+
+    if (
+        method !== "GET" &&
+        (path.startsWith("/products") ||
+            path.startsWith("/categories") ||
+            path.startsWith("/collections") ||
+            path.startsWith("/sale-campaigns"))
+    ) {
+        return "admin";
+    }
+
+    return null;
+}
+
+async function refreshAuthSession(scope: Exclude<AuthRefreshScope, null>) {
+    if (scope === "admin") {
+        if (!adminRefreshPromise) {
+            adminRefreshPromise = refreshAuthSessionOnce(
+                "/auth/refresh",
+            ).finally(() => {
+                adminRefreshPromise = null;
+            });
+        }
+
+        return adminRefreshPromise;
+    }
+
+    if (!customerRefreshPromise) {
+        customerRefreshPromise = refreshAuthSessionOnce(
+            "/customer-auth/refresh",
+        ).finally(() => {
+            customerRefreshPromise = null;
+        });
+    }
+
+    return customerRefreshPromise;
+}
+
+async function refreshAuthSessionOnce(path: string) {
+    const response = await fetch(`${API_URL}${path}`, {
+        method: "POST",
+        cache: "no-store",
+        credentials: "include",
+        headers: {
+            ...REQUEST_SECURITY_HEADERS,
+        },
+    });
+
+    return response.ok;
+}
+
+async function fetchWithAutoRefresh(
     path: string,
     options: RequestInit = {},
-): Promise<T> {
+): Promise<Response> {
     const response = await fetch(`${API_URL}${path}`, {
         cache: "no-store",
         credentials: "include",
         ...options,
         headers: {
-            "Content-Type": "application/json",
             ...REQUEST_SECURITY_HEADERS,
+            ...(options.headers as Record<string, string> | undefined),
+        },
+    });
+
+    if (response.status !== 401) {
+        return response;
+    }
+
+    const scope = inferAuthRefreshScope(path, options);
+
+    if (!scope) {
+        return response;
+    }
+
+    const didRefresh = await refreshAuthSession(scope);
+
+    if (!didRefresh) {
+        return response;
+    }
+
+    return fetch(`${API_URL}${path}`, {
+        cache: "no-store",
+        credentials: "include",
+        ...options,
+        headers: {
+            ...REQUEST_SECURITY_HEADERS,
+            ...(options.headers as Record<string, string> | undefined),
+        },
+    });
+}
+
+async function fetchJson<T>(
+    path: string,
+    options: RequestInit = {},
+): Promise<T> {
+    const response = await fetchWithAutoRefresh(path, {
+        ...options,
+        headers: {
+            "Content-Type": "application/json",
             ...(options.headers as Record<string, string> | undefined),
         },
     });
@@ -536,6 +666,12 @@ export async function updateOrderStatus(
     });
 }
 
+export async function getAdminOrder(token: string | null, orderId: string) {
+    return fetchJson<AdminOrder>(`/orders/admin/${orderId}`, {
+        headers: buildAuthHeaders(token),
+    });
+}
+
 export async function getAdminProducts(token: string) {
     const products = await fetchJson<Product[]>("/products/admin/all", {
         headers: buildAuthHeaders(token),
@@ -751,11 +887,9 @@ export async function uploadProductImage(token: string, file: File) {
     const formData = new FormData();
     formData.append("file", file);
 
-    const response = await fetch(`${API_URL}/uploads/products`, {
+    const response = await fetchWithAutoRefresh("/uploads/products", {
         method: "POST",
-        credentials: "include",
         headers: {
-            ...REQUEST_SECURITY_HEADERS,
             ...buildAuthHeaders(token),
         },
         body: formData,
@@ -784,11 +918,9 @@ export async function uploadCampaignMedia(token: string, file: File) {
     const formData = new FormData();
     formData.append("file", file);
 
-    const response = await fetch(`${API_URL}/uploads/campaigns`, {
+    const response = await fetchWithAutoRefresh("/uploads/campaigns", {
         method: "POST",
-        credentials: "include",
         headers: {
-            ...REQUEST_SECURITY_HEADERS,
             ...buildAuthHeaders(token),
         },
         body: formData,
@@ -875,6 +1007,33 @@ export async function changeCustomerPassword(
 export async function logoutCustomerSession() {
     return fetchJson<{ message: string }>("/customer-auth/logout", {
         method: "POST",
+    });
+}
+
+export async function getAdminCustomers(token?: string | null) {
+    return fetchJson<AdminCustomer[]>("/customers/admin", {
+        headers: buildAuthHeaders(token),
+    });
+}
+
+export async function getAdminCustomer(
+    token: string | null | undefined,
+    customerId: string,
+) {
+    return fetchJson<AdminCustomer>(`/customers/admin/${customerId}`, {
+        headers: buildAuthHeaders(token),
+    });
+}
+
+export async function updateAdminCustomerStatus(
+    token: string | null | undefined,
+    customerId: string,
+    isActive: boolean,
+) {
+    return fetchJson<AdminCustomer>(`/customers/admin/${customerId}/status`, {
+        method: "PATCH",
+        headers: buildAuthHeaders(token),
+        body: JSON.stringify({ isActive }),
     });
 }
 
