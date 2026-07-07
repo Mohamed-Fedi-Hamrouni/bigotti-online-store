@@ -45,6 +45,10 @@ function getAllowedRolesForPath(pathname: string): UserRole[] | null {
         return ["SUPER_ADMIN", "ADMIN", "MANAGER"];
     }
 
+    if (pathname.startsWith("/admin/securite")) {
+        return ["SUPER_ADMIN", "ADMIN", "MANAGER"];
+    }
+
     if (pathname.startsWith("/admin/dashboard")) {
         return ["SUPER_ADMIN", "MANAGER"];
     }
@@ -84,7 +88,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     const router = useRouter();
     const pathname = usePathname();
 
-    const [sessionState, setSessionState] = useState<SessionState>("checking");
+    const [sessionState, setSessionState] =
+        useState<SessionState>("checking");
     const [user, setUser] = useState<AuthUser | null>(null);
     const [message, setMessage] = useState("");
 

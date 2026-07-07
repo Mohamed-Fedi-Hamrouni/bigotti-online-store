@@ -34,6 +34,11 @@ import type {
     RegisterCustomerPayload,
     UpdateCustomerProfilePayload,
 } from "@/types/customer";
+import type {
+    AuthSession,
+    RevokeSessionResponse,
+    RevokeSessionsResponse,
+} from "@/types/session";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
@@ -1035,6 +1040,65 @@ export async function updateAdminCustomerStatus(
         headers: buildAuthHeaders(token),
         body: JSON.stringify({ isActive }),
     });
+}
+
+export async function getAdminSessions() {
+    return fetchJson<AuthSession[]>("/auth/sessions");
+}
+
+export async function revokeAdminSession(sessionId: string) {
+    return fetchJson<RevokeSessionResponse>(
+        `/auth/sessions/${encodeURIComponent(sessionId)}`,
+        {
+            method: "DELETE",
+        },
+    );
+}
+
+export async function revokeOtherAdminSessions() {
+    return fetchJson<RevokeSessionsResponse>(
+        "/auth/sessions/revoke-others",
+        {
+            method: "POST",
+        },
+    );
+}
+
+export async function revokeAllAdminSessions() {
+    return fetchJson<RevokeSessionsResponse>("/auth/sessions/revoke-all", {
+        method: "POST",
+    });
+}
+
+export async function getCustomerSessions() {
+    return fetchJson<AuthSession[]>("/customer-auth/sessions");
+}
+
+export async function revokeCustomerSession(sessionId: string) {
+    return fetchJson<RevokeSessionResponse>(
+        `/customer-auth/sessions/${encodeURIComponent(sessionId)}`,
+        {
+            method: "DELETE",
+        },
+    );
+}
+
+export async function revokeOtherCustomerSessions() {
+    return fetchJson<RevokeSessionsResponse>(
+        "/customer-auth/sessions/revoke-others",
+        {
+            method: "POST",
+        },
+    );
+}
+
+export async function revokeAllCustomerSessions() {
+    return fetchJson<RevokeSessionsResponse>(
+        "/customer-auth/sessions/revoke-all",
+        {
+            method: "POST",
+        },
+    );
 }
 
 export async function getCategories() {

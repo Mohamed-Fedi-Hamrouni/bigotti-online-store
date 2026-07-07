@@ -238,6 +238,19 @@ export default function AdminHomePage() {
                         </Link>
                     )}
 
+
+                    <Link
+                        href="/admin/securite"
+                        className="rounded-3xl bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
+                    >
+                        <h2 className="text-2xl font-bold">Sécurité</h2>
+
+                        <p className="mt-3 text-neutral-500">
+                            Voir les appareils connectés et révoquer les sessions
+                            administrateur.
+                        </p>
+                    </Link>
+
                     {canViewDashboard && (
                         <Link
                             href="/admin/dashboard"

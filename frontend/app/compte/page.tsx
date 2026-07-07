@@ -10,6 +10,7 @@ import {
     LogOut,
     PackageCheck,
     Save,
+    ShieldCheck,
     UserRound,
 } from "lucide-react";
 import { useCustomerAuth } from "@/components/customer-auth/CustomerAuthProvider";
@@ -544,7 +545,7 @@ export default function CustomerAccountPage() {
                                 </button>
                             </form>
 
-                            <div className="grid gap-5 md:grid-cols-2">
+                            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
                                 <Link
                                     href="/suivi-commande"
                                     className="rounded-[2rem] bg-white p-8 shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
@@ -574,6 +575,22 @@ export default function CustomerAccountPage() {
                                     <p className="mt-3 text-neutral-600">
                                         Retrouvez les articles que vous avez
                                         sauvegardés.
+                                    </p>
+                                </Link>
+
+                                <Link
+                                    href="/compte/securite"
+                                    className="rounded-[2rem] bg-white p-8 shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
+                                >
+                                    <ShieldCheck size={34} />
+
+                                    <h3 className="mt-5 text-2xl font-black">
+                                        Sécurité du compte
+                                    </h3>
+
+                                    <p className="mt-3 text-neutral-600">
+                                        Consultez les appareils connectés et
+                                        fermez toute session inconnue.
                                     </p>
                                 </Link>
                             </div>
