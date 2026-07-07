@@ -98,7 +98,10 @@ export class CustomerAuthService {
         });
 
     const { session, refreshToken } =
-      await this.authSessionService.createCustomerSession(customer.id, context);
+      await this.authSessionService.createCustomerSession(
+        customer.id,
+        context,
+      );
 
     return {
       accessToken: await this.signCustomerAccessToken(
@@ -148,7 +151,10 @@ export class CustomerAuthService {
     this.loginAttempts.reset('customer', email, clientIp);
 
     const { session, refreshToken } =
-      await this.authSessionService.createCustomerSession(customer.id, context);
+      await this.authSessionService.createCustomerSession(
+        customer.id,
+        context,
+      );
 
     return {
       accessToken: await this.signCustomerAccessToken(
@@ -187,6 +193,64 @@ export class CustomerAuthService {
 
     return {
       message: 'Déconnexion client effectuée.',
+    };
+  }
+
+
+  async listSessions(authorization?: string) {
+    const { customer, payload } =
+      await this.getAuthenticatedCustomerContext(authorization);
+
+    return this.authSessionService.listCustomerSessions(
+      customer.id,
+      payload.sessionId,
+    );
+  }
+
+  async revokeSession(sessionId: string, authorization?: string) {
+    const { customer, payload } =
+      await this.getAuthenticatedCustomerContext(authorization);
+
+    await this.authSessionService.revokeCustomerSessionById(
+      customer.id,
+      sessionId,
+    );
+
+    return {
+      message:
+        sessionId === payload.sessionId
+          ? 'Session client actuelle révoquée.'
+          : 'Session client révoquée.',
+      currentSessionRevoked: sessionId === payload.sessionId,
+    };
+  }
+
+  async revokeOtherSessions(authorization?: string) {
+    const { customer, payload } =
+      await this.getAuthenticatedCustomerContext(authorization);
+
+    const revokedSessions =
+      await this.authSessionService.revokeOtherCustomerSessions(
+        customer.id,
+        payload.sessionId,
+      );
+
+    return {
+      message: 'Les autres sessions client ont été révoquées.',
+      revokedSessions,
+    };
+  }
+
+  async revokeAllSessions(authorization?: string) {
+    const { customer } =
+      await this.getAuthenticatedCustomerContext(authorization);
+
+    const revokedSessions =
+      await this.authSessionService.revokeAllCustomerSessions(customer.id);
+
+    return {
+      message: 'Toutes les sessions client ont été révoquées.',
+      revokedSessions,
     };
   }
 
@@ -329,6 +393,13 @@ export class CustomerAuthService {
   }
 
   private async getAuthenticatedCustomer(authorization?: string) {
+    const { customer } =
+      await this.getAuthenticatedCustomerContext(authorization);
+
+    return customer;
+  }
+
+  private async getAuthenticatedCustomerContext(authorization?: string) {
     const payload = this.verifyAuthorizationHeader(authorization);
 
     if (!('sessionId' in payload) || !payload.sessionId) {
@@ -347,7 +418,11 @@ export class CustomerAuthService {
       );
     }
 
-    return customer;
+    return {
+      customer,
+      payload,
+      session,
+    };
   }
 
   private async signCustomerAccessToken(

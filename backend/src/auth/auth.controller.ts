@@ -1,7 +1,9 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  Param,
   Post,
   Req,
   Res,
@@ -115,5 +117,50 @@ export class AuthController {
   @Get('me')
   me(@CurrentUser() user: JwtPayload) {
     return this.authService.getProfile(user.sub);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('sessions')
+  sessions(@CurrentUser() user: JwtPayload) {
+    return this.authService.listSessions(user.sub, user.sessionId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('sessions/:sessionId')
+  async revokeSession(
+    @CurrentUser() user: JwtPayload,
+    @Param('sessionId') sessionId: string,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const result = await this.authService.revokeSession(
+      user.sub,
+      user.sessionId,
+      sessionId,
+    );
+
+    if (result.currentSessionRevoked) {
+      this.authCookieService.clearAdminAuthCookies(response);
+    }
+
+    return result;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('sessions/revoke-others')
+  revokeOtherSessions(@CurrentUser() user: JwtPayload) {
+    return this.authService.revokeOtherSessions(user.sub, user.sessionId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('sessions/revoke-all')
+  async revokeAllSessions(
+    @CurrentUser() user: JwtPayload,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const result = await this.authService.revokeAllSessions(user.sub);
+
+    this.authCookieService.clearAdminAuthCookies(response);
+
+    return result;
   }
 }

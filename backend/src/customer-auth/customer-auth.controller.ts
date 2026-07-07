@@ -1,8 +1,10 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
+  Param,
   Patch,
   Post,
   Req,
@@ -190,5 +192,59 @@ export class CustomerAuthController {
     return this.customerAuthService.getCustomerOrders(
       getCustomerAuthorization(this.authCookieService, request, authorization),
     );
+  }
+
+  @Get('sessions')
+  sessions(
+    @Req() request: RequestLike,
+    @Headers('authorization') authorization?: string,
+  ) {
+    return this.customerAuthService.listSessions(
+      getCustomerAuthorization(this.authCookieService, request, authorization),
+    );
+  }
+
+  @Delete('sessions/:sessionId')
+  async revokeSession(
+    @Req() request: RequestLike,
+    @Param('sessionId') sessionId: string,
+    @Headers('authorization') authorization: string | undefined,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const result = await this.customerAuthService.revokeSession(
+      sessionId,
+      getCustomerAuthorization(this.authCookieService, request, authorization),
+    );
+
+    if (result.currentSessionRevoked) {
+      this.authCookieService.clearCustomerAuthCookies(response);
+    }
+
+    return result;
+  }
+
+  @Post('sessions/revoke-others')
+  revokeOtherSessions(
+    @Req() request: RequestLike,
+    @Headers('authorization') authorization?: string,
+  ) {
+    return this.customerAuthService.revokeOtherSessions(
+      getCustomerAuthorization(this.authCookieService, request, authorization),
+    );
+  }
+
+  @Post('sessions/revoke-all')
+  async revokeAllSessions(
+    @Req() request: RequestLike,
+    @Headers('authorization') authorization: string | undefined,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const result = await this.customerAuthService.revokeAllSessions(
+      getCustomerAuthorization(this.authCookieService, request, authorization),
+    );
+
+    this.authCookieService.clearCustomerAuthCookies(response);
+
+    return result;
   }
 }

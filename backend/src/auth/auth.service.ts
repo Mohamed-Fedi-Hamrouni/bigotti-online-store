@@ -111,6 +111,52 @@ export class AuthService {
     return this.toSafeUser(user);
   }
 
+  async listSessions(userId: string, currentSessionId: string) {
+    return this.authSessionService.listAdminSessions(
+      userId,
+      currentSessionId,
+    );
+  }
+
+  async revokeSession(
+    userId: string,
+    currentSessionId: string,
+    sessionId: string,
+  ) {
+    await this.authSessionService.revokeAdminSessionById(userId, sessionId);
+
+    return {
+      message:
+        sessionId === currentSessionId
+          ? 'Session administrateur actuelle révoquée.'
+          : 'Session administrateur révoquée.',
+      currentSessionRevoked: sessionId === currentSessionId,
+    };
+  }
+
+  async revokeOtherSessions(userId: string, currentSessionId: string) {
+    const revokedSessions =
+      await this.authSessionService.revokeOtherAdminSessions(
+        userId,
+        currentSessionId,
+      );
+
+    return {
+      message: 'Les autres sessions administrateur ont été révoquées.',
+      revokedSessions,
+    };
+  }
+
+  async revokeAllSessions(userId: string) {
+    const revokedSessions =
+      await this.authSessionService.revokeAllAdminSessions(userId);
+
+    return {
+      message: 'Toutes les sessions administrateur ont été révoquées.',
+      revokedSessions,
+    };
+  }
+
   private async signAdminAccessToken(
     user: {
       id: string;
