@@ -8,6 +8,7 @@ import { CollectionsModule } from './collections/collections.module';
 import { CustomerAuthModule } from './customer-auth/customer-auth.module';
 import { CustomersModule } from './customers/customers.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { MailModule } from './mail/mail.module';
 import { OrdersModule } from './orders/orders.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProductsModule } from './products/products.module';
@@ -17,8 +18,12 @@ import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      cache: true,
+    }),
     PrismaModule,
+    MailModule,
     AuthModule,
     UsersModule,
     CategoriesModule,
