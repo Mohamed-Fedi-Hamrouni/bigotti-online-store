@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { MediaStorageService } from '../uploads/media-storage.service';
 import { CreateSaleCampaignDto } from './dto/create-sale-campaign.dto';
 import { UpdateSaleCampaignStatusDto } from './dto/update-sale-campaign-status.dto';
 import { UpdateSaleCampaignDto } from './dto/update-sale-campaign.dto';
@@ -17,7 +18,10 @@ type CampaignType =
 
 @Injectable()
 export class SaleCampaignsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mediaStorageService: MediaStorageService,
+  ) {}
 
   async create(createSaleCampaignDto: CreateSaleCampaignDto) {
     const slug = this.generateSlug(
@@ -332,10 +336,22 @@ export class SaleCampaignsService {
       data.position = updateSaleCampaignDto.position;
     }
 
-    return this.prisma.saleCampaign.update({
+    const updatedCampaign = await this.prisma.saleCampaign.update({
       where: { id },
       data: data as any,
     });
+
+    if (
+      updateSaleCampaignDto.mediaPath !== undefined &&
+      currentCampaign.mediaPath &&
+      currentCampaign.mediaPath !== updatedCampaign.mediaPath
+    ) {
+      await this.mediaStorageService.deleteMany([
+        currentCampaign.mediaPath,
+      ]);
+    }
+
+    return updatedCampaign;
   }
 
   async updateStatus(

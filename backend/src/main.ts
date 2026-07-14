@@ -172,17 +172,24 @@ async function bootstrap() {
 
   app.use(createCookieCsrfMiddleware(allowedOrigins));
 
-  app.use(
-    '/uploads',
-    express.static(join(process.cwd(), 'uploads'), {
-      dotfiles: 'deny',
-      index: false,
-      maxAge: isProduction ? '1d' : 0,
-      setHeaders(response) {
-        response.setHeader('X-Content-Type-Options', 'nosniff');
-      },
-    }),
+  const storageDriver = configService.get<'local' | 'azure'>(
+    'STORAGE_DRIVER',
+    'local',
   );
+
+  if (storageDriver === 'local') {
+    app.use(
+      '/uploads',
+      express.static(join(process.cwd(), 'uploads'), {
+        dotfiles: 'deny',
+        index: false,
+        maxAge: isProduction ? '1d' : 0,
+        setHeaders(response) {
+          response.setHeader('X-Content-Type-Options', 'nosniff');
+        },
+      }),
+    );
+  }
 
   app.useGlobalPipes(
     new ValidationPipe({

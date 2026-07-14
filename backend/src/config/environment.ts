@@ -2,6 +2,7 @@ type Environment = Record<string, unknown>;
 
 const NODE_ENV_VALUES = new Set(["development", "test", "production"]);
 const COOKIE_SAME_SITE_VALUES = new Set(["lax", "strict", "none"]);
+const STORAGE_DRIVER_VALUES = new Set(["local", "azure"]);
 
 const PLACEHOLDER_MARKERS = [
   "replace-with",
@@ -238,6 +239,36 @@ function validateCookieDomain(value: string) {
   return value.toLowerCase();
 }
 
+
+function validateAzureStorageAccountName(value: string) {
+  if (!value) {
+    return "";
+  }
+
+  if (!/^[a-z0-9]{3,24}$/.test(value)) {
+    throw new Error(
+      "AZURE_STORAGE_ACCOUNT_NAME doit contenir 3 à 24 lettres minuscules ou chiffres.",
+    );
+  }
+
+  return value;
+}
+
+function validateAzureContainerName(value: string) {
+  if (
+    value.length < 3 ||
+    value.length > 63 ||
+    !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(value) ||
+    value.includes("--")
+  ) {
+    throw new Error(
+      "AZURE_STORAGE_CONTAINER_NAME doit respecter les règles de nommage Azure Blob.",
+    );
+  }
+
+  return value;
+}
+
 export function validateEnvironment(
   environment: Environment,
 ): Environment {
@@ -252,6 +283,78 @@ export function validateEnvironment(
   }
 
   const isProduction = nodeEnv === "production";
+
+  const storageDriver = readString(environment, "STORAGE_DRIVER", {
+    defaultValue: isProduction ? "azure" : "local",
+  }).toLowerCase();
+
+  if (!STORAGE_DRIVER_VALUES.has(storageDriver)) {
+    throw new Error('STORAGE_DRIVER doit valoir "local" ou "azure".');
+  }
+
+  if (isProduction && storageDriver !== "azure") {
+    throw new Error(
+      'STORAGE_DRIVER doit obligatoirement valoir "azure" en production.',
+    );
+  }
+
+  const publicApiUrl = validateHttpUrl(
+    readString(environment, "PUBLIC_API_URL", {
+      defaultValue: "http://localhost:3000",
+    }),
+    "PUBLIC_API_URL",
+    {
+      requireHttps: isProduction,
+      originOnly: false,
+    },
+  );
+
+  const azureStorageConnectionString = readString(
+    environment,
+    "AZURE_STORAGE_CONNECTION_STRING",
+  );
+
+  if (isProduction && azureStorageConnectionString) {
+    throw new Error(
+      "AZURE_STORAGE_CONNECTION_STRING ne doit pas être utilisée en production. Activez l’identité managée Azure.",
+    );
+  }
+
+  const azureStorageAccountName = validateAzureStorageAccountName(
+    readString(environment, "AZURE_STORAGE_ACCOUNT_NAME"),
+  );
+
+  const azureStorageContainerName = validateAzureContainerName(
+    readString(environment, "AZURE_STORAGE_CONTAINER_NAME", {
+      defaultValue: "media",
+    }),
+  );
+
+  if (
+    storageDriver === "azure" &&
+    !azureStorageConnectionString &&
+    !azureStorageAccountName
+  ) {
+    throw new Error(
+      "Le stockage Azure exige AZURE_STORAGE_ACCOUNT_NAME ou une connexion Azurite en développement.",
+    );
+  }
+
+  const azureStoragePublicBaseUrl = readString(
+    environment,
+    "AZURE_STORAGE_PUBLIC_BASE_URL",
+  );
+
+  if (azureStoragePublicBaseUrl) {
+    validateHttpUrl(
+      azureStoragePublicBaseUrl,
+      "AZURE_STORAGE_PUBLIC_BASE_URL",
+      {
+        requireHttps: isProduction,
+        originOnly: false,
+      },
+    );
+  }
 
   const databaseUrl = validateDatabaseUrl(
     readString(environment, "DATABASE_URL", { required: true }),
@@ -370,6 +473,25 @@ export function validateEnvironment(
     FRONTEND_URL: frontendOrigins.join(","),
     FRONTEND_ORIGINS: frontendOrigins,
     PUBLIC_FRONTEND_URL: publicFrontendUrl.toString().replace(/\/$/, ""),
+    PUBLIC_API_URL: publicApiUrl.toString().replace(/\/$/, ""),
+    STORAGE_DRIVER: storageDriver,
+    AZURE_STORAGE_CONNECTION_STRING: azureStorageConnectionString,
+    AZURE_STORAGE_ACCOUNT_NAME: azureStorageAccountName,
+    AZURE_STORAGE_CONTAINER_NAME: azureStorageContainerName,
+    AZURE_STORAGE_PUBLIC_BASE_URL: azureStoragePublicBaseUrl.replace(
+      /\/$/,
+      "",
+    ),
+    AZURE_STORAGE_AUTO_CREATE_CONTAINER: readBoolean(
+      environment,
+      "AZURE_STORAGE_AUTO_CREATE_CONTAINER",
+      !isProduction,
+    ),
+    AZURE_STORAGE_CONTAINER_PUBLIC: readBoolean(
+      environment,
+      "AZURE_STORAGE_CONTAINER_PUBLIC",
+      !isProduction,
+    ),
     APP_NAME: readString(environment, "APP_NAME", {
       defaultValue: "Bigotti Collection",
     }),

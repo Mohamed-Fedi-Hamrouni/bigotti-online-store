@@ -6,13 +6,17 @@ import {
 } from '@nestjs/common';
 import type { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { MediaStorageService } from '../uploads/media-storage.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductStatusDto } from './dto/update-product-status.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 
 @Injectable()
 export class ProductsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mediaStorageService: MediaStorageService,
+  ) {}
 
   async create(createProductDto: CreateProductDto) {
     const reference = createProductDto.reference.trim().toUpperCase();
@@ -151,6 +155,10 @@ export class ProductsService {
     if (!currentProduct) {
       throw new NotFoundException('Produit introuvable.');
     }
+
+    const previousImageStoragePaths = currentProduct.images.map(
+      (image) => image.storagePath,
+    );
 
     const data: Record<string, unknown> = {};
 
@@ -321,6 +329,23 @@ export class ProductsService {
       data: data as any,
       include: this.defaultInclude(),
     });
+
+    if (updateProductDto.images !== undefined) {
+      const retainedStoragePaths = new Set(
+        updateProductDto.images
+          .map((image) => image.storagePath?.trim())
+          .filter((storagePath): storagePath is string =>
+            Boolean(storagePath),
+          ),
+      );
+
+      await this.mediaStorageService.deleteMany(
+        previousImageStoragePaths.filter(
+          (storagePath) =>
+            storagePath && !retainedStoragePaths.has(storagePath),
+        ),
+      );
+    }
 
     return this.formatProduct(product);
   }
