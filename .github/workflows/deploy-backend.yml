@@ -63,7 +63,7 @@ jobs:
             --exclude="generated/" \
             --exclude=".env" \
             --exclude=".env.*" \
-            --exclude="uploads/" \
+            --exclude="/uploads/" \
             --exclude="coverage/" \
             --exclude="*.log" \
             backend/ "$PACKAGE_DIR/"
@@ -72,6 +72,8 @@ jobs:
           test -f "$PACKAGE_DIR/package-lock.json"
           test -f "$PACKAGE_DIR/src/main.ts"
           test -f "$PACKAGE_DIR/prisma/schema.prisma"
+          test -f "$PACKAGE_DIR/src/uploads/uploads.module.ts"
+          test -f "$PACKAGE_DIR/src/uploads/media-storage.service.ts"
 
       - name: Deploy backend to Azure App Service
         uses: azure/webapps-deploy@v3
