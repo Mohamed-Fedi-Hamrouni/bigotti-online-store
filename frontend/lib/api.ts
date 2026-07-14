@@ -1,4 +1,8 @@
-import type { AuthUser, LoginResponse } from "@/types/auth";
+import type {
+  AuthUser,
+  GoogleAdminLoginPayload,
+  LoginResponse,
+} from "@/types/auth";
 import type { ManagerDashboard } from "@/types/dashboard";
 import type {
   AdminOrder,
@@ -138,6 +142,7 @@ function inferAuthRefreshScope(
 
   if (
     path === "/auth/login" ||
+    path === "/auth/google/login" ||
     path === "/auth/refresh" ||
     path === "/auth/forgot-password" ||
     path === "/auth/reset-password" ||
@@ -637,6 +642,15 @@ export async function createOrder(
 
 export async function login(payload: { email: string; password: string }) {
   return fetchJson<LoginResponse>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function loginAdminWithGoogle(
+  payload: GoogleAdminLoginPayload,
+) {
+  return fetchJson<LoginResponse>("/auth/google/login", {
     method: "POST",
     body: JSON.stringify(payload),
   });

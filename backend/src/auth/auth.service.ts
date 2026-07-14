@@ -1,8 +1,14 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
+import { GoogleAdminCredentialDto } from './dto/google-admin-credential.dto';
 import { LoginDto } from './dto/login.dto';
+import { AdminGoogleIdentityService } from './services/admin-google-identity.service';
 import {
   AuthRequestContext,
   AuthSessionService,
@@ -19,6 +25,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly loginAttempts: LoginAttemptsService,
     private readonly authSessionService: AuthSessionService,
+    private readonly adminGoogleIdentityService: AdminGoogleIdentityService,
   ) {}
 
   async login(loginDto: LoginDto, context: AuthRequestContext = {}) {
@@ -55,16 +62,101 @@ export class AuthService {
 
     this.loginAttempts.reset('admin', email, clientIp);
 
-    const { session, refreshToken } =
-      await this.authSessionService.createAdminSession(user.id, context);
+    return this.createAdminSessionResult(user, context);
+  }
 
-    const accessToken = await this.signAdminAccessToken(user, session.id);
+  async loginWithGoogle(
+    dto: GoogleAdminCredentialDto,
+    context: AuthRequestContext = {},
+  ) {
+    const googleIdentity =
+      await this.adminGoogleIdentityService.verifyCredential(dto.credential);
 
-    return {
-      accessToken,
-      refreshToken,
-      user: this.toSafeUser(user),
-    };
+    const existingIdentity = await this.prisma.adminIdentity.findFirst({
+      where: {
+        provider: 'GOOGLE',
+        providerSubject: googleIdentity.subject,
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    if (existingIdentity) {
+      this.assertAuthorizedAdmin(existingIdentity.user);
+
+      if (existingIdentity.user.email.toLowerCase() !== googleIdentity.email) {
+        throw new UnauthorizedException(
+          'Ce compte Google ne correspond plus au compte administrateur lié.',
+        );
+      }
+
+      await this.prisma.adminIdentity.update({
+        where: {
+          id: existingIdentity.id,
+        },
+        data: {
+          providerEmail: googleIdentity.email,
+          emailVerified: true,
+          profilePicture: googleIdentity.profilePicture,
+        },
+      });
+
+      return this.createAdminSessionResult(existingIdentity.user, context);
+    }
+
+    if (!googleIdentity.authoritativeEmail) {
+      throw new UnauthorizedException(
+        'Pour une première liaison administrateur, utilisez une adresse Gmail ou Google Workspace vérifiée.',
+      );
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: {
+        email: googleIdentity.email,
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException(
+        'Ce compte Google n’est pas autorisé à accéder à l’administration.',
+      );
+    }
+
+    this.assertAuthorizedAdmin(user);
+
+    const identityAlreadyLinkedToUser =
+      await this.prisma.adminIdentity.findFirst({
+        where: {
+          userId: user.id,
+          provider: 'GOOGLE',
+        },
+      });
+
+    if (identityAlreadyLinkedToUser) {
+      throw new UnauthorizedException(
+        'Ce compte administrateur est déjà lié à un autre compte Google.',
+      );
+    }
+
+    try {
+      await this.prisma.adminIdentity.create({
+        data: {
+          userId: user.id,
+          provider: 'GOOGLE',
+          providerSubject: googleIdentity.subject,
+          providerEmail: googleIdentity.email,
+          emailVerified: true,
+          profilePicture: googleIdentity.profilePicture,
+        },
+      });
+    } catch {
+      throw new ConflictException(
+        'La liaison Google administrateur n’a pas pu être créée. Veuillez réessayer.',
+      );
+    }
+
+    return this.createAdminSessionResult(user, context);
   }
 
   async refresh(refreshToken: string | undefined, context: AuthRequestContext) {
@@ -154,6 +246,43 @@ export class AuthService {
     return {
       message: 'Toutes les sessions administrateur ont été révoquées.',
       revokedSessions,
+    };
+  }
+
+  private assertAuthorizedAdmin(user: {
+    isActive: boolean;
+    role: string;
+  }) {
+    if (!user.isActive) {
+      throw new UnauthorizedException(
+        'Compte administrateur désactivé ou non autorisé.',
+      );
+    }
+
+    if (!ADMIN_ROLES.includes(user.role as AdminRole)) {
+      throw new UnauthorizedException('Compte administrateur non autorisé.');
+    }
+  }
+
+  private async createAdminSessionResult(
+    user: {
+      id: string;
+      fullName: string;
+      email: string;
+      role: string;
+      isActive: boolean;
+      createdAt: Date;
+      updatedAt: Date;
+    },
+    context: AuthRequestContext,
+  ) {
+    const { session, refreshToken } =
+      await this.authSessionService.createAdminSession(user.id, context);
+
+    return {
+      accessToken: await this.signAdminAccessToken(user, session.id),
+      refreshToken,
+      user: this.toSafeUser(user),
     };
   }
 

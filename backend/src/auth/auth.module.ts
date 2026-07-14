@@ -6,6 +6,7 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
+import { AdminGoogleIdentityService } from './services/admin-google-identity.service';
 import { AuthCookieService } from './services/auth-cookie.service';
 import { AuthSessionService } from './services/auth-session.service';
 import { LoginAttemptsService } from './services/login-attempts.service';
@@ -32,6 +33,7 @@ import { LoginAttemptsService } from './services/login-attempts.service';
     LoginAttemptsService,
     AuthCookieService,
     AuthSessionService,
+    AdminGoogleIdentityService,
   ],
   exports: [
     AuthService,

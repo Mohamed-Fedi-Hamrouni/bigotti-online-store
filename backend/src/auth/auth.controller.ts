@@ -12,6 +12,7 @@ import {
 import type { Response } from 'express';
 import { AuthService } from './auth.service';
 import { CurrentUser } from './decorators/current-user.decorator';
+import { GoogleAdminCredentialDto } from './dto/google-admin-credential.dto';
 import { LoginDto } from './dto/login.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { AuthCookieService } from './services/auth-cookie.service';
@@ -67,11 +68,25 @@ export class AuthController {
       getRequestContext(request),
     );
 
-    this.authCookieService.setAdminAuthCookies(
-      response,
-      result.accessToken,
-      result.refreshToken,
+    this.setAdminCookies(response, result);
+
+    return {
+      user: result.user,
+    };
+  }
+
+  @Post('google/login')
+  async googleLogin(
+    @Body() dto: GoogleAdminCredentialDto,
+    @Req() request: RequestLike,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const result = await this.authService.loginWithGoogle(
+      dto,
+      getRequestContext(request),
     );
+
+    this.setAdminCookies(response, result);
 
     return {
       user: result.user,
@@ -88,11 +103,7 @@ export class AuthController {
       getRequestContext(request),
     );
 
-    this.authCookieService.setAdminAuthCookies(
-      response,
-      result.accessToken,
-      result.refreshToken,
-    );
+    this.setAdminCookies(response, result);
 
     return {
       user: result.user,
@@ -162,5 +173,19 @@ export class AuthController {
     this.authCookieService.clearAdminAuthCookies(response);
 
     return result;
+  }
+
+  private setAdminCookies(
+    response: Response,
+    result: {
+      accessToken: string;
+      refreshToken: string;
+    },
+  ) {
+    this.authCookieService.setAdminAuthCookies(
+      response,
+      result.accessToken,
+      result.refreshToken,
+    );
   }
 }
