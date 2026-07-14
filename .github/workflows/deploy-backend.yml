@@ -1,0 +1,113 @@
+name: Deploy backend to Azure
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/**"
+      - ".github/workflows/deploy-backend.yml"
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bigotti-backend-production
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "22.x"
+  AZURE_WEBAPP_NAME: "api-bigotti-41d21b"
+  BACKEND_URL: "https://api-bigotti-41d21b.azurewebsites.net"
+
+jobs:
+  build-and-deploy:
+    name: Build and deploy backend
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Validate backend build
+        working-directory: backend
+        run: npm run build
+
+      - name: Prepare deployment package
+        shell: bash
+        run: |
+          PACKAGE_DIR="${RUNNER_TEMP}/backend-package"
+
+          rm -rf "$PACKAGE_DIR"
+          mkdir -p "$PACKAGE_DIR"
+
+          rsync -a \
+            --exclude="node_modules/" \
+            --exclude="dist/" \
+            --exclude="generated/" \
+            --exclude=".env" \
+            --exclude=".env.*" \
+            --exclude="uploads/" \
+            --exclude="coverage/" \
+            --exclude="*.log" \
+            backend/ "$PACKAGE_DIR/"
+
+          test -f "$PACKAGE_DIR/package.json"
+          test -f "$PACKAGE_DIR/package-lock.json"
+          test -f "$PACKAGE_DIR/src/main.ts"
+          test -f "$PACKAGE_DIR/prisma/schema.prisma"
+
+      - name: Deploy backend to Azure App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: ${{ runner.temp }}/backend-package
+
+      - name: Verify deployed API
+        shell: bash
+        run: |
+          for attempt in $(seq 1 40); do
+            echo "Vérification ${attempt}/40..."
+
+            ROOT_RESPONSE="$(
+              curl \
+                --silent \
+                --show-error \
+                --fail \
+                --max-time 20 \
+                "${BACKEND_URL}/" 2>/dev/null || true
+            )"
+
+            if [ "$ROOT_RESPONSE" = "Hello World!" ]; then
+              curl \
+                --silent \
+                --show-error \
+                --fail \
+                --max-time 30 \
+                "${BACKEND_URL}/products" \
+                >/dev/null
+
+              echo "Backend Azure opérationnel."
+              exit 0
+            fi
+
+            sleep 10
+          done
+
+          echo "Le backend Azure n'est pas devenu opérationnel."
+          exit 1
