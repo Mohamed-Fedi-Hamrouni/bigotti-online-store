@@ -17,3 +17,20 @@ export type LoginResponse = {
 export type GoogleAdminLoginPayload = {
   credential: string;
 };
+
+export type ChangeAdminPasswordPayload = {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+};
+
+export type MessageResponse = {
+  message: string;
+};
+
+export type CreateInternalUserPayload = {
+  fullName: string;
+  email: string;
+  password: string;
+  role: UserRole;
+};

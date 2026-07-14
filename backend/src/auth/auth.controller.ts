@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Req,
   Res,
@@ -13,6 +14,7 @@ import type { Response } from 'express';
 import { AuthService } from './auth.service';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { GoogleAdminCredentialDto } from './dto/google-admin-credential.dto';
+import { ChangeAdminPasswordDto } from './dto/change-admin-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { AuthCookieService } from './services/auth-cookie.service';
@@ -121,6 +123,18 @@ export class AuthController {
 
     this.authCookieService.clearAdminAuthCookies(response);
 
+    return result;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('password')
+  async changePassword(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: ChangeAdminPasswordDto,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const result = await this.authService.changePassword(user.sub, dto);
+    this.authCookieService.clearAdminAuthCookies(response);
     return result;
   }
 

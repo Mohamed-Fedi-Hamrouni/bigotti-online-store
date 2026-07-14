@@ -1,7 +1,11 @@
 import type {
   AuthUser,
+  ChangeAdminPasswordPayload,
+  CreateInternalUserPayload,
   GoogleAdminLoginPayload,
   LoginResponse,
+  MessageResponse,
+  UserRole,
 } from "@/types/auth";
 import type { ManagerDashboard } from "@/types/dashboard";
 import type {
@@ -160,6 +164,10 @@ function inferAuthRefreshScope(
   }
 
   if (path.startsWith("/auth/")) {
+    return "admin";
+  }
+
+  if (path.startsWith("/users")) {
     return "admin";
   }
 
@@ -665,6 +673,38 @@ export async function getAdminMe() {
 export async function logoutAdmin() {
   return fetchJson<{ message: string }>("/auth/logout", {
     method: "POST",
+  });
+}
+
+export async function changeAdminPassword(payload: ChangeAdminPasswordPayload) {
+  return fetchJson<MessageResponse>("/auth/password", {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getInternalUsers() {
+  return fetchJson<AuthUser[]>("/users");
+}
+
+export async function createInternalUser(payload: CreateInternalUserPayload) {
+  return fetchJson<AuthUser>("/users", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateInternalUserRole(id: string, role: UserRole) {
+  return fetchJson<AuthUser>(`/users/${id}/role`, {
+    method: "PATCH",
+    body: JSON.stringify({ role }),
+  });
+}
+
+export async function updateInternalUserStatus(id: string, isActive: boolean) {
+  return fetchJson<AuthUser>(`/users/${id}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ isActive }),
   });
 }
 

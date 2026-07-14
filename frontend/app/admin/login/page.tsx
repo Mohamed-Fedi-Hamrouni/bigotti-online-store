@@ -52,10 +52,19 @@ export default function AdminLoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
 
   useEffect(() => {
+    const loginMessage = window.sessionStorage.getItem(
+      'bigotti-admin-login-message',
+    );
+    if (loginMessage) {
+      setNotice(loginMessage);
+      window.sessionStorage.removeItem('bigotti-admin-login-message');
+    }
+
     getAdminMe()
       .then((user) => {
         assertAuthorizedAdmin(user);
@@ -160,6 +169,15 @@ export default function AdminLoginPage() {
             className="mt-6 rounded-2xl bg-red-50 p-4 text-sm font-semibold text-red-700"
           >
             {error}
+          </div>
+        )}
+
+        {notice && (
+          <div
+            role="status"
+            className="mt-6 rounded-2xl bg-emerald-50 p-4 text-sm font-semibold text-emerald-800"
+          >
+            {notice}
           </div>
         )}
 
