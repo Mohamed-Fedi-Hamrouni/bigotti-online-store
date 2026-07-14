@@ -11,6 +11,8 @@ type CustomerAccountLayoutProps = {
 const PUBLIC_CUSTOMER_AUTH_PATHS = [
     "/compte/login",
     "/compte/register",
+    "/compte/mot-de-passe-oublie",
+    "/compte/reinitialiser-mot-de-passe",
 ] as const;
 
 function isPublicCustomerAuthPath(pathname: string) {

@@ -18,6 +18,16 @@ const ROLE_LABELS: Record<UserRole, string> = {
     MANAGER: "Manager",
 };
 
+const PUBLIC_ADMIN_AUTH_PATHS = [
+    "/admin/login",
+    "/admin/mot-de-passe-oublie",
+    "/admin/reinitialiser-mot-de-passe",
+] as const;
+
+function isPublicAdminAuthPath(pathname: string) {
+    return PUBLIC_ADMIN_AUTH_PATHS.some((path) => pathname === path);
+}
+
 function clearAdminSession() {
     window.localStorage.removeItem("bigotti-admin-token");
     window.localStorage.removeItem("bigotti-admin-user");
@@ -37,7 +47,7 @@ function getFallbackPathForRole(role: UserRole) {
 }
 
 function getAllowedRolesForPath(pathname: string): UserRole[] | null {
-    if (pathname === "/admin/login") {
+    if (isPublicAdminAuthPath(pathname)) {
         return null;
     }
 
@@ -93,13 +103,15 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     const [user, setUser] = useState<AuthUser | null>(null);
     const [message, setMessage] = useState("");
 
+    const publicPath = isPublicAdminAuthPath(pathname);
+
     const allowedRoles = useMemo(
         () => getAllowedRolesForPath(pathname),
         [pathname],
     );
 
     useEffect(() => {
-        if (pathname === "/admin/login") {
+        if (publicPath) {
             setSessionState("valid");
             return;
         }
@@ -142,9 +154,9 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                     router.replace("/admin/login");
                 }, 800);
             });
-    }, [pathname, router, allowedRoles]);
+    }, [pathname, router, allowedRoles, publicPath]);
 
-    if (pathname === "/admin/login") {
+    if (publicPath) {
         return children;
     }
 

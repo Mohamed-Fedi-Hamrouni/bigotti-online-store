@@ -137,9 +137,13 @@ function inferAuthRefreshScope(
     if (
         path === "/auth/login" ||
         path === "/auth/refresh" ||
+        path === "/auth/forgot-password" ||
+        path === "/auth/reset-password" ||
         path === "/customer-auth/login" ||
         path === "/customer-auth/register" ||
-        path === "/customer-auth/refresh"
+        path === "/customer-auth/refresh" ||
+        path === "/customer-auth/forgot-password" ||
+        path === "/customer-auth/reset-password"
     ) {
         return null;
     }
@@ -1105,4 +1109,53 @@ export async function getCategories() {
     const categories = await fetchJson<Category[]>("/categories");
 
     return categories.map((category) => normalizeCategory(category));
+}
+
+
+export type PasswordResetRequestResponse = {
+    message: string;
+    debugResetUrl?: string;
+};
+
+export type ResetPasswordPayload = {
+    token: string;
+    newPassword: string;
+    confirmPassword: string;
+};
+
+export async function requestAdminPasswordReset(email: string) {
+    return fetchJson<PasswordResetRequestResponse>(
+        "/auth/forgot-password",
+        {
+            method: "POST",
+            body: JSON.stringify({ email }),
+        },
+    );
+}
+
+export async function resetAdminPassword(payload: ResetPasswordPayload) {
+    return fetchJson<{ message: string }>("/auth/reset-password", {
+        method: "POST",
+        body: JSON.stringify(payload),
+    });
+}
+
+export async function requestCustomerPasswordReset(email: string) {
+    return fetchJson<PasswordResetRequestResponse>(
+        "/customer-auth/forgot-password",
+        {
+            method: "POST",
+            body: JSON.stringify({ email }),
+        },
+    );
+}
+
+export async function resetCustomerPassword(payload: ResetPasswordPayload) {
+    return fetchJson<{ message: string }>(
+        "/customer-auth/reset-password",
+        {
+            method: "POST",
+            body: JSON.stringify(payload),
+        },
+    );
 }

@@ -10,6 +10,7 @@ import { CustomersModule } from './customers/customers.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { MailModule } from './mail/mail.module';
 import { OrdersModule } from './orders/orders.module';
+import { PasswordResetModule } from './password-reset/password-reset.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProductsModule } from './products/products.module';
 import { SaleCampaignsModule } from './sale-campaigns/sale-campaigns.module';
@@ -24,6 +25,7 @@ import { UsersModule } from './users/users.module';
     }),
     PrismaModule,
     MailModule,
+    PasswordResetModule,
     AuthModule,
     UsersModule,
     CategoriesModule,
