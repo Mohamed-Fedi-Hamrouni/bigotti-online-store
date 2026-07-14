@@ -8,10 +8,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { JwtPayload } from '../auth/types/jwt-payload.type';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
+import { UpdateUserRoleDto } from './dto/update-user-role.dto';
 import { UsersService } from './users.service';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -37,9 +40,19 @@ export class UsersController {
 
   @Patch(':id/status')
   updateStatus(
+    @CurrentUser() currentUser: JwtPayload,
     @Param('id') id: string,
     @Body() updateUserStatusDto: UpdateUserStatusDto,
   ) {
-    return this.usersService.updateStatus(id, updateUserStatusDto);
+    return this.usersService.updateStatus(id, updateUserStatusDto, currentUser);
+  }
+
+  @Patch(':id/role')
+  updateRole(
+    @CurrentUser() currentUser: JwtPayload,
+    @Param('id') id: string,
+    @Body() updateUserRoleDto: UpdateUserRoleDto,
+  ) {
+    return this.usersService.updateRole(id, updateUserRoleDto, currentUser);
   }
 }

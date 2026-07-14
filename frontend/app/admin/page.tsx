@@ -85,6 +85,8 @@ export default function AdminHomePage() {
     const canManageCatalog =
         user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
 
+    const canManageUsers = user?.role === "SUPER_ADMIN";
+
     if (isCheckingSession) {
         return (
             <main className="flex min-h-screen items-center justify-center bg-neutral-50 px-6 text-neutral-950">
@@ -234,6 +236,19 @@ export default function AdminHomePage() {
 
                             <p className="mt-3 text-neutral-500">
                                 Créer et gérer les campagnes de solde.
+                            </p>
+                        </Link>
+                    )}
+
+                    {canManageUsers && (
+                        <Link
+                            href="/admin/utilisateurs"
+                            className="rounded-3xl bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
+                        >
+                            <h2 className="text-2xl font-bold">Utilisateurs</h2>
+                            <p className="mt-3 text-neutral-500">
+                                Créer les comptes internes et gérer leurs rôles
+                                et leur accès.
                             </p>
                         </Link>
                     )}

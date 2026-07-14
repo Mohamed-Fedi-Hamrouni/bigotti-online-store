@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   UnauthorizedException,
@@ -7,6 +8,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { GoogleAdminCredentialDto } from './dto/google-admin-credential.dto';
+import { ChangeAdminPasswordDto } from './dto/change-admin-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { AdminGoogleIdentityService } from './services/admin-google-identity.service';
 import {
@@ -201,6 +203,44 @@ export class AuthService {
     }
 
     return this.toSafeUser(user);
+  }
+
+  async changePassword(userId: string, dto: ChangeAdminPasswordDto) {
+    if (dto.newPassword !== dto.confirmPassword) {
+      throw new BadRequestException(
+        'La confirmation du mot de passe ne correspond pas.',
+      );
+    }
+    if (dto.newPassword === dto.currentPassword) {
+      throw new BadRequestException(
+        'Le nouveau mot de passe doit être différent du mot de passe actuel.',
+      );
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !user.isActive || !ADMIN_ROLES.includes(user.role as AdminRole)) {
+      throw new UnauthorizedException('Compte administrateur non autorisé.');
+    }
+    if (!(await bcrypt.compare(dto.currentPassword, user.passwordHash))) {
+      throw new UnauthorizedException('Le mot de passe actuel est incorrect.');
+    }
+
+    const passwordHash = await bcrypt.hash(dto.newPassword, 10);
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: userId },
+        data: { passwordHash },
+      }),
+      this.prisma.adminSession.updateMany({
+        where: { userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      }),
+    ]);
+
+    return {
+      message:
+        'Mot de passe modifié. Toutes vos sessions ont été révoquées, veuillez vous reconnecter.',
+    };
   }
 
   async listSessions(userId: string, currentSessionId: string) {

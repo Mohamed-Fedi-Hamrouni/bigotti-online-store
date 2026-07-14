@@ -59,6 +59,10 @@ function getAllowedRolesForPath(pathname: string): UserRole[] | null {
         return ["SUPER_ADMIN", "ADMIN", "MANAGER"];
     }
 
+    if (pathname.startsWith("/admin/utilisateurs")) {
+        return ["SUPER_ADMIN"];
+    }
+
     if (pathname.startsWith("/admin/dashboard")) {
         return ["SUPER_ADMIN", "MANAGER"];
     }
