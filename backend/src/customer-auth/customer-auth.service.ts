@@ -3,23 +3,26 @@ import {
   ConflictException,
   Injectable,
   UnauthorizedException,
-} from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
-import { compare, hash } from 'bcryptjs';
-import { PrismaService } from '../prisma/prisma.service';
+} from "@nestjs/common";
+import { JwtService } from "@nestjs/jwt";
+import { compare, hash } from "bcryptjs";
+import { PrismaService } from "../prisma/prisma.service";
 import {
   AuthRequestContext,
   AuthSessionService,
-} from '../auth/services/auth-session.service';
-import { LoginAttemptsService } from '../auth/services/login-attempts.service';
-import { ChangeCustomerPasswordDto } from './dto/change-customer-password.dto';
-import { LoginCustomerDto } from './dto/login-customer.dto';
-import { RegisterCustomerDto } from './dto/register-customer.dto';
-import { UpdateCustomerProfileDto } from './dto/update-customer-profile.dto';
+} from "../auth/services/auth-session.service";
+import { LoginAttemptsService } from "../auth/services/login-attempts.service";
+import { ChangeCustomerPasswordDto } from "./dto/change-customer-password.dto";
+import { GoogleCredentialDto } from "./dto/google-credential.dto";
+import { GoogleRegisterCustomerDto } from "./dto/google-register-customer.dto";
+import { LoginCustomerDto } from "./dto/login-customer.dto";
+import { RegisterCustomerDto } from "./dto/register-customer.dto";
+import { UpdateCustomerProfileDto } from "./dto/update-customer-profile.dto";
+import { GoogleIdentityService } from "./services/google-identity.service";
 import type {
   AnyCustomerTokenPayload,
   CustomerTokenPayload,
-} from './types/customer-token-payload.type';
+} from "./types/customer-token-payload.type";
 
 @Injectable()
 export class CustomerAuthService {
@@ -28,6 +31,7 @@ export class CustomerAuthService {
     private readonly jwtService: JwtService,
     private readonly loginAttempts: LoginAttemptsService,
     private readonly authSessionService: AuthSessionService,
+    private readonly googleIdentityService: GoogleIdentityService,
   ) {}
 
   async register(dto: RegisterCustomerDto, context: AuthRequestContext = {}) {
@@ -38,30 +42,48 @@ export class CustomerAuthService {
     const registeredWithEmail = await this.prisma.customer.findFirst({
       where: {
         email,
-        passwordHash: {
-          not: null,
-        },
+        OR: [
+          {
+            passwordHash: {
+              not: null,
+            },
+          },
+          {
+            identities: {
+              some: {},
+            },
+          },
+        ],
       },
     });
 
     if (registeredWithEmail) {
       throw new ConflictException(
-        'Un compte client existe déjà avec cet email.',
+        "Un compte client existe déjà avec cet email.",
       );
     }
 
     const registeredWithPhone = await this.prisma.customer.findFirst({
       where: {
         phone,
-        passwordHash: {
-          not: null,
-        },
+        OR: [
+          {
+            passwordHash: {
+              not: null,
+            },
+          },
+          {
+            identities: {
+              some: {},
+            },
+          },
+        ],
       },
     });
 
     if (registeredWithPhone) {
       throw new ConflictException(
-        'Un compte client existe déjà avec ce numéro de téléphone.',
+        "Un compte client existe déjà avec ce numéro de téléphone.",
       );
     }
 
@@ -69,8 +91,11 @@ export class CustomerAuthService {
 
     const existingGuestCustomer = await this.prisma.customer.findFirst({
       where: {
+        email,
         passwordHash: null,
-        OR: [{ email }, { phone }],
+        identities: {
+          none: {},
+        },
       },
     });
 
@@ -97,28 +122,14 @@ export class CustomerAuthService {
           },
         });
 
-    const { session, refreshToken } =
-      await this.authSessionService.createCustomerSession(
-        customer.id,
-        context,
-      );
-
-    return {
-      accessToken: await this.signCustomerAccessToken(
-        customer.id,
-        email,
-        session.id,
-      ),
-      refreshToken,
-      customer: this.sanitizeCustomer(customer),
-    };
+    return this.createCustomerSessionResult(customer, context);
   }
 
   async login(dto: LoginCustomerDto, context: AuthRequestContext = {}) {
     const email = this.normalizeEmail(dto.email);
-    const clientIp = context.ipAddress ?? 'unknown';
+    const clientIp = context.ipAddress ?? "unknown";
 
-    this.loginAttempts.assertCanAttempt('customer', email, clientIp);
+    this.loginAttempts.assertCanAttempt("customer", email, clientIp);
 
     const customer = await this.prisma.customer.findFirst({
       where: {
@@ -130,46 +141,227 @@ export class CustomerAuthService {
     });
 
     if (!customer || !customer.passwordHash) {
-      this.loginAttempts.recordFailure('customer', email, clientIp);
-      throw new UnauthorizedException('Email ou mot de passe incorrect.');
+      this.loginAttempts.recordFailure("customer", email, clientIp);
+      throw new UnauthorizedException("Email ou mot de passe incorrect.");
     }
 
     if (!customer.isActive) {
-      this.loginAttempts.recordFailure('customer', email, clientIp);
+      this.loginAttempts.recordFailure("customer", email, clientIp);
       throw new UnauthorizedException(
-        'Compte client désactivé. Veuillez contacter la boutique.',
+        "Compte client désactivé. Veuillez contacter la boutique.",
       );
     }
 
     const isPasswordValid = await compare(dto.password, customer.passwordHash);
 
     if (!isPasswordValid) {
-      this.loginAttempts.recordFailure('customer', email, clientIp);
-      throw new UnauthorizedException('Email ou mot de passe incorrect.');
+      this.loginAttempts.recordFailure("customer", email, clientIp);
+      throw new UnauthorizedException("Email ou mot de passe incorrect.");
     }
 
-    this.loginAttempts.reset('customer', email, clientIp);
+    this.loginAttempts.reset("customer", email, clientIp);
 
-    const { session, refreshToken } =
-      await this.authSessionService.createCustomerSession(
-        customer.id,
+    return this.createCustomerSessionResult(customer, context);
+  }
+
+  async loginWithGoogle(
+    dto: GoogleCredentialDto,
+    context: AuthRequestContext = {},
+  ) {
+    const googleIdentity = await this.googleIdentityService.verifyCredential(
+      dto.credential,
+    );
+
+    const identity = await this.prisma.customerIdentity.findFirst({
+      where: {
+        provider: "GOOGLE",
+        providerSubject: googleIdentity.subject,
+      },
+      include: {
+        customer: true,
+      },
+    });
+
+    if (!identity) {
+      throw new ConflictException(
+        "Aucun compte Bigotti n’est associé à ce compte Google. Créez d’abord votre compte.",
+      );
+    }
+
+    if (!identity.customer.isActive) {
+      throw new UnauthorizedException(
+        "Compte client désactivé. Veuillez contacter la boutique.",
+      );
+    }
+
+    await this.prisma.customerIdentity.update({
+      where: {
+        id: identity.id,
+      },
+      data: {
+        providerEmail: googleIdentity.email,
+        emailVerified: true,
+        profilePicture: googleIdentity.profilePicture,
+      },
+    });
+
+    return this.createCustomerSessionResult(identity.customer, context);
+  }
+
+  async registerWithGoogle(
+    dto: GoogleRegisterCustomerDto,
+    context: AuthRequestContext = {},
+  ) {
+    const phone = this.normalizePhone(dto.phone);
+    const googleIdentity = await this.googleIdentityService.verifyCredential(
+      dto.credential,
+    );
+
+    const existingIdentity = await this.prisma.customerIdentity.findFirst({
+      where: {
+        provider: "GOOGLE",
+        providerSubject: googleIdentity.subject,
+      },
+      include: {
+        customer: true,
+      },
+    });
+
+    if (existingIdentity) {
+      if (!existingIdentity.customer.isActive) {
+        throw new UnauthorizedException(
+          "Compte client désactivé. Veuillez contacter la boutique.",
+        );
+      }
+
+      await this.prisma.customerIdentity.update({
+        where: {
+          id: existingIdentity.id,
+        },
+        data: {
+          providerEmail: googleIdentity.email,
+          emailVerified: true,
+          profilePicture: googleIdentity.profilePicture,
+        },
+      });
+
+      return this.createCustomerSessionResult(
+        existingIdentity.customer,
         context,
       );
+    }
 
-    return {
-      accessToken: await this.signCustomerAccessToken(
-        customer.id,
-        customer.email ?? email,
-        session.id,
-      ),
-      refreshToken,
-      customer: this.sanitizeCustomer(customer),
-    };
+    const registeredWithEmail = await this.prisma.customer.findFirst({
+      where: {
+        email: googleIdentity.email,
+        OR: [
+          {
+            passwordHash: {
+              not: null,
+            },
+          },
+          {
+            identities: {
+              some: {},
+            },
+          },
+        ],
+      },
+    });
+
+    if (registeredWithEmail) {
+      throw new ConflictException(
+        "Un compte Bigotti existe déjà avec cet email. Connectez-vous avec votre mot de passe.",
+      );
+    }
+
+    const registeredWithPhone = await this.prisma.customer.findFirst({
+      where: {
+        phone,
+        OR: [
+          {
+            passwordHash: {
+              not: null,
+            },
+          },
+          {
+            identities: {
+              some: {},
+            },
+          },
+        ],
+      },
+    });
+
+    if (registeredWithPhone) {
+      throw new ConflictException(
+        "Un compte client existe déjà avec ce numéro de téléphone.",
+      );
+    }
+
+    const existingGuestCustomer = await this.prisma.customer.findFirst({
+      where: {
+        email: googleIdentity.email,
+        passwordHash: null,
+        identities: {
+          none: {},
+        },
+      },
+    });
+
+    const customer = await this.prisma
+      .$transaction(async (transaction) => {
+        const createdOrUpdatedCustomer = existingGuestCustomer
+          ? await transaction.customer.update({
+              where: {
+                id: existingGuestCustomer.id,
+              },
+              data: {
+                fullName: googleIdentity.fullName,
+                phone,
+                email: googleIdentity.email,
+                isActive: true,
+              },
+            })
+          : await transaction.customer.create({
+              data: {
+                fullName: googleIdentity.fullName,
+                phone,
+                email: googleIdentity.email,
+                passwordHash: null,
+                isActive: true,
+              },
+            });
+
+        await transaction.customerIdentity.create({
+          data: {
+            customerId: createdOrUpdatedCustomer.id,
+            provider: "GOOGLE",
+            providerSubject: googleIdentity.subject,
+            providerEmail: googleIdentity.email,
+            emailVerified: true,
+            profilePicture: googleIdentity.profilePicture,
+          },
+        });
+
+        return createdOrUpdatedCustomer;
+      })
+      .catch((error: unknown) => {
+        if (this.isPrismaUniqueConstraintError(error)) {
+          throw new ConflictException(
+            "Ce compte Google est déjà associé à un compte Bigotti.",
+          );
+        }
+
+        throw error;
+      });
+
+    return this.createCustomerSessionResult(customer, context);
   }
 
   async refresh(refreshToken: string | undefined, context: AuthRequestContext) {
     if (!refreshToken) {
-      throw new UnauthorizedException('Session client expirée.');
+      throw new UnauthorizedException("Session client expirée.");
     }
 
     const result = await this.authSessionService.rotateCustomerSession(
@@ -180,7 +372,7 @@ export class CustomerAuthService {
     return {
       accessToken: await this.signCustomerAccessToken(
         result.customer.id,
-        result.customer.email ?? '',
+        result.customer.email ?? "",
         result.session.id,
       ),
       refreshToken: result.refreshToken,
@@ -192,10 +384,9 @@ export class CustomerAuthService {
     await this.authSessionService.revokeCustomerSession(refreshToken);
 
     return {
-      message: 'Déconnexion client effectuée.',
+      message: "Déconnexion client effectuée.",
     };
   }
-
 
   async listSessions(authorization?: string) {
     const { customer, payload } =
@@ -219,8 +410,8 @@ export class CustomerAuthService {
     return {
       message:
         sessionId === payload.sessionId
-          ? 'Session client actuelle révoquée.'
-          : 'Session client révoquée.',
+          ? "Session client actuelle révoquée."
+          : "Session client révoquée.",
       currentSessionRevoked: sessionId === payload.sessionId,
     };
   }
@@ -236,7 +427,7 @@ export class CustomerAuthService {
       );
 
     return {
-      message: 'Les autres sessions client ont été révoquées.',
+      message: "Les autres sessions client ont été révoquées.",
       revokedSessions,
     };
   }
@@ -249,7 +440,7 @@ export class CustomerAuthService {
       await this.authSessionService.revokeAllCustomerSessions(customer.id);
 
     return {
-      message: 'Toutes les sessions client ont été révoquées.',
+      message: "Toutes les sessions client ont été révoquées.",
       revokedSessions,
     };
   }
@@ -273,15 +464,24 @@ export class CustomerAuthService {
         id: {
           not: customer.id,
         },
-        passwordHash: {
-          not: null,
-        },
+        OR: [
+          {
+            passwordHash: {
+              not: null,
+            },
+          },
+          {
+            identities: {
+              some: {},
+            },
+          },
+        ],
       },
     });
 
     if (existingEmail) {
       throw new ConflictException(
-        'Cet email est déjà utilisé par un autre compte.',
+        "Cet email est déjà utilisé par un autre compte.",
       );
     }
 
@@ -291,15 +491,24 @@ export class CustomerAuthService {
         id: {
           not: customer.id,
         },
-        passwordHash: {
-          not: null,
-        },
+        OR: [
+          {
+            passwordHash: {
+              not: null,
+            },
+          },
+          {
+            identities: {
+              some: {},
+            },
+          },
+        ],
       },
     });
 
     if (existingPhone) {
       throw new ConflictException(
-        'Ce numéro de téléphone est déjà utilisé par un autre compte.',
+        "Ce numéro de téléphone est déjà utilisé par un autre compte.",
       );
     }
 
@@ -321,7 +530,9 @@ export class CustomerAuthService {
     const customer = await this.getAuthenticatedCustomer(authorization);
 
     if (!customer.passwordHash) {
-      throw new UnauthorizedException('Session client invalide.');
+      throw new BadRequestException(
+        "Ce compte utilise Google et ne possède pas encore de mot de passe local.",
+      );
     }
 
     const isCurrentPasswordValid = await compare(
@@ -330,12 +541,12 @@ export class CustomerAuthService {
     );
 
     if (!isCurrentPasswordValid) {
-      throw new UnauthorizedException('Mot de passe actuel incorrect.');
+      throw new UnauthorizedException("Mot de passe actuel incorrect.");
     }
 
     if (dto.currentPassword === dto.newPassword) {
       throw new BadRequestException(
-        'Le nouveau mot de passe doit être différent du mot de passe actuel.',
+        "Le nouveau mot de passe doit être différent du mot de passe actuel.",
       );
     }
 
@@ -351,7 +562,7 @@ export class CustomerAuthService {
     });
 
     return {
-      message: 'Mot de passe mis à jour avec succès.',
+      message: "Mot de passe mis à jour avec succès.",
     };
   }
 
@@ -382,7 +593,7 @@ export class CustomerAuthService {
         payment: true,
       },
       orderBy: {
-        createdAt: 'desc',
+        createdAt: "desc",
       },
     });
 
@@ -390,6 +601,27 @@ export class CustomerAuthService {
       ...order,
       payments: payment ? [payment] : [],
     }));
+  }
+
+  private async createCustomerSessionResult<
+    T extends {
+      id: string;
+      email: string | null;
+      passwordHash?: string | null;
+    },
+  >(customer: T, context: AuthRequestContext) {
+    const { session, refreshToken } =
+      await this.authSessionService.createCustomerSession(customer.id, context);
+
+    return {
+      accessToken: await this.signCustomerAccessToken(
+        customer.id,
+        customer.email ?? "",
+        session.id,
+      ),
+      refreshToken,
+      customer: this.sanitizeCustomer(customer),
+    };
   }
 
   private async getAuthenticatedCustomer(authorization?: string) {
@@ -402,8 +634,8 @@ export class CustomerAuthService {
   private async getAuthenticatedCustomerContext(authorization?: string) {
     const payload = this.verifyAuthorizationHeader(authorization);
 
-    if (!('sessionId' in payload) || !payload.sessionId) {
-      throw new UnauthorizedException('Session client invalide.');
+    if (!("sessionId" in payload) || !payload.sessionId) {
+      throw new UnauthorizedException("Session client invalide.");
     }
 
     const session = await this.authSessionService.getActiveCustomerSession(
@@ -414,7 +646,7 @@ export class CustomerAuthService {
 
     if (customer.id !== payload.sub) {
       throw new UnauthorizedException(
-        'Session client expirée. Veuillez vous reconnecter.',
+        "Session client expirée. Veuillez vous reconnecter.",
       );
     }
 
@@ -434,43 +666,43 @@ export class CustomerAuthService {
       sub: customerId,
       email,
       sessionId,
-      tokenType: 'customer',
+      tokenType: "customer",
     };
 
     return this.jwtService.signAsync(payload, {
-      expiresIn: '30m',
+      expiresIn: "30m",
     });
   }
 
   private verifyAuthorizationHeader(authorization?: string) {
     if (!authorization) {
-      throw new UnauthorizedException('Token client manquant.');
+      throw new UnauthorizedException("Token client manquant.");
     }
 
-    const [type, token] = authorization.split(' ');
+    const [type, token] = authorization.split(" ");
 
-    if (type !== 'Bearer' || !token) {
-      throw new UnauthorizedException('Token client manquant.');
+    if (type !== "Bearer" || !token) {
+      throw new UnauthorizedException("Token client manquant.");
     }
 
     try {
       const payload = this.jwtService.verify<AnyCustomerTokenPayload>(token);
 
       const isCurrentCustomerToken =
-        'tokenType' in payload && payload.tokenType === 'customer';
+        "tokenType" in payload && payload.tokenType === "customer";
 
       if (!payload.sub || !payload.email || !isCurrentCustomerToken) {
-        throw new UnauthorizedException('Token client invalide.');
+        throw new UnauthorizedException("Token client invalide.");
       }
 
       return payload;
     } catch {
-      throw new UnauthorizedException('Token client invalide ou expiré.');
+      throw new UnauthorizedException("Token client invalide ou expiré.");
     }
   }
 
   private normalizeFullName(value: string) {
-    return value.trim().replace(/\s+/g, ' ');
+    return value.trim().replace(/\s+/g, " ");
   }
 
   private normalizeEmail(value: string) {
@@ -478,7 +710,7 @@ export class CustomerAuthService {
   }
 
   private normalizePhone(value: string) {
-    return value.trim().replace(/\s+/g, '');
+    return value.trim().replace(/\s+/g, "");
   }
 
   private sanitizeCustomer<T extends { passwordHash?: string | null }>(
@@ -486,5 +718,14 @@ export class CustomerAuthService {
   ) {
     const { passwordHash, ...safeCustomer } = customer;
     return safeCustomer;
+  }
+
+  private isPrismaUniqueConstraintError(error: unknown) {
+    return (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "P2002"
+    );
   }
 }
