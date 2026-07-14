@@ -58,16 +58,9 @@ function createCookieCsrfMiddleware(
       return;
     }
 
-    if (request.headers['sec-fetch-site'] === 'cross-site') {
-      response.status(403).json({
-        message: 'Requête intersite refusée.',
-      });
-      return;
-    }
-
     const requestOrigin = getRequestOrigin(request);
 
-    if (requestOrigin && !allowedOrigins.has(requestOrigin)) {
+    if (!requestOrigin || !allowedOrigins.has(requestOrigin)) {
       response.status(403).json({
         message: 'Origine non autorisée.',
       });
