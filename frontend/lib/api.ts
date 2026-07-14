@@ -120,7 +120,9 @@ const REQUEST_SECURITY_HEADERS = {
   "X-Requested-With": "XMLHttpRequest",
 };
 
-function buildAuthHeaders(token?: string | null) {
+function buildAuthHeaders(
+  token?: string | null,
+): Record<string, string> {
   if (!token || token === COOKIE_SESSION_MARKER) {
     return {};
   }
