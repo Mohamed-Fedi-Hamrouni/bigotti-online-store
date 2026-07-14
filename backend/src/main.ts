@@ -1,42 +1,22 @@
 import { ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import * as express from 'express';
+import helmet from 'helmet';
 import { join } from 'path';
 import { AppModule } from './app.module';
-
-const AUTH_COOKIE_NAMES = [
-  'bigotti_admin_access_token',
-  'bigotti_customer_access_token',
-] as const;
+import { AUTH_COOKIE_NAMES } from './auth/services/auth-cookie.service';
 
 const UNSAFE_HTTP_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'] as const;
-
-function getAllowedOrigins() {
-  const defaultOrigins = [
-    'http://localhost:3000',
-    'http://localhost:3001',
-    'http://127.0.0.1:3000',
-    'http://127.0.0.1:3001',
-  ];
-
-  const frontendUrl = process.env.FRONTEND_URL;
-
-  if (!frontendUrl) {
-    return defaultOrigins;
-  }
-
-  return frontendUrl
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
-}
 
 function hasAuthCookie(cookieHeader: string | undefined) {
   if (!cookieHeader) {
     return false;
   }
 
-  return AUTH_COOKIE_NAMES.some((cookieName) =>
+  const protectedCookieNames = Object.values(AUTH_COOKIE_NAMES);
+
+  return protectedCookieNames.some((cookieName) =>
     cookieHeader
       .split(';')
       .some((cookie) => cookie.trim().startsWith(`${cookieName}=`)),
@@ -49,34 +29,52 @@ function isUnsafeMethod(method: string) {
   );
 }
 
-function createCookieCsrfMiddleware(allowedOrigins: string[]) {
-  return (
-    request: express.Request,
-    response: express.Response,
-    next: express.NextFunction,
-  ) => {
-    if (!isUnsafeMethod(request.method)) {
+function getRequestOrigin(request: express.Request) {
+  const origin = request.headers.origin;
+
+  if (typeof origin === 'string' && origin.trim()) {
+    return origin.trim().replace(/\/$/, '');
+  }
+
+  const referer = request.headers.referer;
+
+  if (typeof referer === 'string' && referer.trim()) {
+    try {
+      return new URL(referer).origin;
+    } catch {
+      return undefined;
+    }
+  }
+
+  return undefined;
+}
+
+function createCookieCsrfMiddleware(
+  allowedOrigins: ReadonlySet<string>,
+): express.RequestHandler {
+  return (request, response, next) => {
+    if (!isUnsafeMethod(request.method) || !hasAuthCookie(request.headers.cookie)) {
       next();
       return;
     }
 
-    if (!hasAuthCookie(request.headers.cookie)) {
-      next();
+    if (request.headers['sec-fetch-site'] === 'cross-site') {
+      response.status(403).json({
+        message: 'Requête intersite refusée.',
+      });
       return;
     }
 
-    const origin = request.headers.origin;
+    const requestOrigin = getRequestOrigin(request);
 
-    if (origin && !allowedOrigins.includes(origin)) {
+    if (requestOrigin && !allowedOrigins.has(requestOrigin)) {
       response.status(403).json({
         message: 'Origine non autorisée.',
       });
       return;
     }
 
-    const requestedWith = request.headers['x-requested-with'];
-
-    if (requestedWith !== 'XMLHttpRequest') {
+    if (request.headers['x-requested-with'] !== 'XMLHttpRequest') {
       response.status(403).json({
         message: 'Requête sécurisée invalide.',
       });
@@ -88,11 +86,60 @@ function createCookieCsrfMiddleware(allowedOrigins: string[]) {
 }
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-  const expressApp = app.getHttpAdapter().getInstance();
-  const allowedOrigins = getAllowedOrigins();
+  const app = await NestFactory.create(AppModule, {
+    bodyParser: false,
+  });
 
-  expressApp.set('trust proxy', 1);
+  const configService = app.get(ConfigService);
+  const expressApp =
+    app.getHttpAdapter().getInstance() as express.Application;
+
+  const isProduction =
+    configService.get<string>('NODE_ENV', 'development') === 'production';
+
+  const allowedOrigins = new Set(
+    configService.get<string[]>('FRONTEND_ORIGINS', []),
+  );
+
+  const trustProxyHops = configService.get<number>(
+    'TRUST_PROXY_HOPS',
+    isProduction ? 1 : 0,
+  );
+
+  expressApp.disable('x-powered-by');
+  expressApp.set('trust proxy', trustProxyHops);
+
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+      crossOriginEmbedderPolicy: false,
+      crossOriginResourcePolicy: {
+        policy: 'cross-origin',
+      },
+      strictTransportSecurity: isProduction
+        ? {
+            maxAge: 31_536_000,
+            includeSubDomains: true,
+            preload: false,
+          }
+        : false,
+    }),
+  );
+
+  app.use(
+    express.json({
+      limit: '1mb',
+      strict: true,
+    }),
+  );
+
+  app.use(
+    express.urlencoded({
+      extended: true,
+      limit: '1mb',
+      parameterLimit: 1_000,
+    }),
+  );
 
   app.enableCors({
     origin(origin, callback) {
@@ -101,7 +148,9 @@ async function bootstrap() {
         return;
       }
 
-      if (allowedOrigins.includes(origin)) {
+      const normalizedOrigin = origin.replace(/\/$/, '');
+
+      if (allowedOrigins.has(normalizedOrigin)) {
         callback(null, true);
         return;
       }
@@ -109,24 +158,52 @@ async function bootstrap() {
       callback(new Error(`CORS origin not allowed: ${origin}`), false);
     },
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: [
+      'Accept',
+      'Authorization',
+      'Content-Type',
+      'Origin',
+      'X-Requested-With',
+    ],
+    optionsSuccessStatus: 204,
+    maxAge: 86_400,
   });
 
   app.use(createCookieCsrfMiddleware(allowedOrigins));
-  app.use('/uploads', express.static(join(process.cwd(), 'uploads')));
+
+  app.use(
+    '/uploads',
+    express.static(join(process.cwd(), 'uploads'), {
+      dotfiles: 'deny',
+      index: false,
+      maxAge: isProduction ? '1d' : 0,
+      setHeaders(response) {
+        response.setHeader('X-Content-Type-Options', 'nosniff');
+      },
+    }),
+  );
 
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
       transform: true,
       forbidNonWhitelisted: true,
+      stopAtFirstError: true,
+      transformOptions: {
+        enableImplicitConversion: false,
+      },
     }),
   );
 
-  const port = Number(process.env.PORT ?? 3000);
+  app.enableShutdownHooks();
 
-  await app.listen(port);
+  const port = configService.get<number>('PORT', 3000);
+
+  await app.listen(port, '0.0.0.0');
 }
 
-bootstrap();
+void bootstrap().catch((error: unknown) => {
+  console.error('Le backend Bigotti n’a pas pu démarrer.', error);
+  process.exit(1);
+});

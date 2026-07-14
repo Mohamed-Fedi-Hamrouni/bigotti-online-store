@@ -1,8 +1,10 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { createHash, randomBytes } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -27,11 +29,11 @@ const REVOKED_SESSION_RETENTION_DAYS = 30;
 
 @Injectable()
 export class AuthSessionService {
+  private readonly logger = new Logger(AuthSessionService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   async createAdminSession(userId: string, context: AuthRequestContext) {
-    await this.cleanupExpiredSessions();
-
     const refreshToken = this.generateRefreshToken();
     const refreshTokenHash = this.hashRefreshToken(refreshToken);
 
@@ -52,8 +54,6 @@ export class AuthSessionService {
   }
 
   async createCustomerSession(customerId: string, context: AuthRequestContext) {
-    await this.cleanupExpiredSessions();
-
     const refreshToken = this.generateRefreshToken();
     const refreshTokenHash = this.hashRefreshToken(refreshToken);
 
@@ -74,92 +74,173 @@ export class AuthSessionService {
   }
 
   async rotateAdminSession(refreshToken: string, context: AuthRequestContext) {
-    const session = await this.prisma.adminSession.findUnique({
-      where: {
-        refreshTokenHash: this.hashRefreshToken(refreshToken),
-      },
-      include: {
-        user: true,
-      },
+    const refreshTokenHash = this.hashRefreshToken(refreshToken);
+    const now = new Date();
+
+    return this.prisma.$transaction(async (transaction) => {
+      const currentSession = await transaction.adminSession.findUnique({
+        where: {
+          refreshTokenHash,
+        },
+        include: {
+          user: true,
+        },
+      });
+
+      if (
+        !currentSession ||
+        currentSession.revokedAt ||
+        currentSession.expiresAt <= now
+      ) {
+        throw new UnauthorizedException('Session administrateur expirée.');
+      }
+
+      if (!currentSession.user.isActive) {
+        throw new UnauthorizedException('Compte administrateur désactivé.');
+      }
+
+      const nextRefreshToken = this.generateRefreshToken();
+
+      const rotationResult = await transaction.adminSession.updateMany({
+        where: {
+          id: currentSession.id,
+          refreshTokenHash,
+          revokedAt: null,
+          expiresAt: {
+            gt: now,
+          },
+        },
+        data: {
+          refreshTokenHash: this.hashRefreshToken(nextRefreshToken),
+          userAgent: this.normalizeOptionalValue(context.userAgent),
+          ipAddress: this.normalizeOptionalValue(context.ipAddress),
+          expiresAt: this.buildExpiryDate(ADMIN_REFRESH_TOKEN_DAYS),
+          revokedAt: null,
+        },
+      });
+
+      if (rotationResult.count !== 1) {
+        throw new UnauthorizedException(
+          'Ce jeton de session administrateur a déjà été utilisé.',
+        );
+      }
+
+      const updatedSession = await transaction.adminSession.findUnique({
+        where: {
+          id: currentSession.id,
+        },
+        include: {
+          user: true,
+        },
+      });
+
+      if (!updatedSession) {
+        throw new UnauthorizedException('Session administrateur expirée.');
+      }
+
+      return {
+        session: updatedSession,
+        user: updatedSession.user,
+        refreshToken: nextRefreshToken,
+      };
     });
-
-    if (!session || session.revokedAt || session.expiresAt <= new Date()) {
-      throw new UnauthorizedException('Session administrateur expirée.');
-    }
-
-    if (!session.user.isActive) {
-      throw new UnauthorizedException('Compte administrateur désactivé.');
-    }
-
-    const nextRefreshToken = this.generateRefreshToken();
-
-    const updatedSession = await this.prisma.adminSession.update({
-      where: {
-        id: session.id,
-      },
-      data: {
-        refreshTokenHash: this.hashRefreshToken(nextRefreshToken),
-        userAgent: this.normalizeOptionalValue(context.userAgent),
-        ipAddress: this.normalizeOptionalValue(context.ipAddress),
-        expiresAt: this.buildExpiryDate(ADMIN_REFRESH_TOKEN_DAYS),
-        revokedAt: null,
-      },
-      include: {
-        user: true,
-      },
-    });
-
-    return {
-      session: updatedSession,
-      user: updatedSession.user,
-      refreshToken: nextRefreshToken,
-    };
   }
 
   async rotateCustomerSession(
     refreshToken: string,
     context: AuthRequestContext,
   ) {
-    const session = await this.prisma.customerSession.findUnique({
-      where: {
-        refreshTokenHash: this.hashRefreshToken(refreshToken),
-      },
-      include: {
-        customer: true,
-      },
+    const refreshTokenHash = this.hashRefreshToken(refreshToken);
+    const now = new Date();
+
+    return this.prisma.$transaction(async (transaction) => {
+      const currentSession = await transaction.customerSession.findUnique({
+        where: {
+          refreshTokenHash,
+        },
+        include: {
+          customer: {
+            include: {
+              identities: {
+                select: {
+                  id: true,
+                },
+                take: 1,
+              },
+            },
+          },
+        },
+      });
+
+      if (
+        !currentSession ||
+        currentSession.revokedAt ||
+        currentSession.expiresAt <= now
+      ) {
+        throw new UnauthorizedException('Session client expirée.');
+      }
+
+      this.assertCustomerCanAuthenticate(currentSession.customer);
+
+      const nextRefreshToken = this.generateRefreshToken();
+
+      const rotationResult = await transaction.customerSession.updateMany({
+        where: {
+          id: currentSession.id,
+          refreshTokenHash,
+          revokedAt: null,
+          expiresAt: {
+            gt: now,
+          },
+        },
+        data: {
+          refreshTokenHash: this.hashRefreshToken(nextRefreshToken),
+          userAgent: this.normalizeOptionalValue(context.userAgent),
+          ipAddress: this.normalizeOptionalValue(context.ipAddress),
+          expiresAt: this.buildExpiryDate(CUSTOMER_REFRESH_TOKEN_DAYS),
+          revokedAt: null,
+        },
+      });
+
+      if (rotationResult.count !== 1) {
+        throw new UnauthorizedException(
+          'Ce jeton de session client a déjà été utilisé.',
+        );
+      }
+
+      const updatedSession = await transaction.customerSession.findUnique({
+        where: {
+          id: currentSession.id,
+        },
+        include: {
+          customer: {
+            include: {
+              identities: {
+                select: {
+                  id: true,
+                },
+                take: 1,
+              },
+            },
+          },
+        },
+      });
+
+      if (!updatedSession) {
+        throw new UnauthorizedException('Session client expirée.');
+      }
+
+      const customer = this.removeIdentityMetadata(updatedSession.customer);
+
+      return {
+        session: {
+          ...updatedSession,
+          customer,
+        },
+        customer,
+        refreshToken: nextRefreshToken,
+      };
     });
-
-    if (!session || session.revokedAt || session.expiresAt <= new Date()) {
-      throw new UnauthorizedException('Session client expirée.');
-    }
-
-    if (!session.customer.isActive || !session.customer.passwordHash) {
-      throw new UnauthorizedException('Compte client désactivé ou invalide.');
-    }
-
-    const nextRefreshToken = this.generateRefreshToken();
-
-    const updatedSession = await this.prisma.customerSession.update({
-      where: {
-        id: session.id,
-      },
-      data: {
-        refreshTokenHash: this.hashRefreshToken(nextRefreshToken),
-        userAgent: this.normalizeOptionalValue(context.userAgent),
-        ipAddress: this.normalizeOptionalValue(context.ipAddress),
-        expiresAt: this.buildExpiryDate(CUSTOMER_REFRESH_TOKEN_DAYS),
-        revokedAt: null,
-      },
-      include: {
-        customer: true,
-      },
-    });
-
-    return {
-      session: updatedSession,
-      customer: updatedSession.customer,
-      refreshToken: nextRefreshToken,
-    };
   }
 
   async getActiveAdminSession(sessionId: string) {
@@ -189,7 +270,16 @@ export class AuthSessionService {
         id: sessionId,
       },
       include: {
-        customer: true,
+        customer: {
+          include: {
+            identities: {
+              select: {
+                id: true,
+              },
+              take: 1,
+            },
+          },
+        },
       },
     });
 
@@ -197,19 +287,18 @@ export class AuthSessionService {
       throw new UnauthorizedException('Session client expirée.');
     }
 
-    if (!session.customer.isActive || !session.customer.passwordHash) {
-      throw new UnauthorizedException('Compte client désactivé ou invalide.');
-    }
+    this.assertCustomerCanAuthenticate(session.customer);
 
-    return session;
+    return {
+      ...session,
+      customer: this.removeIdentityMetadata(session.customer),
+    };
   }
 
   async listAdminSessions(
     userId: string,
     currentSessionId: string,
   ): Promise<AuthSessionView[]> {
-    await this.cleanupExpiredSessions();
-
     const sessions = await this.prisma.adminSession.findMany({
       where: {
         userId,
@@ -238,8 +327,6 @@ export class AuthSessionService {
     customerId: string,
     currentSessionId: string,
   ): Promise<AuthSessionView[]> {
-    await this.cleanupExpiredSessions();
-
     const sessions = await this.prisma.customerSession.findMany({
       where: {
         customerId,
@@ -395,6 +482,24 @@ export class AuthSessionService {
     });
   }
 
+  @Cron('0 15 3 * * *', {
+    name: 'auth-session-cleanup',
+    timeZone: 'UTC',
+    waitForCompletion: true,
+  })
+  async handleScheduledCleanup() {
+    const result = await this.cleanupExpiredSessions();
+
+    if (
+      result.deletedAdminSessions > 0 ||
+      result.deletedCustomerSessions > 0
+    ) {
+      this.logger.log(
+        `Nettoyage des sessions : ${result.deletedAdminSessions} admin, ${result.deletedCustomerSessions} client.`,
+      );
+    }
+  }
+
   async cleanupExpiredSessions() {
     const now = new Date();
     const revokedRetentionDate = new Date(now);
@@ -442,6 +547,33 @@ export class AuthSessionService {
       deletedAdminSessions: adminResult.count,
       deletedCustomerSessions: customerResult.count,
     };
+  }
+
+  private assertCustomerCanAuthenticate(customer: {
+    isActive: boolean;
+    passwordHash: string | null;
+    identities: Array<{ id: string }>;
+  }) {
+    if (!customer.isActive) {
+      throw new UnauthorizedException('Compte client désactivé.');
+    }
+
+    if (!customer.passwordHash && customer.identities.length === 0) {
+      throw new UnauthorizedException(
+        'Compte client sans méthode d’authentification valide.',
+      );
+    }
+  }
+
+  private removeIdentityMetadata<
+    T extends {
+      identities: Array<{ id: string }>;
+    },
+  >(customer: T): Omit<T, 'identities'> {
+    const { identities, ...safeCustomer } = customer;
+    void identities;
+
+    return safeCustomer;
   }
 
   private generateRefreshToken() {
