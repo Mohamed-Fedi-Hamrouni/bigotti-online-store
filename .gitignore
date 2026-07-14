@@ -25,4 +25,7 @@ backend/prisma/dev.db
 .DS_Store
 
 # uploads local
-uploads/
+/backend/uploads/
+
+# Prisma generated client
+backend/generated/

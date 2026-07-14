@@ -1,0 +1,786 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import {
+    ChevronLeft,
+    ChevronRight,
+    Search,
+    SlidersHorizontal,
+    X,
+} from "lucide-react";
+import { ProductCard } from "@/components/ProductCard";
+import type { Product } from "@/types/product";
+
+type ProductCatalogProps = {
+    products: Product[];
+};
+
+type SortOption = "newest" | "price-asc" | "price-desc" | "stock-desc";
+
+const PRODUCTS_PER_PAGE = 12;
+
+const sizeOrder = [
+    "UNIQUE",
+    "ONE SIZE",
+    "TU",
+
+    "XS",
+    "S",
+    "M",
+    "L",
+    "XL",
+    "XXL",
+    "2XL",
+    "3XL",
+    "XXXL",
+    "4XL",
+
+    "30",
+    "32",
+    "34",
+    "36",
+    "38",
+
+    "40",
+    "41",
+    "42",
+    "43",
+    "44",
+    "45",
+
+    "46",
+    "48",
+    "50",
+    "52",
+    "54",
+    "56",
+
+    "80",
+    "85",
+    "90",
+    "95",
+    "100",
+    "105",
+    "110",
+    "115",
+    "120",
+
+    "SLIM",
+    "CLASSIQUE",
+    "LARGE",
+];
+
+function normalizeText(value: string | null | undefined) {
+    return (value ?? "")
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+}
+
+function normalizeSize(value: string | null | undefined) {
+    return (value ?? "").trim().toUpperCase();
+}
+
+function compareSizes(sizeA: string, sizeB: string) {
+    const normalizedSizeA = normalizeSize(sizeA);
+    const normalizedSizeB = normalizeSize(sizeB);
+
+    const indexA = sizeOrder.indexOf(normalizedSizeA);
+    const indexB = sizeOrder.indexOf(normalizedSizeB);
+
+    if (indexA !== -1 && indexB !== -1) {
+        return indexA - indexB;
+    }
+
+    if (indexA !== -1) {
+        return -1;
+    }
+
+    if (indexB !== -1) {
+        return 1;
+    }
+
+    const numericA = Number(normalizedSizeA);
+    const numericB = Number(normalizedSizeB);
+
+    if (Number.isFinite(numericA) && Number.isFinite(numericB)) {
+        return numericA - numericB;
+    }
+
+    return normalizedSizeA.localeCompare(normalizedSizeB);
+}
+
+function resetUrlFiltersIfNeeded() {
+    if (typeof window === "undefined") {
+        return;
+    }
+
+    if (window.location.search) {
+        window.location.href = "/boutique";
+    }
+}
+
+function buildPaginationRange(currentPage: number, totalPages: number) {
+    const maxVisiblePages = 5;
+
+    if (totalPages <= maxVisiblePages) {
+        return Array.from({ length: totalPages }, (_, index) => index + 1);
+    }
+
+    const half = Math.floor(maxVisiblePages / 2);
+    let start = Math.max(1, currentPage - half);
+    let end = Math.min(totalPages, start + maxVisiblePages - 1);
+
+    if (end - start + 1 < maxVisiblePages) {
+        start = Math.max(1, end - maxVisiblePages + 1);
+    }
+
+    return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+}
+
+export function ProductCatalog({ products }: ProductCatalogProps) {
+    const [search, setSearch] = useState("");
+    const [categorySlug, setCategorySlug] = useState("");
+    const [categoryTypeSlug, setCategoryTypeSlug] = useState("");
+    const [size, setSize] = useState("");
+    const [color, setColor] = useState("");
+    const [minPrice, setMinPrice] = useState("");
+    const [maxPrice, setMaxPrice] = useState("");
+    const [onlyPromotions, setOnlyPromotions] = useState(false);
+    const [sort, setSort] = useState<SortOption>("newest");
+    const [currentPage, setCurrentPage] = useState(1);
+
+    const categories = useMemo(() => {
+        const map = new Map<string, string>();
+
+        products.forEach((product) => {
+            map.set(product.category.slug, product.category.name);
+        });
+
+        return Array.from(map.entries())
+            .map(([slug, name]) => ({
+                slug,
+                name,
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name));
+    }, [products]);
+
+    const categoryTypes = useMemo(() => {
+        const map = new Map<
+            string,
+            {
+                slug: string;
+                name: string;
+                categorySlug: string;
+            }
+        >();
+
+        products.forEach((product) => {
+            if (!product.categoryType) {
+                return;
+            }
+
+            if (categorySlug && product.category.slug !== categorySlug) {
+                return;
+            }
+
+            map.set(product.categoryType.slug, {
+                slug: product.categoryType.slug,
+                name: product.categoryType.name,
+                categorySlug: product.category.slug,
+            });
+        });
+
+        return Array.from(map.values()).sort((a, b) =>
+            a.name.localeCompare(b.name),
+        );
+    }, [products, categorySlug]);
+
+    const sizes = useMemo(() => {
+        const values = new Set<string>();
+
+        products.forEach((product) => {
+            product.variants.forEach((variant) => {
+                if (variant.stockQuantity > 0) {
+                    values.add(variant.size);
+                }
+            });
+        });
+
+        return Array.from(values).sort(compareSizes);
+    }, [products]);
+
+    const colors = useMemo(() => {
+        const values = new Set<string>();
+
+        products.forEach((product) => {
+            product.variants.forEach((variant) => {
+                if (variant.stockQuantity > 0) {
+                    values.add(variant.color);
+                }
+            });
+        });
+
+        return Array.from(values).sort();
+    }, [products]);
+
+    const selectedCategoryName =
+        categories.find((category) => category.slug === categorySlug)?.name ??
+        "";
+
+    const selectedCategoryTypeName =
+        categoryTypes.find((type) => type.slug === categoryTypeSlug)?.name ??
+        "";
+
+    const filteredProducts = useMemo(() => {
+        const normalizedSearch = normalizeText(search);
+        const min = minPrice ? Number(minPrice) : null;
+        const max = maxPrice ? Number(maxPrice) : null;
+
+        const filtered = products.filter((product) => {
+            const searchableValue = normalizeText(
+                [
+                    product.name,
+                    product.reference,
+                    product.shortDescription,
+                    product.description,
+                    product.category.name,
+                    product.categoryType?.name,
+                    product.collection?.name,
+                    product.saleCampaign?.name,
+                ]
+                    .filter(Boolean)
+                    .join(" "),
+            );
+
+            const matchesSearch =
+                !normalizedSearch || searchableValue.includes(normalizedSearch);
+
+            const matchesCategory =
+                !categorySlug || product.category.slug === categorySlug;
+
+            const matchesCategoryType =
+                !categoryTypeSlug ||
+                product.categoryType?.slug === categoryTypeSlug;
+
+            const matchesSize =
+                !size ||
+                product.variants.some(
+                    (variant) =>
+                        variant.size === size && variant.stockQuantity > 0,
+                );
+
+            const matchesColor =
+                !color ||
+                product.variants.some(
+                    (variant) =>
+                        variant.color === color && variant.stockQuantity > 0,
+                );
+
+            const matchesMinPrice = min === null || product.finalPrice >= min;
+            const matchesMaxPrice = max === null || product.finalPrice <= max;
+
+            const matchesPromotions =
+                !onlyPromotions ||
+                product.isOnSale === true ||
+                product.discountPercentage > 0;
+
+            return (
+                matchesSearch &&
+                matchesCategory &&
+                matchesCategoryType &&
+                matchesSize &&
+                matchesColor &&
+                matchesMinPrice &&
+                matchesMaxPrice &&
+                matchesPromotions
+            );
+        });
+
+        return filtered.sort((a, b) => {
+            if (sort === "price-asc") {
+                return a.finalPrice - b.finalPrice;
+            }
+
+            if (sort === "price-desc") {
+                return b.finalPrice - a.finalPrice;
+            }
+
+            if (sort === "stock-desc") {
+                return b.totalStock - a.totalStock;
+            }
+
+            return (
+                new Date(b.createdAt).getTime() -
+                new Date(a.createdAt).getTime()
+            );
+        });
+    }, [
+        products,
+        search,
+        categorySlug,
+        categoryTypeSlug,
+        size,
+        color,
+        minPrice,
+        maxPrice,
+        onlyPromotions,
+        sort,
+    ]);
+
+    const totalPages = Math.max(
+        1,
+        Math.ceil(filteredProducts.length / PRODUCTS_PER_PAGE),
+    );
+
+    const paginationRange = useMemo(
+        () => buildPaginationRange(currentPage, totalPages),
+        [currentPage, totalPages],
+    );
+
+    const paginatedProducts = useMemo(() => {
+        const startIndex = (currentPage - 1) * PRODUCTS_PER_PAGE;
+        const endIndex = startIndex + PRODUCTS_PER_PAGE;
+
+        return filteredProducts.slice(startIndex, endIndex);
+    }, [filteredProducts, currentPage]);
+
+    const firstVisibleProductIndex =
+        filteredProducts.length === 0
+            ? 0
+            : (currentPage - 1) * PRODUCTS_PER_PAGE + 1;
+
+    const lastVisibleProductIndex = Math.min(
+        currentPage * PRODUCTS_PER_PAGE,
+        filteredProducts.length,
+    );
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [
+        search,
+        categorySlug,
+        categoryTypeSlug,
+        size,
+        color,
+        minPrice,
+        maxPrice,
+        onlyPromotions,
+        sort,
+    ]);
+
+    useEffect(() => {
+        if (currentPage > totalPages) {
+            setCurrentPage(totalPages);
+        }
+    }, [currentPage, totalPages]);
+
+    function resetFilters() {
+        setSearch("");
+        setCategorySlug("");
+        setCategoryTypeSlug("");
+        setSize("");
+        setColor("");
+        setMinPrice("");
+        setMaxPrice("");
+        setOnlyPromotions(false);
+        setSort("newest");
+        setCurrentPage(1);
+
+        resetUrlFiltersIfNeeded();
+    }
+
+    function goToPage(page: number) {
+        const nextPage = Math.min(Math.max(page, 1), totalPages);
+
+        setCurrentPage(nextPage);
+
+        if (typeof window !== "undefined") {
+            window.scrollTo({
+                top: 0,
+                behavior: "smooth",
+            });
+        }
+    }
+
+    const hasActiveFilters =
+        search ||
+        categorySlug ||
+        categoryTypeSlug ||
+        size ||
+        color ||
+        minPrice ||
+        maxPrice ||
+        onlyPromotions ||
+        sort !== "newest";
+
+    return (
+        <section className="mx-auto max-w-7xl px-6 py-12">
+            <div className="mb-10 flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
+                <div>
+                    <p className="text-sm uppercase tracking-[0.3em] text-neutral-500">
+                        Boutique
+                    </p>
+
+                    <h1 className="mt-3 text-5xl font-black uppercase tracking-tight">
+                        {selectedCategoryTypeName ||
+                            selectedCategoryName ||
+                            "Tous les produits"}
+                    </h1>
+
+                    <p className="mt-4 max-w-2xl text-neutral-600">
+                        {selectedCategoryTypeName
+                            ? `Découvrez tous les articles disponibles dans le type ${selectedCategoryTypeName}.`
+                            : selectedCategoryName
+                              ? `Découvrez tous les articles disponibles dans la catégorie ${selectedCategoryName}.`
+                              : "Recherchez un article, filtrez par catégorie, taille, couleur, prix ou promotion."}
+                    </p>
+                </div>
+
+                <div className="rounded-full bg-white px-5 py-3 text-sm font-bold shadow-sm">
+                    {filteredProducts.length} produit
+                    {filteredProducts.length > 1 ? "s" : ""} trouvé
+                    {filteredProducts.length > 1 ? "s" : ""}
+                </div>
+            </div>
+
+            <div className="grid gap-8 lg:grid-cols-[300px_1fr]">
+                <aside className="h-fit rounded-[2rem] bg-white p-6 shadow-sm">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <SlidersHorizontal size={20} />
+                            <h2 className="text-xl font-black">Filtres</h2>
+                        </div>
+
+                        {hasActiveFilters && (
+                            <button
+                                type="button"
+                                onClick={resetFilters}
+                                className="flex items-center gap-1 text-sm font-semibold text-neutral-500 hover:text-black"
+                            >
+                                <X size={16} />
+                                Reset
+                            </button>
+                        )}
+                    </div>
+
+                    <div className="mt-6 space-y-5">
+                        <div>
+                            <label className="text-sm font-bold">
+                                Recherche
+                            </label>
+
+                            <div className="mt-2 flex items-center gap-2 rounded-2xl border border-neutral-300 px-4 py-3">
+                                <Search
+                                    size={18}
+                                    className="text-neutral-400"
+                                />
+
+                                <input
+                                    value={search}
+                                    onChange={(event) =>
+                                        setSearch(event.target.value)
+                                    }
+                                    placeholder="Chemise, costume..."
+                                    className="w-full bg-transparent text-sm outline-none"
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="text-sm font-bold">
+                                Catégorie
+                            </label>
+
+                            <select
+                                value={categorySlug}
+                                onChange={(event) => {
+                                    setCategorySlug(event.target.value);
+                                    setCategoryTypeSlug("");
+                                }}
+                                className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-black"
+                            >
+                                <option value="">Toutes les catégories</option>
+
+                                {categories.map((category) => (
+                                    <option
+                                        key={category.slug}
+                                        value={category.slug}
+                                    >
+                                        {category.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {categoryTypes.length > 0 && (
+                            <div>
+                                <label className="text-sm font-bold">
+                                    Type
+                                </label>
+
+                                <select
+                                    value={categoryTypeSlug}
+                                    onChange={(event) =>
+                                        setCategoryTypeSlug(event.target.value)
+                                    }
+                                    className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-black"
+                                >
+                                    <option value="">Tous les types</option>
+
+                                    {categoryTypes.map((type) => (
+                                        <option
+                                            key={type.slug}
+                                            value={type.slug}
+                                        >
+                                            {type.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+
+                        <div>
+                            <label className="text-sm font-bold">Taille</label>
+
+                            <select
+                                value={size}
+                                onChange={(event) =>
+                                    setSize(event.target.value)
+                                }
+                                className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-black"
+                            >
+                                <option value="">Toutes les tailles</option>
+
+                                {sizes.map((value) => (
+                                    <option key={value} value={value}>
+                                        {value}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div>
+                            <label className="text-sm font-bold">Couleur</label>
+
+                            <select
+                                value={color}
+                                onChange={(event) =>
+                                    setColor(event.target.value)
+                                }
+                                className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-black"
+                            >
+                                <option value="">Toutes les couleurs</option>
+
+                                {colors.map((value) => (
+                                    <option key={value} value={value}>
+                                        {value}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="text-sm font-bold">
+                                    Prix min
+                                </label>
+
+                                <input
+                                    value={minPrice}
+                                    onChange={(event) =>
+                                        setMinPrice(event.target.value)
+                                    }
+                                    type="number"
+                                    min="0"
+                                    placeholder="0"
+                                    className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 text-sm outline-none focus:border-black"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-sm font-bold">
+                                    Prix max
+                                </label>
+
+                                <input
+                                    value={maxPrice}
+                                    onChange={(event) =>
+                                        setMaxPrice(event.target.value)
+                                    }
+                                    type="number"
+                                    min="0"
+                                    placeholder="300"
+                                    className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 text-sm outline-none focus:border-black"
+                                />
+                            </div>
+                        </div>
+
+                        <label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-neutral-300 p-4">
+                            <input
+                                type="checkbox"
+                                checked={onlyPromotions}
+                                onChange={(event) =>
+                                    setOnlyPromotions(event.target.checked)
+                                }
+                            />
+
+                            <span className="text-sm font-bold">
+                                Promotions seulement
+                            </span>
+                        </label>
+
+                        <div>
+                            <label className="text-sm font-bold">Tri</label>
+
+                            <select
+                                value={sort}
+                                onChange={(event) =>
+                                    setSort(event.target.value as SortOption)
+                                }
+                                className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-black"
+                            >
+                                <option value="newest">Plus récents</option>
+                                <option value="price-asc">
+                                    Prix croissant
+                                </option>
+                                <option value="price-desc">
+                                    Prix décroissant
+                                </option>
+                                <option value="stock-desc">
+                                    Stock disponible
+                                </option>
+                            </select>
+                        </div>
+                    </div>
+                </aside>
+
+                <div>
+                    {filteredProducts.length === 0 ? (
+                        <div className="rounded-[2rem] bg-white p-10 text-center shadow-sm">
+                            <h2 className="text-2xl font-black">
+                                Aucun produit trouvé.
+                            </h2>
+
+                            <p className="mt-3 text-neutral-500">
+                                Essayez de modifier les filtres ou la recherche.
+                            </p>
+
+                            <button
+                                type="button"
+                                onClick={resetFilters}
+                                className="mt-6 rounded-full bg-black px-6 py-3 text-sm font-bold text-white"
+                            >
+                                Réinitialiser les filtres
+                            </button>
+                        </div>
+                    ) : (
+                        <>
+                            <div className="mb-5 flex flex-col justify-between gap-3 rounded-[1.5rem] bg-white px-5 py-4 text-sm font-semibold text-neutral-600 shadow-sm sm:flex-row sm:items-center">
+                                <span>
+                                    Affichage de {firstVisibleProductIndex} à{" "}
+                                    {lastVisibleProductIndex} sur{" "}
+                                    {filteredProducts.length} produit
+                                    {filteredProducts.length > 1 ? "s" : ""}
+                                </span>
+
+                                <span>
+                                    Page {currentPage} / {totalPages}
+                                </span>
+                            </div>
+
+                            <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+                                {paginatedProducts.map((product) => (
+                                    <ProductCard
+                                        key={product.id}
+                                        product={product}
+                                    />
+                                ))}
+                            </div>
+
+                            {totalPages > 1 && (
+                                <div className="mt-10 flex flex-wrap items-center justify-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            goToPage(currentPage - 1)
+                                        }
+                                        disabled={currentPage === 1}
+                                        className="inline-flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 py-3 text-sm font-black transition hover:border-black disabled:cursor-not-allowed disabled:opacity-40"
+                                    >
+                                        <ChevronLeft size={16} />
+                                        Précédent
+                                    </button>
+
+                                    {paginationRange[0] > 1 && (
+                                        <>
+                                            <button
+                                                type="button"
+                                                onClick={() => goToPage(1)}
+                                                className="h-11 min-w-11 rounded-full border border-neutral-300 bg-white px-4 text-sm font-black transition hover:border-black"
+                                            >
+                                                1
+                                            </button>
+
+                                            <span className="px-2 text-sm font-black text-neutral-400">
+                                                ...
+                                            </span>
+                                        </>
+                                    )}
+
+                                    {paginationRange.map((page) => (
+                                        <button
+                                            key={page}
+                                            type="button"
+                                            onClick={() => goToPage(page)}
+                                            className={
+                                                currentPage === page
+                                                    ? "h-11 min-w-11 rounded-full bg-black px-4 text-sm font-black text-white"
+                                                    : "h-11 min-w-11 rounded-full border border-neutral-300 bg-white px-4 text-sm font-black transition hover:border-black"
+                                            }
+                                        >
+                                            {page}
+                                        </button>
+                                    ))}
+
+                                    {paginationRange[
+                                        paginationRange.length - 1
+                                    ] < totalPages && (
+                                        <>
+                                            <span className="px-2 text-sm font-black text-neutral-400">
+                                                ...
+                                            </span>
+
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    goToPage(totalPages)
+                                                }
+                                                className="h-11 min-w-11 rounded-full border border-neutral-300 bg-white px-4 text-sm font-black transition hover:border-black"
+                                            >
+                                                {totalPages}
+                                            </button>
+                                        </>
+                                    )}
+
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            goToPage(currentPage + 1)
+                                        }
+                                        disabled={currentPage === totalPages}
+                                        className="inline-flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 py-3 text-sm font-black transition hover:border-black disabled:cursor-not-allowed disabled:opacity-40"
+                                    >
+                                        Suivant
+                                        <ChevronRight size={16} />
+                                    </button>
+                                </div>
+                            )}
+                        </>
+                    )}
+                </div>
+            </div>
+        </section>
+    );
+}
