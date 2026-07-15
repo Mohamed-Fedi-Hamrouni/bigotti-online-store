@@ -130,7 +130,7 @@ function buildPaginationRange(currentPage: number, totalPages: number) {
 
     const half = Math.floor(maxVisiblePages / 2);
     let start = Math.max(1, currentPage - half);
-    let end = Math.min(totalPages, start + maxVisiblePages - 1);
+    const end = Math.min(totalPages, start + maxVisiblePages - 1);
 
     if (end - start + 1 < maxVisiblePages) {
         start = Math.max(1, end - maxVisiblePages + 1);
@@ -357,7 +357,8 @@ export function ProductCatalog({ products }: ProductCatalogProps) {
     );
 
     useEffect(() => {
-        setCurrentPage(1);
+        const timeoutId = window.setTimeout(() => setCurrentPage(1), 0);
+        return () => window.clearTimeout(timeoutId);
     }, [
         search,
         categorySlug,
@@ -371,9 +372,10 @@ export function ProductCatalog({ products }: ProductCatalogProps) {
     ]);
 
     useEffect(() => {
-        if (currentPage > totalPages) {
-            setCurrentPage(totalPages);
-        }
+        const timeoutId = window.setTimeout(() => {
+            if (currentPage > totalPages) setCurrentPage(totalPages);
+        }, 0);
+        return () => window.clearTimeout(timeoutId);
     }, [currentPage, totalPages]);
 
     function resetFilters() {

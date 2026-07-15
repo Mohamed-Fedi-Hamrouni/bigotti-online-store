@@ -144,18 +144,16 @@ export default function TrackOrderPage() {
 
         const phoneFromUrl = String(params.get("phone") ?? "").trim();
 
-        if (orderNumberFromUrl) {
-            setOrderNumberInput(orderNumberFromUrl);
-        }
-
-        if (phoneFromUrl) {
-            setPhoneInput(phoneFromUrl);
-        }
+        const timeoutId = window.setTimeout(() => {
+            if (orderNumberFromUrl) setOrderNumberInput(orderNumberFromUrl);
+            if (phoneFromUrl) setPhoneInput(phoneFromUrl);
+        }, 0);
 
         if (orderNumberFromUrl && phoneFromUrl && !hasAutoTracked.current) {
             hasAutoTracked.current = true;
             void searchOrder(orderNumberFromUrl, phoneFromUrl);
         }
+        return () => window.clearTimeout(timeoutId);
     }, []);
 
     async function handleSubmit(event: FormEvent<HTMLFormElement>) {

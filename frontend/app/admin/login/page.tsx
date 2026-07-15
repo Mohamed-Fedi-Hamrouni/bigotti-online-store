@@ -61,7 +61,7 @@ export default function AdminLoginPage() {
       'bigotti-admin-login-message',
     );
     if (loginMessage) {
-      setNotice(loginMessage);
+      window.setTimeout(() => setNotice(loginMessage), 0);
       window.sessionStorage.removeItem('bigotti-admin-login-message');
     }
 

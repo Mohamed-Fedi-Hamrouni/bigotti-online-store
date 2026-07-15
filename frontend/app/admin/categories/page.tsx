@@ -178,7 +178,7 @@ function buildPaginationRange(currentPage: number, totalPages: number) {
 
     const half = Math.floor(maxVisiblePages / 2);
     let start = Math.max(1, currentPage - half);
-    let end = Math.min(totalPages, start + maxVisiblePages - 1);
+    const end = Math.min(totalPages, start + maxVisiblePages - 1);
 
     if (end - start + 1 < maxVisiblePages) {
         start = Math.max(1, end - maxVisiblePages + 1);
@@ -290,13 +290,15 @@ export default function AdminCategoriesPage() {
     );
 
     useEffect(() => {
-        setCurrentPage(1);
+        const timeoutId = window.setTimeout(() => setCurrentPage(1), 0);
+        return () => window.clearTimeout(timeoutId);
     }, [searchQuery, statusFilter, groupFilter]);
 
     useEffect(() => {
-        if (currentPage > totalPages) {
-            setCurrentPage(totalPages);
-        }
+        const timeoutId = window.setTimeout(() => {
+            if (currentPage > totalPages) setCurrentPage(totalPages);
+        }, 0);
+        return () => window.clearTimeout(timeoutId);
     }, [currentPage, totalPages]);
 
     const activeCategories = categories.filter(
@@ -308,13 +310,6 @@ export default function AdminCategoriesPage() {
     const collectionCategories = categories.filter(
         (category) =>
             category.menuGroup === "HAUT" || category.menuGroup === "BAS",
-    ).length;
-
-    const principalMenuCategories = categories.filter(
-        (category) =>
-            category.menuGroup === "COSTUME_CEREMONIE" ||
-            category.menuGroup === "CHAUSSURES" ||
-            category.menuGroup === "ACCESSOIRES",
     ).length;
 
     const totalCategoryTypes = categories.reduce(

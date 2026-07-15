@@ -142,7 +142,8 @@ export function SessionManager({ scope }: SessionManagerProps) {
     }, [scope]);
 
     useEffect(() => {
-        void loadSessions();
+        const timeoutId = window.setTimeout(() => void loadSessions(), 0);
+        return () => window.clearTimeout(timeoutId);
     }, [loadSessions]);
 
     function redirectAfterSessionEnd() {

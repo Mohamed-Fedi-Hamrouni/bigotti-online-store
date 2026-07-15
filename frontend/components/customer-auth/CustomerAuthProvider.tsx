@@ -61,8 +61,10 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
         const storedCustomer = readStoredCustomer();
 
         if (storedCustomer?.isActive) {
-            setCustomer(storedCustomer);
-            setToken(COOKIE_SESSION_MARKER);
+            window.setTimeout(() => {
+                setCustomer(storedCustomer);
+                setToken(COOKIE_SESSION_MARKER);
+            }, 0);
         }
 
         getCustomerMe()

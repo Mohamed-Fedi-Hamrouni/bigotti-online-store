@@ -8,7 +8,6 @@ import {
     CreditCard,
     MapPin,
     PackageCheck,
-    Phone,
     UserRound,
 } from "lucide-react";
 import { getAdminOrder, updateOrderStatus } from "@/lib/api";

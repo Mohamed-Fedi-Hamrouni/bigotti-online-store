@@ -19,7 +19,8 @@ export default function CustomerResetPasswordPage() {
 
     useEffect(() => {
         const searchParams = new URLSearchParams(window.location.search);
-        setToken(searchParams.get("token") ?? "");
+        const timeoutId = window.setTimeout(() => setToken(searchParams.get("token") ?? ""), 0);
+        return () => window.clearTimeout(timeoutId);
     }, []);
 
     async function handleSubmit(event: FormEvent<HTMLFormElement>) {

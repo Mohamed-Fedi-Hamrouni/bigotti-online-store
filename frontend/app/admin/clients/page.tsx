@@ -93,7 +93,7 @@ function buildPaginationRange(currentPage: number, totalPages: number) {
 
     const half = Math.floor(maxVisiblePages / 2);
     let start = Math.max(1, currentPage - half);
-    let end = Math.min(totalPages, start + maxVisiblePages - 1);
+    const end = Math.min(totalPages, start + maxVisiblePages - 1);
 
     if (end - start + 1 < maxVisiblePages) {
         start = Math.max(1, end - maxVisiblePages + 1);
@@ -118,9 +118,11 @@ export default function AdminCustomersPage() {
         const token = getAdminToken();
 
         if (!token) {
-            setError("Session admin introuvable. Connectez-vous à nouveau.");
-            setIsLoading(false);
-            return;
+            const timeoutId = window.setTimeout(() => {
+                setError("Session admin introuvable. Connectez-vous à nouveau.");
+                setIsLoading(false);
+            }, 0);
+            return () => window.clearTimeout(timeoutId);
         }
 
         fetchAdminCustomers(token)
@@ -213,13 +215,15 @@ export default function AdminCustomersPage() {
     );
 
     useEffect(() => {
-        setCurrentPage(1);
+        const timeoutId = window.setTimeout(() => setCurrentPage(1), 0);
+        return () => window.clearTimeout(timeoutId);
     }, [searchQuery, statusFilter, sortOption]);
 
     useEffect(() => {
-        if (currentPage > totalPages) {
-            setCurrentPage(totalPages);
-        }
+        const timeoutId = window.setTimeout(() => {
+            if (currentPage > totalPages) setCurrentPage(totalPages);
+        }, 0);
+        return () => window.clearTimeout(timeoutId);
     }, [currentPage, totalPages]);
 
     const totalCustomers = customers.length;

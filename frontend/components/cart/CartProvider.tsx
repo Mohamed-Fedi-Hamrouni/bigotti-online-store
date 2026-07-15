@@ -229,6 +229,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     const [isLoaded, setIsLoaded] = useState(false);
 
     useEffect(() => {
+        const timeoutId = window.setTimeout(() => {
         const rawCart = window.localStorage.getItem(STORAGE_KEY);
 
         if (rawCart) {
@@ -240,6 +241,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
         }
 
         setIsLoaded(true);
+        }, 0);
+        return () => window.clearTimeout(timeoutId);
     }, []);
 
     useEffect(() => {

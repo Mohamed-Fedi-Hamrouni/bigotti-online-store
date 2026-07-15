@@ -27,8 +27,10 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
             return;
         }
 
-        setIsLoading(true);
-        setError("");
+        const timeoutId = window.setTimeout(() => {
+            setIsLoading(true);
+            setError("");
+        }, 0);
 
         getProducts()
             .then(setProducts)
@@ -38,6 +40,7 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
                 );
             })
             .finally(() => setIsLoading(false));
+        return () => window.clearTimeout(timeoutId);
     }, [isOpen]);
 
     useEffect(() => {

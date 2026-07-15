@@ -18,7 +18,6 @@ import {
     Shirt,
     Tags,
     Trash2,
-    Upload,
 } from "lucide-react";
 import {
     createProduct,
