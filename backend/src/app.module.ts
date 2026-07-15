@@ -15,6 +15,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { HealthModule } from './health/health.module';
 import { MailModule } from './mail/mail.module';
 import { OrdersModule } from './orders/orders.module';
+import { ObservabilityModule } from './observability/observability.module';
 import { PasswordResetModule } from './password-reset/password-reset.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProductsModule } from './products/products.module';
@@ -41,6 +42,7 @@ import { UsersModule } from './users/users.module';
       ],
     }),
     PrismaModule,
+    ObservabilityModule,
     HealthModule,
     MailModule,
     PasswordResetModule,
