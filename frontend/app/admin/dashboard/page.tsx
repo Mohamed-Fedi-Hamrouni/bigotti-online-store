@@ -112,9 +112,11 @@ export default function ManagerDashboardPage() {
         const user = JSON.parse(rawUser);
 
         if (user.role !== "MANAGER" && user.role !== "SUPER_ADMIN") {
-            setError("Accès réservé au manager ou au super administrateur.");
-            setIsLoading(false);
-            return;
+            const timeoutId = window.setTimeout(() => {
+                setError("Accès réservé au manager ou au super administrateur.");
+                setIsLoading(false);
+            }, 0);
+            return () => window.clearTimeout(timeoutId);
         }
 
         getManagerDashboard(token)

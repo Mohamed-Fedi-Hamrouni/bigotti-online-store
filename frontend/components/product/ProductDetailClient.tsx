@@ -932,7 +932,7 @@ export function ProductDetailClient({
                         </button>
 
                         <h2 className="border-b border-neutral-200 pb-5 pr-10 text-xl font-medium text-neutral-950">
-                            Produit ajouté avec succès à votre panier d'achat
+                            Produit ajouté avec succès à votre panier d&apos;achat
                         </h2>
 
                         <div className="grid gap-8 py-6 md:grid-cols-[1.25fr_0.9fr]">

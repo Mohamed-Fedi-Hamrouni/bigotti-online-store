@@ -116,12 +116,14 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
     useEffect(() => {
         if (publicPath) {
-            setSessionState("valid");
-            return;
+            const timeoutId = window.setTimeout(() => setSessionState("valid"), 0);
+            return () => window.clearTimeout(timeoutId);
         }
 
-        setSessionState("checking");
-        setMessage("");
+        const timeoutId = window.setTimeout(() => {
+            setSessionState("checking");
+            setMessage("");
+        }, 0);
 
         getAdminMe()
             .then((profile) => {
@@ -158,6 +160,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                     router.replace("/admin/login");
                 }, 800);
             });
+        return () => window.clearTimeout(timeoutId);
     }, [pathname, router, allowedRoles, publicPath]);
 
     if (publicPath) {

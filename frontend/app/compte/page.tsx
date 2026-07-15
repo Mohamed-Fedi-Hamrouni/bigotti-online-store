@@ -57,7 +57,7 @@ function buildPaginationRange(currentPage: number, totalPages: number) {
 
     const half = Math.floor(maxVisiblePages / 2);
     let start = Math.max(1, currentPage - half);
-    let end = Math.min(totalPages, start + maxVisiblePages - 1);
+    const end = Math.min(totalPages, start + maxVisiblePages - 1);
 
     if (end - start + 1 < maxVisiblePages) {
         start = Math.max(1, end - maxVisiblePages + 1);
@@ -104,9 +104,12 @@ export default function CustomerAccountPage() {
 
     useEffect(() => {
         if (customer) {
-            setProfileFullName(customer.fullName);
-            setProfilePhone(customer.phone);
-            setProfileEmail(customer.email ?? "");
+            const timeoutId = window.setTimeout(() => {
+                setProfileFullName(customer.fullName);
+                setProfilePhone(customer.phone);
+                setProfileEmail(customer.email ?? "");
+            }, 0);
+            return () => window.clearTimeout(timeoutId);
         }
     }, [customer]);
 
@@ -115,8 +118,10 @@ export default function CustomerAccountPage() {
             return;
         }
 
-        setOrdersLoading(true);
-        setOrdersError("");
+        const timeoutId = window.setTimeout(() => {
+            setOrdersLoading(true);
+            setOrdersError("");
+        }, 0);
 
         getCustomerOrders(token)
             .then(setOrders)
@@ -128,6 +133,7 @@ export default function CustomerAccountPage() {
                 );
             })
             .finally(() => setOrdersLoading(false));
+        return () => window.clearTimeout(timeoutId);
     }, [token, isAuthenticated]);
 
     const sortedOrders = useMemo(() => {
@@ -166,9 +172,10 @@ export default function CustomerAccountPage() {
     );
 
     useEffect(() => {
-        if (currentOrdersPage > totalOrdersPages) {
-            setCurrentOrdersPage(totalOrdersPages);
-        }
+        const timeoutId = window.setTimeout(() => {
+            if (currentOrdersPage > totalOrdersPages) setCurrentOrdersPage(totalOrdersPages);
+        }, 0);
+        return () => window.clearTimeout(timeoutId);
     }, [currentOrdersPage, totalOrdersPages]);
 
     function goToOrdersPage(page: number) {

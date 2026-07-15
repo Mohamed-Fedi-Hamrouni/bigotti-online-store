@@ -2,6 +2,7 @@
 
 import {
     createContext,
+    useCallback,
     useContext,
     useEffect,
     useMemo,
@@ -30,6 +31,7 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
     const [isLoaded, setIsLoaded] = useState(false);
 
     useEffect(() => {
+        const timeoutId = window.setTimeout(() => {
         const rawFavorites = window.localStorage.getItem(STORAGE_KEY);
 
         if (rawFavorites) {
@@ -41,6 +43,8 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
         }
 
         setIsLoaded(true);
+        }, 0);
+        return () => window.clearTimeout(timeoutId);
     }, []);
 
     useEffect(() => {
@@ -51,9 +55,9 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
 
     const favoritesCount = favorites.length;
 
-    function isFavorite(productId: string) {
+    const isFavorite = useCallback((productId: string) => {
         return favorites.some((product) => product.id === productId);
-    }
+    }, [favorites]);
 
     function toggleFavorite(product: Product) {
         setFavorites((currentFavorites) => {
@@ -90,7 +94,7 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
             removeFavorite,
             clearFavorites,
         }),
-        [favorites, favoritesCount],
+        [favorites, favoritesCount, isFavorite],
     );
 
     return (

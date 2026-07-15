@@ -99,13 +99,9 @@ export function GoogleIdentityButton({
   const [scriptReady, setScriptReady] = useState(false);
   const [scriptError, setScriptError] = useState(false);
 
-  callbackRef.current = onCredential;
-
   useEffect(() => {
-    if (window.google?.accounts.id) {
-      setScriptReady(true);
-    }
-  }, []);
+    callbackRef.current = onCredential;
+  }, [onCredential]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -129,6 +125,7 @@ export function GoogleIdentityButton({
         src="https://accounts.google.com/gsi/client"
         strategy="afterInteractive"
         onLoad={() => setScriptReady(true)}
+        onReady={() => setScriptReady(true)}
         onError={() => setScriptError(true)}
       />
 

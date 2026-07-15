@@ -125,10 +125,13 @@ export default function CheckoutPage() {
         if (customer) {
             const names = splitFullName(customer.fullName);
 
-            setCustomerFirstName(names.firstName);
-            setCustomerLastName(names.lastName);
-            setCustomerPhone(customer.phone);
-            setCustomerEmail(customer.email ?? "");
+            const timeoutId = window.setTimeout(() => {
+                setCustomerFirstName(names.firstName);
+                setCustomerLastName(names.lastName);
+                setCustomerPhone(customer.phone);
+                setCustomerEmail(customer.email ?? "");
+            }, 0);
+            return () => window.clearTimeout(timeoutId);
         }
     }, [customer]);
 
