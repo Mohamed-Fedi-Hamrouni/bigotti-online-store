@@ -3,127 +3,32 @@ import { PrismaClient } from '../generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import * as bcrypt from 'bcryptjs';
+import {
+  createDemoUsers,
+  validateDevelopmentSeedEnvironment,
+} from './seed-development';
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
-
-const adapter = new PrismaPg(pool);
-const prisma = new PrismaClient({ adapter });
-
-const DEFAULT_PASSWORD = 'Bigotti@2026';
-
-async function createUsers() {
-  const passwordHash = await bcrypt.hash(DEFAULT_PASSWORD, 10);
-
-  await prisma.user.upsert({
-    where: { email: 'superadmin@bigotti.tn' },
-    update: {
-      fullName: 'Super Admin Bigotti',
-      passwordHash,
-      role: 'SUPER_ADMIN',
-      isActive: true,
-    },
-    create: {
-      fullName: 'Super Admin Bigotti',
-      email: 'superadmin@bigotti.tn',
-      passwordHash,
-      role: 'SUPER_ADMIN',
-      isActive: true,
-    },
-  });
-
-  await prisma.user.upsert({
-    where: { email: 'admin@bigotti.tn' },
-    update: {
-      fullName: 'Admin Boutique Bigotti',
-      passwordHash,
-      role: 'ADMIN',
-      isActive: true,
-    },
-    create: {
-      fullName: 'Admin Boutique Bigotti',
-      email: 'admin@bigotti.tn',
-      passwordHash,
-      role: 'ADMIN',
-      isActive: true,
-    },
-  });
-
-  await prisma.user.upsert({
-    where: { email: 'manager@bigotti.tn' },
-    update: {
-      fullName: 'Manager Bigotti',
-      passwordHash,
-      role: 'MANAGER',
-      isActive: true,
-    },
-    create: {
-      fullName: 'Manager Bigotti',
-      email: 'manager@bigotti.tn',
-      passwordHash,
-      role: 'MANAGER',
-      isActive: true,
-    },
-  });
-}
-
-async function createCategories() {
+async function createCategories(prisma: PrismaClient) {
   const categories = [
-    {
-      name: 'Chemises',
-      slug: 'chemises',
-      description: 'Chemises élégantes pour homme.',
-    },
-    {
-      name: 'Pantalons',
-      slug: 'pantalons',
-      description: 'Pantalons habillés et casual.',
-    },
-    {
-      name: 'Costumes',
-      slug: 'costumes',
-      description: 'Costumes et tenues de cérémonie.',
-    },
-    {
-      name: 'Vestes',
-      slug: 'vestes',
-      description: 'Vestes et blazers pour homme.',
-    },
-    {
-      name: 'Pulls',
-      slug: 'pulls',
-      description: 'Pulls et mailles.',
-    },
-    {
-      name: 'Chaussures',
-      slug: 'chaussures',
-      description: 'Chaussures habillées et casual.',
-    },
-    {
-      name: 'Accessoires',
-      slug: 'accessoires',
-      description: 'Ceintures, montres, parfums et accessoires.',
-    },
+    { name: 'Chemises', slug: 'chemises', description: 'Chemises élégantes pour homme.' },
+    { name: 'Pantalons', slug: 'pantalons', description: 'Pantalons habillés et casual.' },
+    { name: 'Costumes', slug: 'costumes', description: 'Costumes et tenues de cérémonie.' },
+    { name: 'Vestes', slug: 'vestes', description: 'Vestes et blazers pour homme.' },
+    { name: 'Pulls', slug: 'pulls', description: 'Pulls et mailles.' },
+    { name: 'Chaussures', slug: 'chaussures', description: 'Chaussures habillées et casual.' },
+    { name: 'Accessoires', slug: 'accessoires', description: 'Ceintures, montres, parfums et accessoires.' },
   ];
 
   for (const category of categories) {
     await prisma.category.upsert({
       where: { slug: category.slug },
-      update: {
-        name: category.name,
-        description: category.description,
-        isActive: true,
-      },
-      create: {
-        ...category,
-        isActive: true,
-      },
+      update: { name: category.name, description: category.description, isActive: true },
+      create: { ...category, isActive: true },
     });
   }
 }
 
-async function createCollections() {
+async function createCollections(prisma: PrismaClient) {
   const collections = [
     {
       name: 'Nouvelle Collection Été 2026',
@@ -162,15 +67,12 @@ async function createCollections() {
         startDate: collection.startDate,
         endDate: collection.endDate,
       },
-      create: {
-        ...collection,
-        isActive: true,
-      },
+      create: { ...collection, isActive: true },
     });
   }
 }
 
-async function createSaleCampaigns() {
+async function createSaleCampaigns(prisma: PrismaClient) {
   const saleCampaigns = [
     {
       name: 'Soldes Été 2026',
@@ -206,32 +108,34 @@ async function createSaleCampaigns() {
 }
 
 async function main() {
-  console.log('Création des utilisateurs internes...');
-  await createUsers();
+  const password = validateDevelopmentSeedEnvironment(process.env);
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  let prisma: PrismaClient | undefined;
 
-  console.log('Création des catégories...');
-  await createCategories();
-
-  console.log('Création des collections...');
-  await createCollections();
-
-  console.log('Création des campagnes de solde...');
-  await createSaleCampaigns();
-
-  console.log('Seed minimal terminé avec succès.');
-  console.log('');
-  console.log('Comptes demo créés :');
-  console.log('superadmin@bigotti.tn / Bigotti@2026');
-  console.log('admin@bigotti.tn / Bigotti@2026');
-  console.log('manager@bigotti.tn / Bigotti@2026');
+  try {
+    prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
+    console.log('Création des utilisateurs internes de démonstration manquants...');
+    await createDemoUsers(prisma, password, (value) => bcrypt.hash(value, 10));
+    console.log('Création des catégories...');
+    await createCategories(prisma);
+    console.log('Création des collections...');
+    await createCollections(prisma);
+    console.log('Création des campagnes de solde...');
+    await createSaleCampaigns(prisma);
+    console.log('Seed de développement terminé avec succès.');
+  } finally {
+    try {
+      await prisma?.$disconnect();
+    } finally {
+      await pool.end();
+    }
+  }
 }
 
-main()
-  .catch((error) => {
-    console.error('Erreur pendant le seed minimal:', error);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-    await pool.end();
-  });
+main().catch((error: unknown) => {
+  const message = error instanceof Error ? error.message : '';
+  const isSafeValidationError =
+    message.startsWith('Refusing to run') || message.startsWith('SEED_DEMO_PASSWORD');
+  console.error(isSafeValidationError ? message : 'Échec du seed de développement.');
+  process.exitCode = 1;
+});

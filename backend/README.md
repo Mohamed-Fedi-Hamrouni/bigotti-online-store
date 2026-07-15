@@ -57,6 +57,22 @@ $ npm run test:e2e
 $ npm run test:cov
 ```
 
+## Database seed and first administrator
+
+The demo seed is development-only and refuses to run when `NODE_ENV=production`.
+It must never be run against a production database. For local development, provide
+`SEED_DEMO_PASSWORD` through the environment and run `npm run db:seed:dev`. The
+password must be at least 12 characters. Existing internal users are left unchanged.
+
+For a fresh production environment that has no active `SUPER_ADMIN`, provide
+`BOOTSTRAP_SUPERADMIN_NAME`, `BOOTSTRAP_SUPERADMIN_EMAIL`, and
+`BOOTSTRAP_SUPERADMIN_PASSWORD` through the environment, then run
+`npm run admin:bootstrap` once. After the first production `SUPER_ADMIN` exists,
+create every additional internal user through `/admin/utilisateurs`.
+
+Passwords and other secrets must be supplied through environment variables. Never
+commit them to source control or include them in command output or deployment logs.
+
 ## Deployment
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
