@@ -1,4 +1,4 @@
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import * as express from 'express';
@@ -6,6 +6,7 @@ import helmet from 'helmet';
 import { join } from 'path';
 import { AppModule } from './app.module';
 import { AUTH_COOKIE_NAMES } from './auth/services/auth-cookie.service';
+import { RequestIdMiddleware } from './observability/request-id.middleware';
 
 const UNSAFE_HTTP_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'] as const;
 
@@ -53,7 +54,10 @@ function createCookieCsrfMiddleware(
   allowedOrigins: ReadonlySet<string>,
 ): express.RequestHandler {
   return (request, response, next) => {
-    if (!isUnsafeMethod(request.method) || !hasAuthCookie(request.headers.cookie)) {
+    if (
+      !isUnsafeMethod(request.method) ||
+      !hasAuthCookie(request.headers.cookie)
+    ) {
       next();
       return;
     }
@@ -84,8 +88,7 @@ async function bootstrap() {
   });
 
   const configService = app.get(ConfigService);
-  const expressApp =
-    app.getHttpAdapter().getInstance() as express.Application;
+  const expressApp = app.getHttpAdapter().getInstance() as express.Application;
 
   const isProduction =
     configService.get<string>('NODE_ENV', 'development') === 'production';
@@ -101,6 +104,9 @@ async function bootstrap() {
 
   expressApp.disable('x-powered-by');
   expressApp.set('trust proxy', trustProxyHops);
+
+  const requestIdMiddleware = new RequestIdMiddleware();
+  app.use(requestIdMiddleware.use.bind(requestIdMiddleware));
 
   app.use(
     helmet({
@@ -157,8 +163,10 @@ async function bootstrap() {
       'Authorization',
       'Content-Type',
       'Origin',
+      'X-Request-ID',
       'X-Requested-With',
     ],
+    exposedHeaders: ['X-Request-ID'],
     optionsSuccessStatus: 204,
     maxAge: 86_400,
   });
@@ -201,9 +209,32 @@ async function bootstrap() {
   const port = configService.get<number>('PORT', 3000);
 
   await app.listen(port, '0.0.0.0');
+
+  new Logger('Bootstrap').log(
+    JSON.stringify({
+      event: 'application_started',
+      service: 'bigotti-backend',
+      port,
+      environment: configService.get<string>('NODE_ENV', 'development'),
+    }),
+  );
 }
 
 void bootstrap().catch((error: unknown) => {
-  console.error('Le backend Bigotti n’a pas pu démarrer.', error);
+  const logger = new Logger('Bootstrap');
+  logger.error(
+    JSON.stringify({
+      event: 'application_start_failed',
+      service: 'bigotti-backend',
+      message: 'Le backend Bigotti n’a pas pu démarrer.',
+    }),
+  );
+  if (
+    process.env.NODE_ENV !== 'production' &&
+    error instanceof Error &&
+    error.stack
+  ) {
+    logger.debug(error.stack);
+  }
   process.exit(1);
 });

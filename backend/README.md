@@ -82,6 +82,23 @@ commit them to source control or include them in command output or deployment lo
 - Readiness returns HTTP 503 when PostgreSQL is unavailable or the database check times out.
 - Both endpoints return only safe status metadata and never expose secrets or connection details.
 
+### HTTP observability
+
+Clients may send a correlation identifier in `x-request-id`. Values containing only
+letters, numbers, hyphens, underscores, and periods (up to 128 characters) are
+preserved; missing or invalid values are replaced with a UUID. Every response returns
+the effective value in `X-Request-ID`, including error responses.
+
+The backend writes one-line JSON events to stdout/stderr for Azure Log Stream:
+`http_request`, `http_error`, `application_started`, and
+`application_start_failed`. HTTP logs include safe request metadata and never include
+headers, cookies, authorization credentials, query-string values, request/response
+bodies, passwords, tokens, contact details, addresses, environment variables, or
+connection strings. Successful liveness and readiness requests are suppressed, while
+failed health checks are logged. Unexpected exceptions receive a generic production
+HTTP 500 response with the request ID; internal error messages and stacks are never
+returned.
+
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
 
 If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
