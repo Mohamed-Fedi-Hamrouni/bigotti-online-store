@@ -12,6 +12,7 @@ import { validateEnvironment } from './config/environment';
 import { CustomerAuthModule } from './customer-auth/customer-auth.module';
 import { CustomersModule } from './customers/customers.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { HealthModule } from './health/health.module';
 import { MailModule } from './mail/mail.module';
 import { OrdersModule } from './orders/orders.module';
 import { PasswordResetModule } from './password-reset/password-reset.module';
@@ -34,15 +35,13 @@ import { UsersModule } from './users/users.module';
       useFactory: (configService: ConfigService) => [
         {
           name: 'global',
-          ttl: configService.get<number>(
-            'GLOBAL_RATE_LIMIT_TTL_MS',
-            60_000,
-          ),
+          ttl: configService.get<number>('GLOBAL_RATE_LIMIT_TTL_MS', 60_000),
           limit: configService.get<number>('GLOBAL_RATE_LIMIT_MAX', 120),
         },
       ],
     }),
     PrismaModule,
+    HealthModule,
     MailModule,
     PasswordResetModule,
     AuthModule,

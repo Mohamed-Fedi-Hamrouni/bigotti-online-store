@@ -88,24 +88,11 @@ jobs:
           for attempt in $(seq 1 40); do
             echo "Vérification ${attempt}/40..."
 
-            ROOT_RESPONSE="$(
-              curl \
-                --silent \
-                --show-error \
-                --fail \
-                --max-time 20 \
-                "${BACKEND_URL}/" 2>/dev/null || true
-            )"
+            LIVE_STATUS="$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 20 "${BACKEND_URL}/health/live" || true)"
+            READY_STATUS="$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 20 "${BACKEND_URL}/health/ready" || true)"
+            PRODUCTS_STATUS="$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 30 "${BACKEND_URL}/products" || true)"
 
-            if [ "$ROOT_RESPONSE" = "Hello World!" ]; then
-              curl \
-                --silent \
-                --show-error \
-                --fail \
-                --max-time 30 \
-                "${BACKEND_URL}/products" \
-                >/dev/null
-
+            if [ "$LIVE_STATUS" = "200" ] && [ "$READY_STATUS" = "200" ] && [ "$PRODUCTS_STATUS" = "200" ]; then
               echo "Backend Azure opérationnel."
               exit 0
             fi

@@ -75,6 +75,13 @@ commit them to source control or include them in command output or deployment lo
 
 ## Deployment
 
+### Health checks
+
+- `GET /health/live` reports whether the NestJS process is running without querying the database.
+- `GET /health/ready` verifies PostgreSQL connectivity and is the intended Azure App Service Health Check path.
+- Readiness returns HTTP 503 when PostgreSQL is unavailable or the database check times out.
+- Both endpoints return only safe status metadata and never expose secrets or connection details.
+
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
 
 If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
