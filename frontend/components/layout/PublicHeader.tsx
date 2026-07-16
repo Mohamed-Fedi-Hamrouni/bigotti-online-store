@@ -241,7 +241,7 @@ export function PublicHeader() {
                     Livraison à domicile — Paiement à la livraison disponible
                 </div>
 
-                <div className="mx-auto flex max-w-7xl items-center justify-between gap-6 px-6 py-4">
+                <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-4 px-4 py-4 sm:px-6 xl:gap-6 xl:px-8">
                     <button
                         type="button"
                         onClick={() => setIsMenuOpen(true)}
@@ -259,15 +259,15 @@ export function PublicHeader() {
                         Bigotti
                     </Link>
 
-                    <nav className="hidden flex-1 items-center justify-center gap-7 text-sm font-black uppercase tracking-[0.16em] text-neutral-700 lg:flex">
+                    <nav className="hidden min-w-0 flex-1 items-center justify-center gap-4 text-[11px] font-black uppercase tracking-[0.1em] text-neutral-700 lg:flex xl:gap-5 xl:text-xs xl:tracking-[0.12em] 2xl:gap-8 2xl:text-sm">
                         <Link
                             href="/#promotions"
-                            className="relative py-3 transition after:absolute after:bottom-1 after:left-0 after:h-px after:w-0 after:bg-black after:transition-all hover:text-black hover:after:w-full"
+                            className="relative shrink-0 whitespace-nowrap py-3 transition after:absolute after:bottom-1 after:left-0 after:h-px after:w-0 after:bg-black after:transition-all hover:text-black hover:after:w-full"
                         >
                             Promotions
                         </Link>
 
-                        <div className="group/collection relative">
+                        <div className="group/collection relative shrink-0">
                             <button
                                 type="button"
                                 className="flex items-center gap-2 py-3 transition hover:text-black"
@@ -335,12 +335,12 @@ export function PublicHeader() {
                                 costumeCategory,
                                 "costume ceremonie",
                             )}
-                            className="relative py-3 transition after:absolute after:bottom-1 after:left-0 after:h-px after:w-0 after:bg-black after:transition-all hover:text-black hover:after:w-full"
+                            className="relative shrink-0 whitespace-nowrap py-3 transition after:absolute after:bottom-1 after:left-0 after:h-px after:w-0 after:bg-black after:transition-all hover:text-black hover:after:w-full"
                         >
                             Costume & cérémonie
                         </Link>
 
-                        <div className="group/chaussures relative">
+                        <div className="group/chaussures relative shrink-0">
                             <button
                                 type="button"
                                 className="flex items-center gap-2 py-3 transition hover:text-black"
@@ -378,7 +378,7 @@ export function PublicHeader() {
                             </div>
                         </div>
 
-                        <div className="group/accessoires relative">
+                        <div className="group/accessoires relative shrink-0">
                             <button
                                 type="button"
                                 className="flex items-center gap-2 py-3 transition hover:text-black"
@@ -417,10 +417,10 @@ export function PublicHeader() {
                         </div>
                     </nav>
 
-                    <div className="flex shrink-0 items-center gap-2">
+                    <div className="flex shrink-0 items-center gap-1.5 xl:gap-2">
                         <Link
                             href="/points-de-vente"
-                            className="hidden rounded-full border border-neutral-200 p-3.5 transition hover:border-black hover:bg-neutral-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black md:inline-flex"
+                            className="hidden rounded-full border border-neutral-200 p-2.5 transition hover:border-black hover:bg-neutral-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black md:inline-flex xl:p-3"
                             aria-label="Trouver un point de vente"
                         >
                             <MapPin size={20} />
@@ -429,7 +429,7 @@ export function PublicHeader() {
                         <button
                             type="button"
                             onClick={() => setIsSearchOpen(true)}
-                            className="hidden rounded-full border border-neutral-200 p-3.5 transition hover:border-black hover:bg-neutral-50 md:inline-flex"
+                            className="hidden rounded-full border border-neutral-200 p-2.5 transition hover:border-black hover:bg-neutral-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black md:inline-flex xl:p-3"
                             aria-label="Recherche"
                         >
                             <Search size={20} />
@@ -437,7 +437,7 @@ export function PublicHeader() {
 
                         <Link
                             href="/favoris"
-                            className="relative hidden rounded-full border border-neutral-200 p-3.5 transition hover:border-black hover:bg-neutral-50 md:inline-flex"
+                            className="relative hidden rounded-full border border-neutral-200 p-2.5 transition hover:border-black hover:bg-neutral-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black md:inline-flex xl:p-3"
                             aria-label="Favoris"
                         >
                             <Heart size={20} />
@@ -451,7 +451,7 @@ export function PublicHeader() {
 
                         <Link
                             href={isAuthenticated ? "/compte" : "/compte/login"}
-                            className="hidden rounded-full border border-neutral-200 p-3.5 transition hover:border-black hover:bg-neutral-50 md:inline-flex"
+                            className="hidden rounded-full border border-neutral-200 p-2.5 transition hover:border-black hover:bg-neutral-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black md:inline-flex xl:p-3"
                             aria-label="Mon compte"
                         >
                             <UserRound size={20} />
@@ -459,7 +459,7 @@ export function PublicHeader() {
 
                         <Link
                             href="/panier"
-                            className="relative rounded-full bg-black p-3.5 text-white transition hover:bg-neutral-800"
+                            className="relative rounded-full bg-black p-2.5 text-white transition hover:bg-neutral-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black xl:p-3"
                             aria-label="Panier"
                         >
                             <ShoppingBag size={21} />
