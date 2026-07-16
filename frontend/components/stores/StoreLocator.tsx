@@ -1,16 +1,21 @@
 "use client";
 
 import { Check, ExternalLink, MapPin } from "lucide-react";
+import dynamic from "next/dynamic";
 import { useState } from "react";
-import { bigottiStores, getStoreDirectionsUrl } from "@/data/stores";
+import { bigottiStores } from "@/data/stores";
+
+const StoreMap = dynamic(() => import("@/components/stores/StoreMap"), {
+    ssr: false,
+    loading: () => (
+        <div className="flex h-[440px] items-center justify-center rounded-3xl border-2 border-black bg-neutral-200 px-6 text-center text-sm font-bold lg:h-[min(680px,calc(100vh-10rem))]">
+            Chargement de la carte…
+        </div>
+    ),
+});
 
 export function StoreLocator() {
-    const [selectedStoreId, setSelectedStoreId] = useState(
-        bigottiStores[0]?.id ?? "",
-    );
-    const selectedStore =
-        bigottiStores.find((store) => store.id === selectedStoreId) ??
-        bigottiStores[0];
+    const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
 
     return (
         <div className="grid min-w-0 gap-8 lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)] xl:gap-12">
@@ -28,10 +33,11 @@ export function StoreLocator() {
                         return (
                             <article
                                 key={store.id}
+                                onClick={() => setSelectedStoreId(store.id)}
                                 className={`rounded-3xl border-2 bg-white p-5 transition sm:p-6 ${
                                     selected
-                                        ? "border-black"
-                                        : "border-neutral-200 hover:border-neutral-500"
+                                        ? "border-black shadow-[5px_5px_0_0_#000]"
+                                        : "cursor-pointer border-neutral-200 hover:border-neutral-500"
                                 }`}
                             >
                                 <div className="flex items-start gap-4">
@@ -70,16 +76,16 @@ export function StoreLocator() {
                                         aria-pressed={selected}
                                         className="rounded-full border border-black px-5 py-3 text-xs font-black uppercase tracking-[0.12em] transition hover:bg-black hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black"
                                     >
-                                        {selected ? "Boutique sélectionnée" : "Sélectionner"}
+                                        {selected ? "Boutique sélectionnée" : "Voir sur la carte"}
                                     </button>
                                     <a
-                                        href={getStoreDirectionsUrl(store)}
+                                        href={store.googleMapsUrl}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="inline-flex items-center justify-center gap-2 rounded-full bg-black px-5 py-3 text-center text-xs font-black uppercase tracking-[0.12em] text-white transition hover:bg-neutral-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black"
-                                        aria-label={`Voir ${store.name} sur OpenStreetMap (nouvel onglet)`}
+                                        aria-label={`Itinéraire Google Maps vers ${store.name} (nouvel onglet)`}
                                     >
-                                        Voir sur OpenStreetMap
+                                        Itinéraire
                                         <ExternalLink size={14} aria-hidden="true" />
                                     </a>
                                 </div>
@@ -90,54 +96,17 @@ export function StoreLocator() {
             </section>
 
             <section
-                aria-labelledby="map-title"
-                className="relative min-h-[420px] overflow-hidden rounded-3xl border-2 border-black bg-[#e8e8e3] lg:sticky lg:top-36 lg:h-[min(680px,calc(100vh-10rem))]"
+                aria-labelledby="store-map-title"
+                className="min-w-0 lg:sticky lg:top-36 lg:self-start"
             >
-                <div
-                    aria-hidden="true"
-                    className="absolute inset-0 opacity-35 [background-image:linear-gradient(35deg,transparent_45%,#8b8b84_46%,#8b8b84_48%,transparent_49%),linear-gradient(125deg,transparent_42%,#fff_43%,#fff_47%,transparent_48%),linear-gradient(#b8b8b1_1px,transparent_1px),linear-gradient(90deg,#b8b8b1_1px,transparent_1px)] [background-size:180px_180px,240px_240px,44px_44px,44px_44px]"
+                <h2 id="store-map-title" className="sr-only">
+                    Carte interactive des points de vente
+                </h2>
+                <StoreMap
+                    stores={bigottiStores}
+                    selectedStoreId={selectedStoreId}
+                    onSelectStore={setSelectedStoreId}
                 />
-                <div className="relative flex h-full min-h-[420px] flex-col justify-between p-6 sm:p-8 md:p-10">
-                    <div className="flex items-center justify-between border-b border-black pb-4">
-                        <p className="text-xs font-black uppercase tracking-[0.24em]">
-                            OpenStreetMap
-                        </p>
-                        <MapPin size={22} aria-hidden="true" />
-                    </div>
-                    <div className="my-12 max-w-lg rounded-3xl border border-black bg-white p-6 shadow-[8px_8px_0_0_#000] sm:p-8">
-                        <p className="text-sm leading-6 text-neutral-700">
-                            Sélectionnez un point de vente pour l’ouvrir sur OpenStreetMap.
-                        </p>
-                        {selectedStore && (
-                            <>
-                                <h2 id="map-title" className="mt-6 text-2xl font-black uppercase tracking-[-0.03em] sm:text-3xl">
-                                    {selectedStore.name}
-                                </h2>
-                                <address className="mt-3 not-italic text-sm leading-6 text-neutral-800">
-                                    {selectedStore.address}, {selectedStore.city}, Tunisie
-                                </address>
-                                <a
-                                    href={getStoreDirectionsUrl(selectedStore)}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-full bg-black px-5 py-4 text-center text-xs font-black uppercase tracking-[0.12em] text-white transition hover:bg-neutral-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black"
-                                    aria-label={`Ouvrir ${selectedStore.name} dans OpenStreetMap (nouvel onglet)`}
-                                >
-                                    Ouvrir dans OpenStreetMap
-                                    <ExternalLink size={15} aria-hidden="true" />
-                                </a>
-                            </>
-                        )}
-                    </div>
-                    <a
-                        href="https://www.openstreetmap.org/copyright"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="self-start rounded bg-white px-3 py-2 text-xs font-bold underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black"
-                    >
-                        © OpenStreetMap contributors
-                    </a>
-                </div>
             </section>
         </div>
     );

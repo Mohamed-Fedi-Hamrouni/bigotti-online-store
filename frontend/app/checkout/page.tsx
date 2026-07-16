@@ -19,7 +19,7 @@ const DELIVERY_FEE = 8;
 
 const pickupStores = bigottiStores.map((store) => ({
         value: store.pickupStoreCode,
-        label: store.pickupLabel,
+        label: store.shortLabel,
         address: store.address,
 }));
 
