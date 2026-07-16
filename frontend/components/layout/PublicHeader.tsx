@@ -4,6 +4,7 @@ import Link from "next/link";
 import {
     ChevronDown,
     Heart,
+    MapPin,
     Menu,
     Search,
     ShoppingBag,
@@ -417,6 +418,14 @@ export function PublicHeader() {
                     </nav>
 
                     <div className="flex shrink-0 items-center gap-2">
+                        <Link
+                            href="/points-de-vente"
+                            className="hidden rounded-full border border-neutral-200 p-3.5 transition hover:border-black hover:bg-neutral-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black md:inline-flex"
+                            aria-label="Trouver un point de vente"
+                        >
+                            <MapPin size={20} />
+                        </Link>
+
                         <button
                             type="button"
                             onClick={() => setIsSearchOpen(true)}
@@ -487,6 +496,15 @@ export function PublicHeader() {
                             </div>
 
                             <nav className="mt-8 space-y-3">
+                                <Link
+                                    href="/points-de-vente"
+                                    onClick={() => setIsMenuOpen(false)}
+                                    className="flex items-center gap-3 rounded-2xl bg-neutral-50 px-5 py-4 text-sm font-black uppercase tracking-[0.16em] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black"
+                                >
+                                    <MapPin size={19} aria-hidden="true" />
+                                    Points de vente
+                                </Link>
+
                                 <button
                                     type="button"
                                     onClick={() => {
