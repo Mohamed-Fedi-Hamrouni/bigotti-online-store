@@ -52,6 +52,18 @@ jobs:
         working-directory: backend
         run: npm run build
 
+      - name: Keep production dependencies only
+        working-directory: backend
+        run: npm prune --omit=dev --no-audit --no-fund
+
+      - name: Verify production runtime files
+        working-directory: backend
+        run: |
+          test -f dist/src/main.js
+          test -d generated/prisma
+          test -d node_modules/@nestjs/core
+          test -d node_modules/@prisma/client
+
       - name: Verify compiled entry point
         run: |
           if [ ! -f backend/dist/src/main.js ]; then
@@ -59,19 +71,17 @@ jobs:
             exit 1
           fi
 
-      - name: Create deployment package
+      - name: Create ready-to-run deployment package
         working-directory: backend
         run: |
           rm -f "$DEPLOY_ZIP"
 
           zip -rq "$DEPLOY_ZIP" . \
             -x \
-              "node_modules/*" \
-              "dist/*" \
-              "coverage/*" \
               ".git/*" \
               ".env" \
               ".env.*" \
+              "coverage/*" \
               "*.log" \
               ".DS_Store"
 
@@ -82,14 +92,20 @@ jobs:
           for required_file in \
             package.json \
             package-lock.json \
-            nest-cli.json \
-            tsconfig.json \
-            prisma.config.ts \
-            prisma/schema.prisma \
-            src/main.ts
+            dist/src/main.js
           do
             if ! printf '%s\n' "$ZIP_CONTENTS" | grep -Fxq "$required_file"; then
-              echo "Required file missing from package: $required_file"
+              echo "Required file missing: $required_file"
+              exit 1
+            fi
+          done
+
+          for required_directory in \
+            "node_modules/" \
+            "generated/prisma/"
+          do
+            if ! printf '%s\n' "$ZIP_CONTENTS" | grep -q "^${required_directory}"; then
+              echo "Required directory missing: $required_directory"
               exit 1
             fi
           done
@@ -99,7 +115,7 @@ jobs:
             exit 1
           fi
 
-          echo "Deployment package created:"
+          echo "Ready-to-run deployment package:"
           du -h "$DEPLOY_ZIP"
 
       - name: Authenticate with Azure using OIDC
