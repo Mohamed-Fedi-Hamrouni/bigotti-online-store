@@ -13,40 +13,21 @@ import type {
     FulfillmentMethod,
     PickupStore,
 } from "@/types/order";
+import { bigottiStores } from "@/data/stores";
 
 const DELIVERY_FEE = 8;
 
-const pickupStores: {
-    value: PickupStore;
-    label: string;
-    address: string;
-}[] = [
-    {
-        value: "NABEUL",
-        label: "Nabeul",
-        address: "Magasin Bigotti Nabeul",
-    },
-    {
-        value: "SFAX",
-        label: "Sfax",
-        address: "Magasin Bigotti Sfax",
-    },
-    {
-        value: "LAC_2",
-        label: "Lac 2",
-        address: "Magasin Bigotti Lac 2",
-    },
-    {
-        value: "LAFAYETTE",
-        label: "Lafayette",
-        address: "Magasin Bigotti Lafayette",
-    },
-    {
-        value: "SOUKRA",
-        label: "Soukra",
-        address: "Magasin Bigotti Soukra",
-    },
-];
+const pickupStores = bigottiStores.flatMap((store) =>
+    store.pickupStoreCode
+        ? [
+              {
+                  value: store.pickupStoreCode,
+                  label: store.name.replace("Bigotti ", ""),
+                  address: store.address,
+              },
+          ]
+        : [],
+);
 
 function formatPrice(value: number | string | null | undefined) {
     const numericValue = Number(value);

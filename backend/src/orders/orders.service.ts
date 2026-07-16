@@ -107,7 +107,17 @@ export class OrdersService {
       : dto.deliveryCity!.trim();
     const deliveryNotes = this.buildDeliveryNotes(dto, pickupStoreLabel);
 
-    const variantIds = dto.items.map((item) => item.variantId);
+    const aggregatedItems = Array.from(
+      dto.items
+        .reduce((itemsByVariant, item) => {
+          const currentQuantity = itemsByVariant.get(item.variantId) ?? 0;
+          itemsByVariant.set(item.variantId, currentQuantity + item.quantity);
+          return itemsByVariant;
+        }, new Map<string, number>())
+        .entries(),
+      ([variantId, quantity]) => ({ variantId, quantity }),
+    );
+    const variantIds = aggregatedItems.map((item) => item.variantId);
 
     const variants = await this.prisma.productVariant.findMany({
       where: {
@@ -131,7 +141,7 @@ export class OrdersService {
       );
     }
 
-    const orderItemsBeforePromotion: InternalOrderItem[] = dto.items.map(
+    const orderItemsBeforePromotion: InternalOrderItem[] = aggregatedItems.map(
       (item) => {
         const variant = variants.find(
           (currentVariant) => currentVariant.id === item.variantId,
@@ -199,6 +209,28 @@ export class OrdersService {
     const orderNumber = await this.generateOrderNumber();
 
     const order = await this.prisma.$transaction(async (tx) => {
+      for (const item of orderItemsBeforePromotion) {
+        const stockUpdate = await tx.productVariant.updateMany({
+          where: {
+            id: item.productVariantId,
+            stockQuantity: {
+              gte: item.quantity,
+            },
+          },
+          data: {
+            stockQuantity: {
+              decrement: item.quantity,
+            },
+          },
+        });
+
+        if (stockUpdate.count !== 1) {
+          throw new BadRequestException(
+            `Stock insuffisant pour ${item.productName} - ${item.color} / ${item.size}.`,
+          );
+        }
+      }
+
       const createdOrder = await tx.order.create({
         data: {
           orderNumber,
@@ -255,19 +287,6 @@ export class OrdersService {
         include: this.defaultInclude(),
       });
 
-      for (const item of dto.items) {
-        await tx.productVariant.update({
-          where: {
-            id: item.variantId,
-          },
-          data: {
-            stockQuantity: {
-              decrement: item.quantity,
-            },
-          },
-        });
-      }
-
       return createdOrder;
     });
 
@@ -301,24 +320,116 @@ export class OrdersService {
   }
 
   async updateStatus(id: string, dto: UpdateOrderStatusDto) {
-    const order = await this.prisma.order.findUnique({
-      where: {
-        id,
-      },
-    });
+    const updatedOrder = await this.prisma.$transaction(async (tx) => {
+      const order = await tx.order.findUnique({
+        where: { id },
+        include: { items: true },
+      });
 
-    if (!order) {
-      throw new NotFoundException('Commande introuvable.');
-    }
+      if (!order) {
+        throw new NotFoundException('Commande introuvable.');
+      }
 
-    const updatedOrder = await this.prisma.order.update({
-      where: {
-        id,
-      },
-      data: {
-        orderStatus: dto.orderStatus,
-      },
-      include: this.defaultInclude(),
+      if (order.orderStatus === 'CANCELLED') {
+        if (dto.orderStatus !== 'CANCELLED') {
+          throw new BadRequestException(
+            'Une commande annulée ne peut pas être réactivée.',
+          );
+        }
+
+        return tx.order.findUniqueOrThrow({
+          where: { id },
+          include: this.defaultInclude(),
+        });
+      }
+
+      if (
+        order.orderStatus === 'DELIVERED' &&
+        dto.orderStatus === 'CANCELLED'
+      ) {
+        throw new BadRequestException(
+          'Une commande livrée ne peut pas être annulée.',
+        );
+      }
+
+      const quantitiesByVariant = new Map<string, number>();
+      if (dto.orderStatus === 'CANCELLED') {
+        for (const item of order.items) {
+          if (!item.variantId) {
+            throw new BadRequestException(
+              'La restauration du stock de la commande a échoué.',
+            );
+          }
+
+          quantitiesByVariant.set(
+            item.variantId,
+            (quantitiesByVariant.get(item.variantId) ?? 0) + item.quantity,
+          );
+        }
+      }
+
+      const statusUpdate = await tx.order.updateMany({
+        where: {
+          id,
+          orderStatus: order.orderStatus,
+        },
+        data: { orderStatus: dto.orderStatus },
+      });
+
+      if (statusUpdate.count !== 1) {
+        const currentOrder = await tx.order.findUniqueOrThrow({
+          where: { id },
+          include: this.defaultInclude(),
+        });
+
+        if (currentOrder.orderStatus === 'CANCELLED') {
+          if (dto.orderStatus === 'CANCELLED') {
+            return currentOrder;
+          }
+
+          throw new BadRequestException(
+            'Une commande annulée ne peut pas être réactivée.',
+          );
+        }
+
+        if (
+          currentOrder.orderStatus === 'DELIVERED' &&
+          dto.orderStatus === 'CANCELLED'
+        ) {
+          throw new BadRequestException(
+            'Une commande livrée ne peut pas être annulée.',
+          );
+        }
+
+        throw new BadRequestException(
+          'Le statut de la commande a changé. Veuillez réessayer.',
+        );
+      }
+
+      if (dto.orderStatus !== 'CANCELLED') {
+        return tx.order.findUniqueOrThrow({
+          where: { id },
+          include: this.defaultInclude(),
+        });
+      }
+
+      for (const [variantId, quantity] of quantitiesByVariant) {
+        const stockRestoration = await tx.productVariant.updateMany({
+          where: { id: variantId },
+          data: { stockQuantity: { increment: quantity } },
+        });
+
+        if (stockRestoration.count !== 1) {
+          throw new BadRequestException(
+            'La restauration du stock de la commande a échoué.',
+          );
+        }
+      }
+
+      return tx.order.findUniqueOrThrow({
+        where: { id },
+        include: this.defaultInclude(),
+      });
     });
 
     return this.normalizeOrderResponse(updatedOrder);
