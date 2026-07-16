@@ -17,17 +17,11 @@ import { bigottiStores } from "@/data/stores";
 
 const DELIVERY_FEE = 8;
 
-const pickupStores = bigottiStores.flatMap((store) =>
-    store.pickupStoreCode
-        ? [
-              {
-                  value: store.pickupStoreCode,
-                  label: store.name.replace("Bigotti ", ""),
-                  address: store.address,
-              },
-          ]
-        : [],
-);
+const pickupStores = bigottiStores.map((store) => ({
+        value: store.pickupStoreCode,
+        label: store.pickupLabel,
+        address: store.address,
+}));
 
 function formatPrice(value: number | string | null | undefined) {
     const numericValue = Number(value);
