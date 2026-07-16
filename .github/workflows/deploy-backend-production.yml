@@ -1,0 +1,165 @@
+name: Deploy backend production
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/**"
+      - ".github/workflows/deploy-backend-production.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-backend-production
+  cancel-in-progress: false
+
+jobs:
+  validate-and-deploy:
+    name: Validate and deploy backend production
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_API_URL }}
+
+    env:
+      CI: "true"
+      DATABASE_URL: postgresql://ci_user:ci_password@localhost:5432/ci_database
+      DEPLOY_ZIP: ${{ github.workspace }}/bigotti-backend-production.zip
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Configure Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Run backend tests
+        working-directory: backend
+        run: npm test -- --runInBand
+
+      - name: Build backend
+        working-directory: backend
+        run: npm run build
+
+      - name: Keep production dependencies only
+        working-directory: backend
+        run: npm prune --omit=dev --no-audit --no-fund
+
+      - name: Verify production runtime files
+        working-directory: backend
+        run: |
+          test -f dist/src/main.js
+          test -d generated/prisma
+          test -d node_modules/@nestjs/core
+          test -d node_modules/@prisma/client
+
+      - name: Create ready-to-run deployment package
+        working-directory: backend
+        run: |
+          rm -f "$DEPLOY_ZIP"
+
+          zip -rq "$DEPLOY_ZIP" \
+            dist \
+            generated \
+            node_modules \
+            package.json \
+            package-lock.json
+
+          test -f "$DEPLOY_ZIP"
+
+          ZIP_CONTENTS="$(unzip -Z1 "$DEPLOY_ZIP")"
+
+          for required_file in \
+            package.json \
+            package-lock.json \
+            dist/src/main.js
+          do
+            if ! printf '%s\n' "$ZIP_CONTENTS" | grep -Fxq "$required_file"; then
+              echo "Required file missing: $required_file"
+              exit 1
+            fi
+          done
+
+          for required_directory in \
+            "node_modules/" \
+            "generated/prisma/"
+          do
+            if ! printf '%s\n' "$ZIP_CONTENTS" | grep -q "^${required_directory}"; then
+              echo "Required directory missing: $required_directory"
+              exit 1
+            fi
+          done
+
+          if printf '%s\n' "$ZIP_CONTENTS" | grep -Eq '(^|/)\.env($|\.)'; then
+            echo "A .env file was found in the deployment package."
+            exit 1
+          fi
+
+          echo "Ready-to-run production package:"
+          du -h "$DEPLOY_ZIP"
+
+      - name: Authenticate with Azure using OIDC
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy backend to Azure production
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.AZURE_WEBAPP_NAME }}
+          package: ${{ env.DEPLOY_ZIP }}
+
+      - name: Verify production health
+        env:
+          PRODUCTION_API_URL: ${{ vars.PRODUCTION_API_URL }}
+        run: |
+          echo "Checking $PRODUCTION_API_URL/health/ready"
+
+          for attempt in $(seq 1 30); do
+            HTTP_CODE="$(
+              curl \
+                --silent \
+                --show-error \
+                --location \
+                --max-time 20 \
+                --output /tmp/production-health.json \
+                --write-out "%{http_code}" \
+                "$PRODUCTION_API_URL/health/ready" \
+                || true
+            )"
+
+            echo "Attempt $attempt/30: HTTP $HTTP_CODE"
+
+            if [ "$HTTP_CODE" = "200" ]; then
+              cat /tmp/production-health.json
+              echo
+              echo "Backend production is ready."
+              exit 0
+            fi
+
+            sleep 10
+          done
+
+          echo "Backend production did not become ready."
+          cat /tmp/production-health.json 2>/dev/null || true
+          exit 1
+
+      - name: Azure logout
+        if: always()
+        run: az logout
