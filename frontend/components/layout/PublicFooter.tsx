@@ -9,21 +9,14 @@ import {
     Smile,
     Truck,
 } from "lucide-react";
+import { bigottiStores } from "@/data/stores";
 
-const storeLocations = [
-    {
-        city: "Tunis",
-        stores: ["Soukra Ariana", "Lafayette", "Lac 2, Jinan Al Bouhayra"],
-    },
-    {
-        city: "Nabeul",
-        stores: ["Avenue Habib Thameur"],
-    },
-    {
-        city: "Sfax",
-        stores: ["Nasria, Avenue Med Chaabouni"],
-    },
-];
+const storeLocations = Object.entries(
+    bigottiStores.reduce<Record<string, string[]>>((locations, store) => {
+        locations[store.city] = [...(locations[store.city] ?? []), store.address];
+        return locations;
+    }, {}),
+).map(([city, stores]) => ({ city, stores }));
 
 const socialLinks = [
     {

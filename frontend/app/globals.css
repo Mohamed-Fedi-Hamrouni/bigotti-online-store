@@ -24,3 +24,45 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+.bigotti-map-marker-shell {
+  background: transparent;
+  border: 0;
+}
+
+.bigotti-map-marker {
+  align-items: center;
+  background: #111;
+  border: 3px solid #fff;
+  border-radius: 50% 50% 50% 0;
+  box-shadow: 0 3px 10px rgb(0 0 0 / 35%);
+  display: flex;
+  height: 34px;
+  justify-content: center;
+  transform: rotate(-45deg);
+  width: 34px;
+}
+
+.bigotti-map-marker > span {
+  background: #fff;
+  border-radius: 999px;
+  height: 9px;
+  width: 9px;
+}
+
+.bigotti-map-marker--selected {
+  border-color: #111;
+  box-shadow: 0 0 0 4px #fff, 0 4px 14px rgb(0 0 0 / 45%);
+  height: 40px;
+  width: 40px;
+}
+
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  border-radius: 16px;
+}
+
+.leaflet-control-attribution a {
+  color: #111;
+  font-weight: 700;
+}
