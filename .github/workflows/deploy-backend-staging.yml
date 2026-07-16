@@ -27,7 +27,7 @@ jobs:
     env:
       CI: "true"
       DATABASE_URL: postgresql://ci_user:ci_password@localhost:5432/ci_database
-      DEPLOY_ZIP: ${{ runner.temp }}/bigotti-backend-staging.zip
+      DEPLOY_ZIP: ${{ github.workspace }}/bigotti-backend-staging.zip
 
     steps:
       - name: Checkout repository
