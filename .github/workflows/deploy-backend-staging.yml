@@ -52,6 +52,52 @@ jobs:
         working-directory: backend
         run: npm run build
 
+      - name: Authenticate with Azure using OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Open PostgreSQL firewall for GitHub runner
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_POSTGRES_SERVER: ${{ vars.AZURE_POSTGRES_SERVER }}
+        run: |
+          RUNNER_IP="$(curl -4 --fail --silent --show-error https://api.ipify.org)"
+          RULE_NAME="github-actions-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+
+          az postgres flexible-server firewall-rule create \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --server-name "$AZURE_POSTGRES_SERVER" \
+            --name "$RULE_NAME" \
+            --start-ip-address "$RUNNER_IP" \
+            --end-ip-address "$RUNNER_IP" \
+            --output none
+
+          echo "POSTGRES_FIREWALL_RULE=$RULE_NAME" >> "$GITHUB_ENV"
+
+      - name: Apply Prisma migrations
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          sleep 15
+          npm run migrate:deploy
+
+      - name: Close PostgreSQL firewall
+        if: ${{ always() && env.POSTGRES_FIREWALL_RULE != '' }}
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_POSTGRES_SERVER: ${{ vars.AZURE_POSTGRES_SERVER }}
+        run: |
+          az postgres flexible-server firewall-rule delete \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --server-name "$AZURE_POSTGRES_SERVER" \
+            --name "$POSTGRES_FIREWALL_RULE" \
+            --yes \
+            --output none
+
       - name: Keep production dependencies only
         working-directory: backend
         run: npm prune --omit=dev --no-audit --no-fund
@@ -117,13 +163,6 @@ jobs:
 
           echo "Ready-to-run deployment package:"
           du -h "$DEPLOY_ZIP"
-
-      - name: Authenticate with Azure using OIDC
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Deploy backend to Azure staging
         uses: azure/webapps-deploy@v3
