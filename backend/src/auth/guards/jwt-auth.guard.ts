@@ -10,7 +10,11 @@ import { AUTH_COOKIE_NAMES } from '../services/auth-cookie.service';
 import { AuthSessionService } from '../services/auth-session.service';
 import { JwtPayload } from '../types/jwt-payload.type';
 
-const ADMIN_ROLES = ['SUPER_ADMIN', 'ADMIN', 'MANAGER'] as const;
+const ADMIN_ROLES: ReadonlyArray<JwtPayload['role']> = [
+  'SUPER_ADMIN',
+  'ADMIN',
+  'MANAGER',
+];
 
 type RequestWithUser = {
   headers: Record<string, string | string[] | undefined>;

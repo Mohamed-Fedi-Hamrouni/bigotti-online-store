@@ -5,6 +5,7 @@ export type Customer = {
   fullName: string;
   phone: string;
   email: string | null;
+  emailVerifiedAt: string | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -13,6 +14,13 @@ export type Customer = {
 export type CustomerAuthResponse = {
   customer: Customer;
 };
+
+export type CustomerRegistrationResponse = {
+  message: string;
+  email: string;
+};
+
+export type CustomerEmailVerificationResponse = { message: string };
 
 export type RegisterCustomerPayload = {
   fullName: string;

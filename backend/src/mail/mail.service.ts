@@ -9,6 +9,10 @@ import {
   buildPasswordResetTemplate,
   PasswordResetTemplateInput,
 } from './templates/password-reset.template';
+import {
+  buildEmailVerificationTemplate,
+  EmailVerificationTemplateInput,
+} from './templates/email-verification.template';
 
 export type SendPasswordResetEmailInput = Omit<
   PasswordResetTemplateInput,
@@ -16,6 +20,11 @@ export type SendPasswordResetEmailInput = Omit<
 > & {
   to: string;
 };
+
+export type SendEmailVerificationInput = Omit<
+  EmailVerificationTemplateInput,
+  'appName' | 'supportEmail'
+> & { to: string };
 
 @Injectable()
 export class MailService {
@@ -61,6 +70,23 @@ export class MailService {
       recipientName: input.recipientName,
       resetUrl: input.resetUrl,
       expiresInMinutes: input.expiresInMinutes,
+      supportEmail: this.supportEmail,
+    });
+
+    return this.send({
+      to: input.to,
+      subject: template.subject,
+      html: template.html,
+      text: template.text,
+    });
+  }
+
+  async sendEmailVerification(input: SendEmailVerificationInput) {
+    const template = buildEmailVerificationTemplate({
+      appName: this.appName,
+      recipientName: input.recipientName,
+      verificationUrl: input.verificationUrl,
+      expiresInHours: input.expiresInHours,
       supportEmail: this.supportEmail,
     });
 

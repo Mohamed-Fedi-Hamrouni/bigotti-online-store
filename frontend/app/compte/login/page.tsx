@@ -8,7 +8,11 @@ import { GoogleIdentityButton } from "@/components/customer-auth/GoogleIdentityB
 import { useCustomerAuth } from "@/components/customer-auth/CustomerAuthProvider";
 import { PublicFooter } from "@/components/layout/PublicFooter";
 import { PublicHeader } from "@/components/layout/PublicHeader";
-import { loginCustomer, loginCustomerWithGoogle } from "@/lib/api";
+import {
+  loginCustomer,
+  loginCustomerWithGoogle,
+  resendCustomerVerification,
+} from "@/lib/api";
 
 export default function CustomerLoginPage() {
   const router = useRouter();
@@ -20,12 +24,38 @@ export default function CustomerLoginPage() {
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
+  const [canResendVerification, setCanResendVerification] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [resendMessage, setResendMessage] = useState("");
 
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
       router.replace("/compte");
     }
   }, [isLoading, isAuthenticated, router]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("verificationRequired") !== "1") return;
+    const redirectedEmail = params.get("email") ?? "";
+    const timeout = window.setTimeout(() => {
+      setEmail(redirectedEmail);
+      setError(
+        "Votre nouvelle adresse email doit être vérifiée avant de vous reconnecter.",
+      );
+      setCanResendVerification(true);
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, []);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = window.setInterval(
+      () => setResendCooldown((value) => Math.max(0, value - 1)),
+      1000,
+    );
+    return () => window.clearInterval(timer);
+  }, [resendCooldown]);
 
   async function completeLogin(
     request: () => ReturnType<typeof loginCustomer>,
@@ -46,6 +76,8 @@ export default function CustomerLoginPage() {
     const normalizedEmail = email.trim().toLowerCase();
 
     setError("");
+    setCanResendVerification(false);
+    setResendMessage("");
 
     if (!normalizedEmail || !password) {
       setError("Veuillez saisir votre email et votre mot de passe.");
@@ -67,9 +99,10 @@ export default function CustomerLoginPage() {
         }),
       );
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Email ou mot de passe incorrect.",
-      );
+      const message =
+        err instanceof Error ? err.message : "Email ou mot de passe incorrect.";
+      setError(message);
+      setCanResendVerification(message.toLowerCase().includes("vérifi"));
     } finally {
       setIsSubmitting(false);
     }
@@ -95,6 +128,16 @@ export default function CustomerLoginPage() {
   }
 
   const isBusy = isSubmitting || isGoogleSubmitting;
+
+  async function handleResendVerification() {
+    if (resendCooldown > 0 || !email.trim()) return;
+    setResendMessage("");
+    await resendCustomerVerification(email.trim().toLowerCase());
+    setResendMessage(
+      "Si votre compte est concerné, un nouvel email de vérification a été envoyé.",
+    );
+    setResendCooldown(60);
+  }
 
   return (
     <main className="min-h-screen bg-neutral-50 text-neutral-950">
@@ -139,6 +182,22 @@ export default function CustomerLoginPage() {
           {error && (
             <div className="mt-6 rounded-2xl bg-red-50 p-4 text-sm font-semibold text-red-700">
               {error}
+            </div>
+          )}
+
+          {canResendVerification && (
+            <div className="mt-4 rounded-2xl bg-neutral-50 p-4 text-sm">
+              <button
+                type="button"
+                onClick={handleResendVerification}
+                disabled={resendCooldown > 0}
+                className="font-bold underline disabled:opacity-50"
+              >
+                {resendCooldown > 0
+                  ? `Renvoyer dans ${resendCooldown} s`
+                  : "Renvoyer l’email de vérification"}
+              </button>
+              {resendMessage && <p className="mt-2">{resendMessage}</p>}
             </div>
           )}
 

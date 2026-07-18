@@ -31,6 +31,7 @@ const createDto = (items = [{ variantId: 'variant-1', quantity: 2 }]) => ({
   customerPhone: '20123456',
   deliveryAddress: 'Adresse réelle de test',
   deliveryCity: 'Tunis',
+  fulfillmentMethod: 'DELIVERY' as const,
   paymentMethod: 'CASH_ON_DELIVERY' as const,
   items,
 });
@@ -111,6 +112,49 @@ function createService(options?: {
 }
 
 describe('OrdersService - intégrité du stock', () => {
+  it('crée une commande DELIVERY valide et applique les frais une seule fois', async () => {
+    const { service, tx } = createService();
+
+    await service.create(createDto());
+
+    const data = tx.order.create.mock.calls[0][0].data;
+    expect(data.deliveryFee).toBe(8);
+    expect(data.subtotal).toBe(200);
+    expect(data.total).toBe(208);
+    expect(data.payment.create.amount).toBe(208);
+  });
+
+  it('refuse une commande sans adresse de livraison', async () => {
+    const { service, prisma } = createService();
+
+    await expect(
+      service.create({ ...createDto(), deliveryAddress: ' ' }),
+    ).rejects.toThrow('Adresse de livraison obligatoire.');
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('refuse une commande sans ville de livraison', async () => {
+    const { service, prisma } = createService();
+
+    await expect(
+      service.create({ ...createDto(), deliveryCity: ' ' }),
+    ).rejects.toThrow('Ville de livraison obligatoire.');
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('refuse explicitement STORE_PICKUP pour une nouvelle commande', async () => {
+    const { service, prisma } = createService();
+    const dto = {
+      ...createDto(),
+      fulfillmentMethod: 'STORE_PICKUP',
+    };
+
+    await expect(service.create(dto as never)).rejects.toThrow(
+      'Seule la livraison à domicile est disponible pour les nouvelles commandes.',
+    );
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
   it('décrémente le stock et crée toutes les données de commande', async () => {
     const { service, tx } = createService();
 

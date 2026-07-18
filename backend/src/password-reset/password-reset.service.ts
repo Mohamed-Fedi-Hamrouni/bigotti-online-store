@@ -1,8 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-  Logger,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash, randomBytes } from 'crypto';
 import { hash } from 'bcryptjs';
@@ -150,6 +146,9 @@ export class PasswordResetService {
         email,
         isActive: true,
         passwordHash: {
+          not: null,
+        },
+        emailVerifiedAt: {
           not: null,
         },
       },
@@ -428,9 +427,7 @@ export class PasswordResetService {
 
   private async cleanupOldTokens() {
     const retentionDate = new Date();
-    retentionDate.setDate(
-      retentionDate.getDate() - RESET_TOKEN_RETENTION_DAYS,
-    );
+    retentionDate.setDate(retentionDate.getDate() - RESET_TOKEN_RETENTION_DAYS);
 
     await this.prisma.$transaction([
       this.prisma.adminPasswordResetToken.deleteMany({

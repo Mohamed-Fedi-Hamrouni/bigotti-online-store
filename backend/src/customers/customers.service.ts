@@ -81,7 +81,7 @@ export class CustomersService {
     }
 
     const duplicateWhere = this.buildDuplicateWhere(
-      customer as CustomerWithOrders,
+      customer as unknown as CustomerWithOrders,
     );
 
     const customers = await this.prisma.customer.findMany({
@@ -120,7 +120,7 @@ export class CustomersService {
     }
 
     const duplicateWhere = this.buildDuplicateWhere(
-      customer as CustomerWithOrders,
+      customer as unknown as CustomerWithOrders,
     );
 
     await this.prisma.customer.updateMany({

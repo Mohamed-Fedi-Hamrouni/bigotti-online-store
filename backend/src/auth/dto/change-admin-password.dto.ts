@@ -1,6 +1,8 @@
 import {
   IsNotEmpty,
   IsString,
+  Matches as MatchesPattern,
+  MaxLength,
   MinLength,
   registerDecorator,
   ValidationArguments,
@@ -47,8 +49,14 @@ export class ChangeAdminPasswordDto {
   @IsString()
   @IsNotEmpty()
   @MinLength(8)
+  @MaxLength(128)
+  @MatchesPattern(/^(?=.*[A-Za-z])(?=.*\d).+$/, {
+    message:
+      'Le nouveau mot de passe doit contenir au moins une lettre et un chiffre.',
+  })
   @DiffersFrom('currentPassword', {
-    message: 'Le nouveau mot de passe doit être différent du mot de passe actuel.',
+    message:
+      'Le nouveau mot de passe doit être différent du mot de passe actuel.',
   })
   newPassword!: string;
 
@@ -57,5 +65,5 @@ export class ChangeAdminPasswordDto {
   @Matches('newPassword', {
     message: 'La confirmation du mot de passe ne correspond pas.',
   })
-  confirmPassword!: string;
+  confirmNewPassword!: string;
 }

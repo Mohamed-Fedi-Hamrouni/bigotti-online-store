@@ -209,6 +209,14 @@ export default function CustomerAccountPage() {
                 email: profileEmail.trim().toLowerCase(),
             });
 
+            if (updatedCustomer.emailVerifiedAt === null) {
+                logoutCustomer();
+                router.replace(
+                    `/compte/login?verificationRequired=1&email=${encodeURIComponent(updatedCustomer.email ?? "")}`,
+                );
+                return;
+            }
+
             updateCustomerSession(updatedCustomer);
             setProfileSuccess("Profil mis à jour avec succès.");
         } catch (err) {

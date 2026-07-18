@@ -1,27 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { createOrder } from "@/lib/api";
 import { useCart } from "@/components/cart/CartProvider";
 import { useCustomerAuth } from "@/components/customer-auth/CustomerAuthProvider";
 import { PublicFooter } from "@/components/layout/PublicFooter";
 import { PublicHeader } from "@/components/layout/PublicHeader";
-import type {
-    CreateOrderPayload,
-    CreatedOrder,
-    FulfillmentMethod,
-    PickupStore,
-} from "@/types/order";
-import { bigottiStores } from "@/data/stores";
+import type { CreateOrderPayload, CreatedOrder } from "@/types/order";
 
 const DELIVERY_FEE = 8;
-
-const pickupStores = bigottiStores.map((store) => ({
-        value: store.pickupStoreCode,
-        label: store.shortLabel,
-        address: store.address,
-}));
 
 function formatPrice(value: number | string | null | undefined) {
     const numericValue = Number(value);
@@ -31,11 +19,6 @@ function formatPrice(value: number | string | null | undefined) {
     }
 
     return `${numericValue.toFixed(3)} TND`;
-}
-
-function getPickupStoreLabel(store: PickupStore) {
-    return pickupStores.find((currentStore) => currentStore.value === store)
-        ?.label;
 }
 
 function splitFullName(fullName: string) {
@@ -87,9 +70,6 @@ export default function CheckoutPage() {
     const [postalCode, setPostalCode] = useState("");
     const [deliveryNotes, setDeliveryNotes] = useState("");
 
-    const [fulfillmentMethod, setFulfillmentMethod] =
-        useState<FulfillmentMethod>("DELIVERY");
-    const [pickupStore, setPickupStore] = useState<PickupStore>("NABEUL");
     const [hasAcceptedTerms, setHasAcceptedTerms] = useState(false);
 
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -110,14 +90,8 @@ export default function CheckoutPage() {
         }
     }, [customer]);
 
-    const checkoutDeliveryFee =
-        fulfillmentMethod === "STORE_PICKUP" ? 0 : DELIVERY_FEE;
+    const checkoutDeliveryFee = DELIVERY_FEE;
     const checkoutTotal = Number((subtotal + checkoutDeliveryFee).toFixed(3));
-
-    const pickupStoreLabel = useMemo(
-        () => getPickupStoreLabel(pickupStore) ?? "Nabeul",
-        [pickupStore],
-    );
 
     function validateForm() {
         if (items.length === 0) {
@@ -136,18 +110,12 @@ export default function CheckoutPage() {
             return "Le téléphone doit contenir au moins 8 chiffres.";
         }
 
-        if (fulfillmentMethod === "DELIVERY") {
-            if (!deliveryAddress.trim()) {
-                return "L’adresse de livraison est obligatoire.";
-            }
-
-            if (!deliveryCity.trim()) {
-                return "La ville est obligatoire.";
-            }
+        if (!deliveryAddress.trim()) {
+            return "L’adresse de livraison est obligatoire.";
         }
 
-        if (fulfillmentMethod === "STORE_PICKUP" && !pickupStore) {
-            return "Sélectionnez un magasin de retrait.";
+        if (!deliveryCity.trim()) {
+            return "La ville est obligatoire.";
         }
 
         if (!hasAcceptedTerms) {
@@ -160,11 +128,7 @@ export default function CheckoutPage() {
     function buildDeliveryNotes() {
         const notes: string[] = [];
 
-        if (fulfillmentMethod === "STORE_PICKUP") {
-            notes.push(`Retrait en magasin : ${pickupStoreLabel}`);
-        }
-
-        if (postalCode.trim() && fulfillmentMethod === "DELIVERY") {
+        if (postalCode.trim()) {
             notes.push(`Code postal : ${postalCode.trim()}`);
         }
 
@@ -193,17 +157,9 @@ export default function CheckoutPage() {
             customerName,
             customerPhone: customerPhone.trim(),
             customerEmail: customerEmail.trim() || undefined,
-            fulfillmentMethod,
-            pickupStore:
-                fulfillmentMethod === "STORE_PICKUP" ? pickupStore : undefined,
-            deliveryAddress:
-                fulfillmentMethod === "STORE_PICKUP"
-                    ? "Retrait en magasin"
-                    : deliveryAddress.trim(),
-            deliveryCity:
-                fulfillmentMethod === "STORE_PICKUP"
-                    ? pickupStoreLabel
-                    : deliveryCity.trim(),
+            fulfillmentMethod: "DELIVERY",
+            deliveryAddress: deliveryAddress.trim(),
+            deliveryCity: deliveryCity.trim(),
             deliveryNotes: buildDeliveryNotes(),
             paymentMethod: "CASH_ON_DELIVERY",
             items: items.map((item) => ({
@@ -278,20 +234,14 @@ export default function CheckoutPage() {
                                         Livraison
                                     </p>
                                     <p className="font-semibold">
-                                        {createdOrder.deliveryAddress ===
-                                        "Retrait en magasin"
-                                            ? `Retrait ${createdOrder.deliveryCity}`
-                                            : "Livraison à domicile"}
+                                        Livraison à domicile
                                     </p>
                                 </div>
 
                                 <div>
                                     <p className="text-neutral-500">Paiement</p>
                                     <p className="font-semibold">
-                                        {createdOrder.deliveryAddress ===
-                                        "Retrait en magasin"
-                                            ? "Paiement au retrait"
-                                            : "Paiement à la livraison"}
+                                        Paiement à la livraison
                                     </p>
                                 </div>
                             </div>
@@ -339,8 +289,8 @@ export default function CheckoutPage() {
                     </h1>
 
                     <p className="mt-6 max-w-2xl text-lg leading-8 text-neutral-300">
-                        Commandez à domicile ou retirez votre sélection dans le
-                        magasin Bigotti de votre choix.
+                        Faites-vous livrer votre sélection Bigotti directement
+                        à domicile.
                     </p>
                 </div>
             </section>
@@ -438,9 +388,8 @@ export default function CheckoutPage() {
                         </div>
                     </CheckoutStep>
 
-                    <CheckoutStep number={2} title="Adresses">
-                        {fulfillmentMethod === "DELIVERY" ? (
-                            <div className="grid gap-5">
+                    <CheckoutStep number={2} title="Adresse de livraison">
+                        <div className="grid gap-5">
                                 <p className="text-sm leading-6 text-neutral-600">
                                     Cette adresse sera utilisée comme adresse de
                                     livraison.
@@ -506,127 +455,19 @@ export default function CheckoutPage() {
                                         />
                                     </div>
                                 </div>
-                            </div>
-                        ) : (
-                            <div>
-                                <p className="text-sm leading-6 text-neutral-600">
-                                    Sélectionnez le magasin dans lequel vous
-                                    souhaitez récupérer votre commande.
-                                </p>
-
-                                <div className="mt-5 grid gap-3 md:grid-cols-2">
-                                    {pickupStores.map((store) => {
-                                        const isSelected =
-                                            pickupStore === store.value;
-
-                                        return (
-                                            <label
-                                                key={store.value}
-                                                className={
-                                                    isSelected
-                                                        ? "cursor-pointer rounded-3xl border border-black bg-black p-5 text-white"
-                                                        : "cursor-pointer rounded-3xl border border-neutral-200 bg-white p-5 transition hover:border-black"
-                                                }
-                                            >
-                                                <input
-                                                    type="radio"
-                                                    name="pickupStore"
-                                                    value={store.value}
-                                                    checked={isSelected}
-                                                    onChange={() =>
-                                                        setPickupStore(
-                                                            store.value,
-                                                        )
-                                                    }
-                                                    className="sr-only"
-                                                />
-
-                                                <p className="text-lg font-black">
-                                                    {store.label}
-                                                </p>
-                                                <p
-                                                    className={
-                                                        isSelected
-                                                            ? "mt-2 text-sm text-white/70"
-                                                            : "mt-2 text-sm text-neutral-500"
-                                                    }
-                                                >
-                                                    {store.address}
-                                                </p>
-                                            </label>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        )}
+                        </div>
                     </CheckoutStep>
 
                     <CheckoutStep number={3} title="Méthode d’expédition">
-                        <div className="grid gap-4 md:grid-cols-2">
-                            <label
-                                className={
-                                    fulfillmentMethod === "DELIVERY"
-                                        ? "cursor-pointer rounded-3xl border border-black bg-black p-5 text-white"
-                                        : "cursor-pointer rounded-3xl border border-neutral-200 bg-white p-5 transition hover:border-black"
-                                }
-                            >
-                                <input
-                                    type="radio"
-                                    name="fulfillmentMethod"
-                                    value="DELIVERY"
-                                    checked={fulfillmentMethod === "DELIVERY"}
-                                    onChange={() =>
-                                        setFulfillmentMethod("DELIVERY")
-                                    }
-                                    className="sr-only"
-                                />
+                        <div className="grid gap-4">
+                            <div className="rounded-3xl border border-black bg-black p-5 text-white">
                                 <p className="text-lg font-black">
                                     Livraison à domicile
                                 </p>
-                                <p
-                                    className={
-                                        fulfillmentMethod === "DELIVERY"
-                                            ? "mt-2 text-sm text-white/70"
-                                            : "mt-2 text-sm text-neutral-500"
-                                    }
-                                >
+                                <p className="mt-2 text-sm text-white/70">
                                     Frais fixes : {formatPrice(DELIVERY_FEE)}
                                 </p>
-                            </label>
-
-                            <label
-                                className={
-                                    fulfillmentMethod === "STORE_PICKUP"
-                                        ? "cursor-pointer rounded-3xl border border-black bg-black p-5 text-white"
-                                        : "cursor-pointer rounded-3xl border border-neutral-200 bg-white p-5 transition hover:border-black"
-                                }
-                            >
-                                <input
-                                    type="radio"
-                                    name="fulfillmentMethod"
-                                    value="STORE_PICKUP"
-                                    checked={
-                                        fulfillmentMethod === "STORE_PICKUP"
-                                    }
-                                    onChange={() =>
-                                        setFulfillmentMethod("STORE_PICKUP")
-                                    }
-                                    className="sr-only"
-                                />
-                                <p className="text-lg font-black">
-                                    Retrait en magasin
-                                </p>
-                                <p
-                                    className={
-                                        fulfillmentMethod === "STORE_PICKUP"
-                                            ? "mt-2 text-sm text-white/70"
-                                            : "mt-2 text-sm text-neutral-500"
-                                    }
-                                >
-                                    Gratuit — Nabeul, Sfax, Lac 2, Lafayette ou
-                                    Soukra.
-                                </p>
-                            </label>
+                            </div>
                         </div>
 
                         <div className="mt-6">
@@ -651,14 +492,11 @@ export default function CheckoutPage() {
                                 <span className="mt-1 h-4 w-4 rounded-full border-4 border-black" />
                                 <div>
                                     <p className="font-black">
-                                        {fulfillmentMethod === "STORE_PICKUP"
-                                            ? "Paiement au retrait magasin"
-                                            : "Paiement comptant à la livraison"}
+                                        Paiement comptant à la livraison
                                     </p>
                                     <p className="mt-2 text-sm leading-6 text-neutral-600">
-                                        {fulfillmentMethod === "STORE_PICKUP"
-                                            ? `Vous payez lorsque vous récupérez votre commande au magasin ${pickupStoreLabel}.`
-                                            : "Vous payez lors de la livraison de votre commande."}
+                                        Vous payez lors de la livraison de votre
+                                        commande.
                                     </p>
                                 </div>
                             </div>
@@ -748,9 +586,7 @@ export default function CheckoutPage() {
 
                             <div className="flex justify-between">
                                 <span className="text-neutral-500">
-                                    {fulfillmentMethod === "STORE_PICKUP"
-                                        ? "Retrait magasin"
-                                        : "Livraison"}
+                                    Livraison
                                 </span>
                                 <span>{formatPrice(checkoutDeliveryFee)}</span>
                             </div>
@@ -767,10 +603,6 @@ export default function CheckoutPage() {
                             <div className="rounded-2xl bg-neutral-50 p-4">
                                 Livraison à domicile :{" "}
                                 {formatPrice(DELIVERY_FEE)}
-                            </div>
-
-                            <div className="rounded-2xl bg-neutral-50 p-4">
-                                Retrait gratuit en magasin.
                             </div>
 
                             <div className="rounded-2xl bg-neutral-50 p-4">

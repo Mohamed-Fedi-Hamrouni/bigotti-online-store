@@ -9,17 +9,20 @@ import {
   Post,
   Req,
   Res,
-} from "@nestjs/common";
-import type { Response } from "express";
-import { AuthCookieService } from "../auth/services/auth-cookie.service";
-import type { AuthRequestContext } from "../auth/services/auth-session.service";
-import { CustomerAuthService } from "./customer-auth.service";
-import { ChangeCustomerPasswordDto } from "./dto/change-customer-password.dto";
-import { GoogleCredentialDto } from "./dto/google-credential.dto";
-import { GoogleRegisterCustomerDto } from "./dto/google-register-customer.dto";
-import { LoginCustomerDto } from "./dto/login-customer.dto";
-import { RegisterCustomerDto } from "./dto/register-customer.dto";
-import { UpdateCustomerProfileDto } from "./dto/update-customer-profile.dto";
+} from '@nestjs/common';
+import type { Response } from 'express';
+import { AuthCookieService } from '../auth/services/auth-cookie.service';
+import type { AuthRequestContext } from '../auth/services/auth-session.service';
+import { CustomerAuthService } from './customer-auth.service';
+import { ChangeCustomerPasswordDto } from './dto/change-customer-password.dto';
+import { GoogleCredentialDto } from './dto/google-credential.dto';
+import { GoogleRegisterCustomerDto } from './dto/google-register-customer.dto';
+import { LoginCustomerDto } from './dto/login-customer.dto';
+import { RegisterCustomerDto } from './dto/register-customer.dto';
+import { UpdateCustomerProfileDto } from './dto/update-customer-profile.dto';
+import { VerifyCustomerEmailDto } from './dto/verify-customer-email.dto';
+import { ResendCustomerVerificationDto } from './dto/resend-customer-verification.dto';
+import { CustomerEmailVerificationService } from './services/customer-email-verification.service';
 
 type RequestLike = {
   ip?: string;
@@ -31,21 +34,21 @@ type RequestLike = {
 };
 
 function getClientIp(request: RequestLike) {
-  const forwardedFor = request.headers["x-forwarded-for"];
+  const forwardedFor = request.headers['x-forwarded-for'];
 
   if (Array.isArray(forwardedFor)) {
-    return forwardedFor[0]?.split(",")[0]?.trim() || "unknown";
+    return forwardedFor[0]?.split(',')[0]?.trim() || 'unknown';
   }
 
-  if (typeof forwardedFor === "string") {
-    return forwardedFor.split(",")[0]?.trim() || "unknown";
+  if (typeof forwardedFor === 'string') {
+    return forwardedFor.split(',')[0]?.trim() || 'unknown';
   }
 
-  return request.ip || request.socket?.remoteAddress || "unknown";
+  return request.ip || request.socket?.remoteAddress || 'unknown';
 }
 
 function getRequestContext(request: RequestLike): AuthRequestContext {
-  const userAgent = request.headers["user-agent"];
+  const userAgent = request.headers['user-agent'];
 
   return {
     ipAddress: getClientIp(request),
@@ -67,32 +70,39 @@ function getCustomerAuthorization(
   return authorization;
 }
 
-@Controller("customer-auth")
+@Controller('customer-auth')
 export class CustomerAuthController {
   constructor(
     private readonly customerAuthService: CustomerAuthService,
     private readonly authCookieService: AuthCookieService,
+    private readonly emailVerificationService: CustomerEmailVerificationService,
   ) {}
 
-  @Post("register")
+  @Post('register')
   async register(
     @Body() dto: RegisterCustomerDto,
     @Req() request: RequestLike,
-    @Res({ passthrough: true }) response: Response,
   ) {
-    const result = await this.customerAuthService.register(
+    return this.customerAuthService.register(dto, getRequestContext(request));
+  }
+
+  @Post('verify-email')
+  verifyEmail(@Body() dto: VerifyCustomerEmailDto) {
+    return this.emailVerificationService.verify(dto);
+  }
+
+  @Post('resend-verification')
+  resendVerification(
+    @Body() dto: ResendCustomerVerificationDto,
+    @Req() request: RequestLike,
+  ) {
+    return this.emailVerificationService.resend(
       dto,
       getRequestContext(request),
     );
-
-    this.setCustomerCookies(response, result);
-
-    return {
-      customer: result.customer,
-    };
   }
 
-  @Post("login")
+  @Post('login')
   async login(
     @Body() dto: LoginCustomerDto,
     @Req() request: RequestLike,
@@ -110,7 +120,7 @@ export class CustomerAuthController {
     };
   }
 
-  @Post("google/login")
+  @Post('google/login')
   async googleLogin(
     @Body() dto: GoogleCredentialDto,
     @Req() request: RequestLike,
@@ -128,7 +138,7 @@ export class CustomerAuthController {
     };
   }
 
-  @Post("google/register")
+  @Post('google/register')
   async googleRegister(
     @Body() dto: GoogleRegisterCustomerDto,
     @Req() request: RequestLike,
@@ -146,7 +156,7 @@ export class CustomerAuthController {
     };
   }
 
-  @Post("refresh")
+  @Post('refresh')
   async refresh(
     @Req() request: RequestLike,
     @Res({ passthrough: true }) response: Response,
@@ -163,7 +173,7 @@ export class CustomerAuthController {
     };
   }
 
-  @Post("logout")
+  @Post('logout')
   async logout(
     @Req() request: RequestLike,
     @Res({ passthrough: true }) response: Response,
@@ -177,21 +187,21 @@ export class CustomerAuthController {
     return result;
   }
 
-  @Get("me")
+  @Get('me')
   me(
     @Req() request: RequestLike,
-    @Headers("authorization") authorization?: string,
+    @Headers('authorization') authorization?: string,
   ) {
     return this.customerAuthService.me(
       getCustomerAuthorization(this.authCookieService, request, authorization),
     );
   }
 
-  @Patch("profile")
+  @Patch('profile')
   updateProfile(
     @Req() request: RequestLike,
     @Body() dto: UpdateCustomerProfileDto,
-    @Headers("authorization") authorization?: string,
+    @Headers('authorization') authorization?: string,
   ) {
     return this.customerAuthService.updateProfile(
       dto,
@@ -199,11 +209,11 @@ export class CustomerAuthController {
     );
   }
 
-  @Patch("password")
+  @Patch('password')
   changePassword(
     @Req() request: RequestLike,
     @Body() dto: ChangeCustomerPasswordDto,
-    @Headers("authorization") authorization?: string,
+    @Headers('authorization') authorization?: string,
   ) {
     return this.customerAuthService.changePassword(
       dto,
@@ -211,31 +221,31 @@ export class CustomerAuthController {
     );
   }
 
-  @Get("orders")
+  @Get('orders')
   orders(
     @Req() request: RequestLike,
-    @Headers("authorization") authorization?: string,
+    @Headers('authorization') authorization?: string,
   ) {
     return this.customerAuthService.getCustomerOrders(
       getCustomerAuthorization(this.authCookieService, request, authorization),
     );
   }
 
-  @Get("sessions")
+  @Get('sessions')
   sessions(
     @Req() request: RequestLike,
-    @Headers("authorization") authorization?: string,
+    @Headers('authorization') authorization?: string,
   ) {
     return this.customerAuthService.listSessions(
       getCustomerAuthorization(this.authCookieService, request, authorization),
     );
   }
 
-  @Delete("sessions/:sessionId")
+  @Delete('sessions/:sessionId')
   async revokeSession(
     @Req() request: RequestLike,
-    @Param("sessionId") sessionId: string,
-    @Headers("authorization") authorization: string | undefined,
+    @Param('sessionId') sessionId: string,
+    @Headers('authorization') authorization: string | undefined,
     @Res({ passthrough: true }) response: Response,
   ) {
     const result = await this.customerAuthService.revokeSession(
@@ -250,20 +260,20 @@ export class CustomerAuthController {
     return result;
   }
 
-  @Post("sessions/revoke-others")
+  @Post('sessions/revoke-others')
   revokeOtherSessions(
     @Req() request: RequestLike,
-    @Headers("authorization") authorization?: string,
+    @Headers('authorization') authorization?: string,
   ) {
     return this.customerAuthService.revokeOtherSessions(
       getCustomerAuthorization(this.authCookieService, request, authorization),
     );
   }
 
-  @Post("sessions/revoke-all")
+  @Post('sessions/revoke-all')
   async revokeAllSessions(
     @Req() request: RequestLike,
-    @Headers("authorization") authorization: string | undefined,
+    @Headers('authorization') authorization: string | undefined,
     @Res({ passthrough: true }) response: Response,
   ) {
     const result = await this.customerAuthService.revokeAllSessions(

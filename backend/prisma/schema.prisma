@@ -335,23 +335,44 @@ model ProductImage {
 }
 
 model Customer {
-  id           String  @id @default(uuid())
-  fullName     String  @map("full_name")
-  phone        String
-  email        String?
-  passwordHash String?
-  isActive     Boolean @default(true)
+  id              String    @id @default(uuid())
+  fullName        String    @map("full_name")
+  phone           String
+  email           String?   @unique
+  emailVerifiedAt DateTime? @map("email_verified_at")
+  passwordHash    String?
+  isActive        Boolean   @default(true)
 
-  orders              Order[]
-  sessions            CustomerSession[]
-  identities          CustomerIdentity[]
-  passwordResetTokens CustomerPasswordResetToken[]
+  orders                  Order[]
+  sessions                CustomerSession[]
+  identities              CustomerIdentity[]
+  passwordResetTokens     CustomerPasswordResetToken[]
+  emailVerificationTokens CustomerEmailVerificationToken[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([phone])
   @@map("customers")
+}
+
+model CustomerEmailVerificationToken {
+  id String @id @default(uuid())
+
+  customerId String   @map("customer_id")
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  revokedAt DateTime? @map("revoked_at")
+  requestIp String?   @map("request_ip")
+  userAgent String?   @map("user_agent")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([customerId, expiresAt])
+  @@index([expiresAt, usedAt, revokedAt])
+  @@map("customer_email_verification_tokens")
 }
 
 model CustomerSession {

@@ -745,13 +745,6 @@ export function PublicHeader() {
                                     Mon compte
                                 </Link>
 
-                                <Link
-                                    href="/admin/login"
-                                    onClick={() => setIsMenuOpen(false)}
-                                    className="block pt-4 text-sm font-black uppercase tracking-[0.16em] text-neutral-500"
-                                >
-                                    Espace admin
-                                </Link>
                             </nav>
                         </div>
                     </div>

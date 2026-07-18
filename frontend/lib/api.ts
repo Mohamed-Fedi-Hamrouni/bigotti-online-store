@@ -6,6 +6,7 @@ import type {
   LoginResponse,
   MessageResponse,
   UserRole,
+  UpdateAdminProfilePayload,
 } from "@/types/auth";
 import type { ManagerDashboard } from "@/types/dashboard";
 import type {
@@ -38,6 +39,8 @@ import type {
   ChangeCustomerPasswordResponse,
   Customer,
   CustomerAuthResponse,
+  CustomerRegistrationResponse,
+  CustomerEmailVerificationResponse,
   GoogleCustomerLoginPayload,
   GoogleCustomerRegisterPayload,
   LoginCustomerPayload,
@@ -677,7 +680,14 @@ export async function logoutAdmin() {
 }
 
 export async function changeAdminPassword(payload: ChangeAdminPasswordPayload) {
-  return fetchJson<MessageResponse>("/auth/password", {
+  return fetchJson<MessageResponse>("/auth/change-password", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateAdminProfile(payload: UpdateAdminProfilePayload) {
+  return fetchJson<AuthUser>("/auth/profile", {
     method: "PATCH",
     body: JSON.stringify(payload),
   });
@@ -1014,10 +1024,24 @@ export async function trackOrder(orderNumber: string, phone: string) {
 }
 
 export async function registerCustomer(payload: RegisterCustomerPayload) {
-  return fetchJson<CustomerAuthResponse>("/customer-auth/register", {
+  return fetchJson<CustomerRegistrationResponse>("/customer-auth/register", {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export async function verifyCustomerEmail(token: string) {
+  return fetchJson<CustomerEmailVerificationResponse>(
+    "/customer-auth/verify-email",
+    { method: "POST", body: JSON.stringify({ token }) },
+  );
+}
+
+export async function resendCustomerVerification(email: string) {
+  return fetchJson<CustomerEmailVerificationResponse>(
+    "/customer-auth/resend-verification",
+    { method: "POST", body: JSON.stringify({ email }) },
+  );
 }
 
 export async function loginCustomer(payload: LoginCustomerPayload) {
