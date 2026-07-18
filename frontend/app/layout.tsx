@@ -5,8 +5,12 @@ import { FavoritesProvider } from "@/components/favorites/FavoritesProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-    title: "Bigotti Collection | Boutique en ligne",
-    description: "Boutique en ligne Bigotti Collection pour homme.",
+    title: {
+        default: "Bigotti Collection",
+        template: "%s | Bigotti Collection",
+    },
+    description:
+        "Découvrez Bigotti Collection, la boutique de mode masculine élégante et contemporaine.",
 };
 
 export default function RootLayout({
