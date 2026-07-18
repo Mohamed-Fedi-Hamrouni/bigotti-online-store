@@ -337,12 +337,6 @@ export function PublicFooter() {
                             Suivi commande
                         </Link>
 
-                        <Link
-                            href="/admin/login"
-                            className="transition hover:text-white"
-                        >
-                            Espace admin
-                        </Link>
                     </div>
 
                     <div className="flex items-center gap-2">

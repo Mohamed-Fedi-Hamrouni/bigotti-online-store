@@ -6,8 +6,6 @@ export type AuthUser = {
   email: string;
   role: UserRole;
   isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
 };
 
 export type LoginResponse = {
@@ -21,8 +19,10 @@ export type GoogleAdminLoginPayload = {
 export type ChangeAdminPasswordPayload = {
   currentPassword: string;
   newPassword: string;
-  confirmPassword: string;
+  confirmNewPassword: string;
 };
+
+export type UpdateAdminProfilePayload = { fullName: string };
 
 export type MessageResponse = {
   message: string;

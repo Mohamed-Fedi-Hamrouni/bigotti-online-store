@@ -39,10 +39,7 @@ function saveAdminSessionMarker(user: AuthUser) {
 }
 
 function getFallbackPathForRole(role: UserRole) {
-    if (role === "MANAGER") {
-        return "/admin/dashboard";
-    }
-
+    if (role === "MANAGER") return "/admin/dashboard";
     return "/admin/commandes";
 }
 
@@ -61,6 +58,10 @@ function getAllowedRolesForPath(pathname: string): UserRole[] | null {
 
     if (pathname.startsWith("/admin/utilisateurs")) {
         return ["SUPER_ADMIN"];
+    }
+
+    if (pathname.startsWith("/admin/profil")) {
+        return ["SUPER_ADMIN", "ADMIN", "MANAGER"];
     }
 
     if (pathname.startsWith("/admin/dashboard")) {

@@ -1,4 +1,4 @@
-import type { PickupStore } from "@/types/order";
+type StoreCode = "NABEUL" | "SFAX" | "LAC_2" | "LAFAYETTE" | "SOUKRA";
 
 export type BigottiStore = {
     id: string;
@@ -9,7 +9,7 @@ export type BigottiStore = {
     openingHours: string;
     latitude: number;
     longitude: number;
-    pickupStoreCode: PickupStore;
+    pickupStoreCode: StoreCode;
     googleMapsUrl: string;
 };
 

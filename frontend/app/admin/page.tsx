@@ -157,6 +157,15 @@ export default function AdminHomePage() {
                 )}
 
                 <div className="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+                    <Link
+                        href="/admin/profil"
+                        className="rounded-3xl bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
+                    >
+                        <h2 className="text-2xl font-bold">Mon profil</h2>
+                        <p className="mt-3 text-neutral-500">
+                            Consulter vos informations et modifier votre mot de passe.
+                        </p>
+                    </Link>
                     {canManageOrders && (
                         <Link
                             href="/admin/commandes"
@@ -255,14 +264,13 @@ export default function AdminHomePage() {
 
 
                     <Link
-                        href="/admin/securite"
+                        href="/admin/profil#securite"
                         className="rounded-3xl bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
                     >
                         <h2 className="text-2xl font-bold">Sécurité</h2>
 
                         <p className="mt-3 text-neutral-500">
-                            Voir les appareils connectés et révoquer les sessions
-                            administrateur.
+                            Modifier votre mot de passe depuis votre profil.
                         </p>
                     </Link>
 

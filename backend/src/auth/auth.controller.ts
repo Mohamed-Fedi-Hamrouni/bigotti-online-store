@@ -16,6 +16,7 @@ import { CurrentUser } from './decorators/current-user.decorator';
 import { GoogleAdminCredentialDto } from './dto/google-admin-credential.dto';
 import { ChangeAdminPasswordDto } from './dto/change-admin-password.dto';
 import { LoginDto } from './dto/login.dto';
+import { UpdateAdminProfileDto } from './dto/update-admin-profile.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { AuthCookieService } from './services/auth-cookie.service';
 import type { AuthRequestContext } from './services/auth-session.service';
@@ -127,7 +128,7 @@ export class AuthController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Patch('password')
+  @Post('change-password')
   async changePassword(
     @CurrentUser() user: JwtPayload,
     @Body() dto: ChangeAdminPasswordDto,
@@ -136,6 +137,15 @@ export class AuthController {
     const result = await this.authService.changePassword(user.sub, dto);
     this.authCookieService.clearAdminAuthCookies(response);
     return result;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('profile')
+  updateProfile(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: UpdateAdminProfileDto,
+  ) {
+    return this.authService.updateProfile(user.sub, dto);
   }
 
   @UseGuards(JwtAuthGuard)

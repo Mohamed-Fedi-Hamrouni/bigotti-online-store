@@ -10,6 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { GoogleAdminCredentialDto } from './dto/google-admin-credential.dto';
 import { ChangeAdminPasswordDto } from './dto/change-admin-password.dto';
 import { LoginDto } from './dto/login.dto';
+import { UpdateAdminProfileDto } from './dto/update-admin-profile.dto';
 import { AdminGoogleIdentityService } from './services/admin-google-identity.service';
 import {
   AuthRequestContext,
@@ -206,7 +207,7 @@ export class AuthService {
   }
 
   async changePassword(userId: string, dto: ChangeAdminPasswordDto) {
-    if (dto.newPassword !== dto.confirmPassword) {
+    if (dto.newPassword !== dto.confirmNewPassword) {
       throw new BadRequestException(
         'La confirmation du mot de passe ne correspond pas.',
       );
@@ -218,7 +219,11 @@ export class AuthService {
     }
 
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user || !user.isActive || !ADMIN_ROLES.includes(user.role as AdminRole)) {
+    if (
+      !user ||
+      !user.isActive ||
+      !ADMIN_ROLES.includes(user.role as AdminRole)
+    ) {
       throw new UnauthorizedException('Compte administrateur non autorisé.');
     }
     if (!(await bcrypt.compare(dto.currentPassword, user.passwordHash))) {
@@ -243,11 +248,34 @@ export class AuthService {
     };
   }
 
+  async updateProfile(userId: string, dto: UpdateAdminProfileDto) {
+    const fullName = dto.fullName.trim().replace(/\s+/g, ' ');
+
+    if (fullName.length < 2 || fullName.length > 120) {
+      throw new BadRequestException(
+        'Le nom complet doit contenir entre 2 et 120 caractères.',
+      );
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (
+      !user ||
+      !user.isActive ||
+      !ADMIN_ROLES.includes(user.role as AdminRole)
+    ) {
+      throw new UnauthorizedException('Compte administrateur non autorisé.');
+    }
+
+    const updatedUser = await this.prisma.user.update({
+      where: { id: userId },
+      data: { fullName },
+    });
+
+    return this.toSafeUser(updatedUser);
+  }
+
   async listSessions(userId: string, currentSessionId: string) {
-    return this.authSessionService.listAdminSessions(
-      userId,
-      currentSessionId,
-    );
+    return this.authSessionService.listAdminSessions(userId, currentSessionId);
   }
 
   async revokeSession(
@@ -289,10 +317,7 @@ export class AuthService {
     };
   }
 
-  private assertAuthorizedAdmin(user: {
-    isActive: boolean;
-    role: string;
-  }) {
+  private assertAuthorizedAdmin(user: { isActive: boolean; role: string }) {
     if (!user.isActive) {
       throw new UnauthorizedException(
         'Compte administrateur désactivé ou non autorisé.',
@@ -353,8 +378,6 @@ export class AuthService {
     email: string;
     role: string;
     isActive: boolean;
-    createdAt: Date;
-    updatedAt: Date;
   }) {
     return {
       id: user.id,
@@ -362,8 +385,6 @@ export class AuthService {
       email: user.email,
       role: user.role as AdminRole,
       isActive: user.isActive,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
     };
   }
 }

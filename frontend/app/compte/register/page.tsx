@@ -8,7 +8,11 @@ import { GoogleIdentityButton } from "@/components/customer-auth/GoogleIdentityB
 import { useCustomerAuth } from "@/components/customer-auth/CustomerAuthProvider";
 import { PublicFooter } from "@/components/layout/PublicFooter";
 import { PublicHeader } from "@/components/layout/PublicHeader";
-import { registerCustomer, registerCustomerWithGoogle } from "@/lib/api";
+import {
+  registerCustomer,
+  registerCustomerWithGoogle,
+  resendCustomerVerification,
+} from "@/lib/api";
 
 function normalizePhone(value: string) {
   return value.trim().replace(/\s+/g, "");
@@ -37,6 +41,9 @@ export default function CustomerRegisterPage() {
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
+  const [verificationEmail, setVerificationEmail] = useState("");
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [resendMessage, setResendMessage] = useState("");
 
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
@@ -44,8 +51,17 @@ export default function CustomerRegisterPage() {
     }
   }, [isLoading, isAuthenticated, router]);
 
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = window.setInterval(
+      () => setResendCooldown((value) => Math.max(0, value - 1)),
+      1000,
+    );
+    return () => window.clearInterval(timer);
+  }, [resendCooldown]);
+
   async function completeRegistration(
-    request: () => ReturnType<typeof registerCustomer>,
+    request: () => ReturnType<typeof registerCustomerWithGoogle>,
   ) {
     const response = await request();
 
@@ -130,7 +146,9 @@ export default function CustomerRegisterPage() {
     try {
       setIsSubmitting(true);
 
-      await completeRegistration(() => registerCustomer(normalizedPayload));
+      const response = await registerCustomer(normalizedPayload);
+      setVerificationEmail(response.email);
+      setResendCooldown(60);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Erreur lors de l’inscription.",
@@ -141,6 +159,54 @@ export default function CustomerRegisterPage() {
   }
 
   const isBusy = isSubmitting || isGoogleSubmitting;
+
+  async function handleResend() {
+    if (!verificationEmail || resendCooldown > 0) return;
+    setResendMessage("");
+    await resendCustomerVerification(verificationEmail);
+    setResendMessage(
+      "Si votre compte est toujours en attente, un nouvel email a été envoyé.",
+    );
+    setResendCooldown(60);
+  }
+
+  if (verificationEmail) {
+    return (
+      <main className="min-h-screen bg-neutral-50 text-neutral-950">
+        <PublicHeader />
+        <section className="mx-auto flex min-h-[70vh] max-w-2xl items-center px-6 py-12">
+          <div className="w-full rounded-[2rem] bg-white p-10 text-center shadow-sm">
+            <h1 className="text-4xl font-black">Vérifiez votre email</h1>
+            <p className="mt-5 leading-7 text-neutral-600">
+              Un lien de vérification a été envoyé à votre adresse. Cliquez sur
+              ce lien avant de vous connecter. Il reste valable 24 heures.
+            </p>
+            {resendMessage && (
+              <p className="mt-4 rounded-2xl bg-green-50 p-4 text-sm font-semibold text-green-700">
+                {resendMessage}
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={handleResend}
+              disabled={resendCooldown > 0}
+              className="mt-6 rounded-full border border-black px-6 py-3 text-sm font-bold disabled:opacity-50"
+            >
+              {resendCooldown > 0
+                ? `Renvoyer dans ${resendCooldown} s`
+                : "Renvoyer l’email de vérification"}
+            </button>
+            <div className="mt-6">
+              <Link href="/compte/login" className="font-bold underline">
+                Retour à la connexion
+              </Link>
+            </div>
+          </div>
+        </section>
+        <PublicFooter />
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-neutral-50 text-neutral-950">

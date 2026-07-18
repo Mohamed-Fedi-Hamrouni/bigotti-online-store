@@ -10,14 +10,6 @@ import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 
 const DELIVERY_FEE = 8;
 
-const PICKUP_STORE_LABELS: Record<string, string> = {
-  NABEUL: 'Nabeul',
-  SFAX: 'Sfax',
-  LAC_2: 'Lac 2',
-  LAFAYETTE: 'Lafayette',
-  SOUKRA: 'Soukra',
-};
-
 type InternalOrderItem = {
   productId: string;
   productVariantId: string;
@@ -70,42 +62,29 @@ export class OrdersService {
     const connectedCustomer =
       await this.getCustomerFromAuthorizationHeader(authorization);
 
-    const fulfillmentMethod = dto.fulfillmentMethod ?? 'DELIVERY';
-    const isStorePickup = fulfillmentMethod === 'STORE_PICKUP';
+    if ((dto.fulfillmentMethod as string) !== 'DELIVERY') {
+      throw new BadRequestException(
+        'Seule la livraison à domicile est disponible pour les nouvelles commandes.',
+      );
+    }
 
     if (dto.paymentMethod !== 'CASH_ON_DELIVERY') {
       throw new BadRequestException(
-        'Le paiement par carte n’est pas disponible. Choisissez le paiement à la livraison ou au retrait.',
+        'Seul le paiement à la livraison est disponible.',
       );
     }
 
-    const pickupStoreLabel = isStorePickup
-      ? this.getPickupStoreLabel(dto.pickupStore)
-      : null;
-
-    if (isStorePickup && !pickupStoreLabel) {
-      throw new BadRequestException(
-        'Sélectionnez un magasin de retrait valide.',
-      );
+    if (!dto.deliveryAddress?.trim()) {
+      throw new BadRequestException('Adresse de livraison obligatoire.');
     }
 
-    if (!isStorePickup) {
-      if (!dto.deliveryAddress?.trim()) {
-        throw new BadRequestException('Adresse de livraison obligatoire.');
-      }
-
-      if (!dto.deliveryCity?.trim()) {
-        throw new BadRequestException('Ville de livraison obligatoire.');
-      }
+    if (!dto.deliveryCity?.trim()) {
+      throw new BadRequestException('Ville de livraison obligatoire.');
     }
 
-    const deliveryAddress = isStorePickup
-      ? 'Retrait en magasin'
-      : dto.deliveryAddress!.trim();
-    const deliveryCity = isStorePickup
-      ? pickupStoreLabel!
-      : dto.deliveryCity!.trim();
-    const deliveryNotes = this.buildDeliveryNotes(dto, pickupStoreLabel);
+    const deliveryAddress = dto.deliveryAddress.trim();
+    const deliveryCity = dto.deliveryCity.trim();
+    const deliveryNotes = dto.deliveryNotes?.trim() || null;
 
     const aggregatedItems = Array.from(
       dto.items
@@ -204,7 +183,7 @@ export class OrdersService {
       orderItems.reduce((sum, item) => sum + Number(item.totalPrice), 0),
     );
 
-    const deliveryFee = isStorePickup ? 0 : DELIVERY_FEE;
+    const deliveryFee = DELIVERY_FEE;
     const total = this.toMoney(subtotal + deliveryFee);
     const orderNumber = await this.generateOrderNumber();
 
@@ -451,31 +430,6 @@ export class OrdersService {
     }
 
     return this.normalizeOrderResponse(order);
-  }
-
-  private getPickupStoreLabel(pickupStore?: string | null) {
-    if (!pickupStore) {
-      return null;
-    }
-
-    return PICKUP_STORE_LABELS[pickupStore] ?? null;
-  }
-
-  private buildDeliveryNotes(
-    dto: CreateOrderDto,
-    pickupStoreLabel: string | null,
-  ) {
-    const notes: string[] = [];
-
-    if (pickupStoreLabel) {
-      notes.push(`Retrait en magasin : ${pickupStoreLabel}`);
-    }
-
-    if (dto.deliveryNotes?.trim()) {
-      notes.push(dto.deliveryNotes.trim());
-    }
-
-    return notes.join('\n') || null;
   }
 
   private applyBuyXGetYPromotions(orderItems: InternalOrderItem[]) {
